@@ -189,6 +189,8 @@ def main(**kwargs):
         again(render, p=1/64, i=i+1)
 ```
 
+Note that Sardine is not installed by Tölvera, and needs to be installed separately.
+
 ### Interactive machine learning
 
 <!-- TODO -->
