@@ -28,7 +28,9 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 
 ## Showcase
 
-TBC Updated YouTube Playlist.
+Click below to visit the YouTube Playlist (if you'd like to add a video, please get in touch).
+
+![assets/tolvera.jpg](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB)
 
 ## Features
 
