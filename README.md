@@ -11,6 +11,7 @@ Tölvera is written in [Taichi](https://www.taichi-lang.org/), a domain-specific
 Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 
 ## Contents
+- [Showcase](#showcase)
 - [Features](#features)
 - [Examples](#examples)
 - [Install](#install)
@@ -19,10 +20,13 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 - [Contributing](#contributing)
 - [Community](#community)
 - [Roadmap](#roadmap)
-- [Videos](#videos)
 - [Citing](#citing)
 - [Inspiration](#inspiration)
 - [Funding](#funding)
+
+## Showcase
+
+TBC Updated YouTube Playlist.
 
 ## Features
 
@@ -221,10 +225,11 @@ pip install -e tolvera
 ## Contributing
 
 We welcome Pull Requests across all areas of the project:
-- Bug fixes
-- New features (see [Roadmap](#roadmap))
-- Examples
-- Documentation
+- Addressing [Issues](/issues)
+- Adding features (see [Issues](/issues) and [Discussion](/discussion))
+- [Examples](/examples)
+- [Tests](/tests)
+- [Documentation](/docs)
 
 ## Community
 
@@ -237,11 +242,7 @@ Across the project, we follow the [Algorave Code of Conduct](https://github.com/
 
 ## Roadmap
 
-TBC.
-
-## Videos
-
-TBC.
+There is no official roadmap, see [Discussion](/discussion).
 
 ## Citing
 
