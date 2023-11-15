@@ -206,11 +206,7 @@ Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be in
 pip install tolvera
 ```
 
-You can check if Tölvera installed correctly by running an example:
-
-```sh
-python -m tolvera --example=test
-```
+You can check if Tölvera installed correctly by running an [example](#examples).
 
 ## Usage
 
@@ -218,7 +214,7 @@ See [examples](/examples) and [docs](/docs).
 
 ## Development
 
-To develop Tölvera's internals, it is recommended to clone this repository and install the package in editable mode:
+Fork/clone this repository and install the package in editable mode:
 
 ```sh
 git clone https://github.com/jarmitage/tolvera # (or clone your own fork)
@@ -228,7 +224,7 @@ pip install -e tolvera
 
 ## Contributing
 
-We welcome Pull Requests across all areas of the project:
+We welcome [Pull Requests](/pulls) across all areas of the project:
 - Addressing [Issues](/issues)
 - Adding features (see [Issues](/issues) and [Discussion](/discussion))
 - [Examples](/examples)
@@ -240,9 +236,9 @@ We welcome Pull Requests across all areas of the project:
 To discuss Tölvera with developers and other users:
 - Use GitHub [Issues](/issues) to report bugs and make specific feature requests.
 - Use GitHub [Discussions](/discussions) to share ideas and ask questions.
-- Use [Discord](https://discord.gg/ER7tWds9vM) for everything else.
+- Use [Discord](https://discord.gg/ER7tWds9vM) for further support, sharing your work, and general chat.
 
-Across the project, we follow the [Algorave Code of Conduct](https://github.com/Algorave/algoraveconduct). Please get in touch if you experience or witness any issues of conduct.
+Across the project, we follow the [Algorave Code of Conduct](https://github.com/Algorave/algoraveconduct). Please get in touch if you experience or witness any conduct issues.
 
 ## Roadmap
 
@@ -252,7 +248,29 @@ There is no official roadmap, see [Discussion](/discussion).
 
 Tölvera is being written about and used in a number of contexts (see [references.bib](/references.bib)), here are a few recent examples:
 
-```bib
+```bibtex
+@inproceedings{armitageAgentialScoresExploring2023,
+  Address = {Boston, Massachusetts, USA},
+  Author = { Jack Armitage and Thor Magnusson },
+  Title = {Agential Scores: Artificial Life for Emergent, Self-Organising and Entangled Music Notation},
+  Booktitle = {Proceedings of the International Conference on Technologies for Music Notation and Representation -- TENOR'2023},
+  Pages = {51 - 61},
+  Year = {2023},
+  Editor = {Anthony Paul De Ritis and Victor Zappi and Jeremy Van Buskirk and John Mallia},
+  Publisher = {Northeastern University},
+  ISBN = {978-0-6481592-7-8}
+}
+
+@inproceedings{armitageStrengjavera2023,
+  title = {Strengjavera},
+  booktitle = {{{AI Music Creativity}} 2023},
+  author = {Armitage, Jack},
+  year = {2023},
+  address = {{University of Sussex, Brighton, UK}},
+  doi = {10.5281/zenodo.8329855},
+  ISBN = {978-0-9957862-9-5},
+  url = {https://zenodo.org/records/8329855}
+}
 ```
 
 ## Inspiration
