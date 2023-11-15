@@ -8,6 +8,8 @@
 
 Tölvera is written in [Taichi](https://www.taichi-lang.org/), a domain-specific language embedded in Python.
 
+This is experimental software and everything is currently subject to change.
+
 Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 
 ## Contents
