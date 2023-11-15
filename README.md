@@ -10,7 +10,7 @@ Tölvera is written in [Taichi](https://www.taichi-lang.org/), a domain-specific
 
 Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 
-## Contents
+## Contents
 - [Features](#features)
 - [Examples](#examples)
 - [Install](#install)
@@ -183,7 +183,7 @@ def main(**kwargs):
         again(render, p=1/64, i=i+1)
 ```
 
-### Interactive machine learning
+### Interactive machine learning
 
 <!-- TODO -->
 
