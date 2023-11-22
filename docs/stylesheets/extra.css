@@ -1,0 +1,12 @@
+@font-face {
+    font-family: "Friedrich";
+    src:
+        local("Friedrich"),
+        url("fonts/Friedrich Book.eot") format("embedded-opentype"),
+        url("fonts/Friedrich Book.woff") format("woff"),
+        url("fonts/Friedrich Book.woff2") format("woff2");
+}
+
+:root {
+    --md-text-font: "Friedrich"; 
+}

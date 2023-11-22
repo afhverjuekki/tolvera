@@ -24,13 +24,14 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 - [Roadmap](#roadmap)
 - [Citing](#citing)
 - [Inspiration](#inspiration)
+- [Contact](#contact)
 - [Funding](#funding)
 
 ## Showcase
 
 Click below to visit the YouTube Playlist (if you'd like to add a video, please get in touch).
 
-[![](/assets/tolvera.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB)
+[![](/assets/images/tolvera.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB)
 
 ## Features
 
@@ -283,6 +284,20 @@ Tölvera is being written about and used in a number of contexts (see [reference
 - [Journey to the Microcosmos](https://www.youtube.com/@journeytomicro)
 - [Complexity Explorables](https://www.complexity-explorables.org/)
 
+## Contact
+
+`tolvera` is developed by the [Intelligent Instruments Lab](https://iil.is/about). Get in touch to [collaborate](https://iil.is/collaborate):
+
+ ◦ <a href="https://iil.is" target="_blank" rel="noopener" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
+<a href="https://facebook.com/intelligentinstrumentslab" target="_blank" rel="noopener" title="facebook.com">Facebook</a> ◦ 
+<a href="https://instagram.com/intelligentinstruments" target="_blank" rel="noopener" title="instagram.com">Instagram</a> ◦ 
+<a href="https://x.com/_iil_is" target="_blank" rel="noopener" title="x.com">X (Twitter)</a> ◦ 
+<a href="https://youtube.com/@IntelligentInstruments" target="_blank" rel="noopener" title="youtube.com">YouTube</a> ◦ 
+<a href="https://discord.gg/fY9GYMebtJ" target="_blank" rel="noopener" title="discord.gg">Discord</a> ◦ 
+<a href="https://github.com/intelligent-instruments-lab" target="_blank" rel="noopener" title="github.com">GitHub</a> ◦ 
+<a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" rel="noopener" title="www.linkedin.com">LinkedIn</a> ◦ 
+<a href="mailto:iil@lhi.is" target="_blank" rel="noopener" title="">Email</a> ◦ 
+
 ## Funding
 
-Tölvera is being developed at the [Intelligent Instruments Lab](https://iil.is) at the [Iceland University of the Arts](https://lhi.is). The Intelligent Instruments project (INTENT) is funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant agreement No. 101001848).
+The Intelligent Instruments project (INTENT) is funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant agreement No. 101001848).
