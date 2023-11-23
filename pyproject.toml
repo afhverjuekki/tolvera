@@ -6,7 +6,7 @@ authors = ["Jack Armitage <jack.armitage@me.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10,<3.13"
 taichi = "^1.6.0"
 iipyper = {git = "https://github.com/Intelligent-Instruments-Lab/iipyper.git"}
 anguilla = {git = "https://github.com/Intelligent-Instruments-Lab/anguilla.git"}
