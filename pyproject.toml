@@ -6,10 +6,10 @@ authors = ["Jack Armitage <jack.armitage@me.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.12"
 taichi = "^1.6.0"
-iipyper = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/iipyper.git", branch="ja-dev"}
-anguilla = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/anguilla.git", branch="ja-dev"}
+iipyper = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/iipyper.git", branch="ja-dev", develop=true}
+anguilla = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/anguilla.git", branch="ja-dev", develop=true}
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
