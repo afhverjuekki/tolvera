@@ -7,7 +7,7 @@ from sys import exit
 from ._taichi import Taichi
 from ._osc import OSC
 from ._iml import IML
-from ._cv import CV
+# from ._cv import CV
 
 # Tölvera components
 from .patches import *
@@ -56,8 +56,8 @@ class TolveraContext:
             self.osc = OSC(self, **kwargs)
         if self.iml:
             self.iml = IML(self, **kwargs)
-        if self.cv:
-            self.cv = CV(self, **kwargs)
+        # if self.cv:
+        #     self.cv = CV(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
         print(f"[{self.name}] Context initialization complete.")
