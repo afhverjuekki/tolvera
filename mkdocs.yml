@@ -36,6 +36,7 @@ theme:
     - navigation.expand
     - navigation.path
     - navigation.top
+    - navigation.instant
     - toc.follow
     - content.code.copy
     - content.code.select
@@ -81,6 +82,7 @@ plugins:
   - mkdocstrings
   - include-markdown
   - autorefs
+  - mkdocs-video
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py  
