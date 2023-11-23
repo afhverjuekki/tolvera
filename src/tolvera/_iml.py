@@ -1,6 +1,6 @@
 from typing import Any
-from iml import IML as iiIML, embed, interpolate, nnsearch
-from iml.types import Optional, Union
+from anguilla import IML as iiIML, embed, interpolate, nnsearch
+from anguilla.types import Optional, Union
 
 from .utils import *
 
