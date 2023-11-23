@@ -37,6 +37,8 @@ theme:
     - navigation.path
     - navigation.top
     - toc.follow
+    - content.code.copy
+    - content.code.select
 
 copyright: ©️ Intelligent Instrumets Lab
 extra:
