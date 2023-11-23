@@ -17,7 +17,7 @@ def main(**kwargs):
         tv.px.diffuse(0.99)
         tv.p()
         tv.v.flock(tv.p)
-        tv.px.particles(tv.p, tv.s, 'circle')
+        tv.px.particles(tv.p, tv.s.species, 'circle')
         return tv.px
 
 if __name__=='__main__':
