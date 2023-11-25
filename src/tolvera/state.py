@@ -23,7 +23,7 @@ from .utils import *
 class StateDict(dotdict):
     def __init__(self, tolvera) -> None:
         self.tv = tolvera
-    def set(self, name, kwargs: dict) -> None:
+    def set(self, name, kwargs: Any) -> None:
         if name in self:
             raise ValueError(f"[tolvera.state.StateDict] '{name}' already in dict.")
         try:
