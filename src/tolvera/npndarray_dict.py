@@ -1,20 +1,124 @@
 import numpy as np
+from collections import defaultdict
 from typing import Any, Union, Callable
 
 np_vec2 = np.array([0.0, 0.0], dtype=np.float32)
 np_vec3 = np.array([0.0, 0.0, 0.0], dtype=np.float32)
 np_vec4 = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
+def dict_from_vector_args(a: list, scalars=None):
+    """Convert a list of arguments to a dictionary.
+
+    Args:
+    - a: A list of arguments.
+    - scalars: A list of keys that should be unwrapped from lists.
+
+    Returns:
+    - A dictionary of keyword arguments.
+    """
+    a = list(a)
+    kw = defaultdict(list)
+    k = None
+    while len(a):
+        item = a.pop(0)
+        # print(type(item), item)
+        if isinstance(item, str):
+            k = item
+        else:
+            if k is None:
+                print(f'ERROR: anguilla: bad OSC syntax in {a}')
+            kw[k].append(item)
+    # unwrap scalars
+    for item in scalars or []:
+        if item in kw:
+            kw[item] = kw[item][0]
+    return kw
+
+def dict_to_vector_args(kw):
+    """Convert a dictionary to a list of arguments.
+
+    This function takes a dictionary and returns a list of arguments.
+
+    Args:
+    - kw: A dictionary of keyword arguments.
+
+    Returns:
+    - A list of arguments.
+    """
+    args = []
+    for key, value in kw.items():
+        args.append(key)
+        if isinstance(value, (list, np.ndarray)):
+            # If it's a numpy array (regardless of its shape), flatten it and extend the list
+            if isinstance(value, np.ndarray):
+                value = value.flatten()
+            args.extend(value)
+        else:
+            # Append the scalar value associated with the key
+            args.append(value)
+    return args
+
+def ndarraydict_from_vector_args(lst, shapes):
+    """Convert a list to a dictionary where each list is turned into a numpy array.
+
+    This function takes a list in the format output by `dict_from_vector_args` and converts it 
+    into a dictionary. Each key's list of values is converted into a numpy array with a 
+    specified shape.
+
+    Args:
+    - lst: The list to be converted.
+    - shapes: A dictionary where keys correspond to the keys in the original list and
+              values are tuples representing the desired shape of the numpy array.
+
+    Returns:
+    - A dictionary with keys mapped to numpy arrays.
+    """
+    def flatten(lst):
+        """Flatten a nested list or return a non-nested list as is."""
+        if all(isinstance(el, list) for el in lst):
+            # Flatten only if all elements are lists
+            return [item for sublist in lst for item in sublist]
+        return lst
+
+    kw = defaultdict(list)
+    k = None
+    for item in lst:
+        if isinstance(item, str):
+            k = item
+        else:
+            kw[k].append(item)
+
+    for key, shape in shapes.items():
+        if key in kw:
+            values = flatten(kw[key])
+            array_size = np.prod(shape)
+            if len(values) != array_size:
+                raise ValueError(f"Shape mismatch for key '{key}': expected {array_size} elements, got {len(values)}.")
+            kw[key] = np.array(values).reshape(shape)
+
+    return dict(kw)
+
+def shapes_from_ndarray_dict(ndarray_dict):
+    """Return a dictionary of shapes given a dictionary of numpy ndarrays.
+
+    This function takes a dictionary where values are numpy ndarrays and returns
+    a new dictionary with the same keys, where each value is the shape of the ndarray.
+
+    Args:
+    - ndarray_dict: A dictionary where values are numpy ndarrays.
+
+    Returns:
+    - A dictionary where each key maps to the shape of the corresponding ndarray.
+    """
+    shapes = {}
+    for key, array in ndarray_dict.items():
+        shapes[key] = array.shape
+    return shapes
+
 class NpNdarrayDict:
     """
     A class that encapsulates a dictionary of NumPy ndarrays, each associated with a specific data type and a defined min-max range. 
     It provides a structured and efficient way to manage and manipulate multidimensional arrays with constraints on their values. 
-
-    The class offers various methods to set and get values, rows, and columns for individual arrays or across the entire dictionary. 
-    It also includes functionalities for randomizing array elements within their defined ranges and validating the integrity of the data structure. 
-
-    This class is particularly useful in scenarios where multiple related datasets need to be maintained and manipulated in a synchronized manner, 
-    such as in scientific computing, data analysis, and machine learning applications where data consistency and integrity are crucial.
 
     Attributes:
         data (Dict[str, Dict[str, Union[np.ndarray, Any]]]): A dictionary where each key represents an attribute, 
@@ -66,9 +170,127 @@ class NpNdarrayDict:
             }
             self.data[key] = np.zeros(dshape, dtype=dtype)
 
-    def set_value(self, key: str, index: tuple[int], value: Any) -> None:
+    def set_slice_from_dict(self, slice_indices: tuple, slice_values: dict):
+        for key, values in slice_values.items():
+            if key not in self.data:
+                raise KeyError(f"Key {key} not found in data")
+            
+            array_slice = self.data[key][slice_indices]
+            if array_slice.shape != np.array(values).shape:
+                raise ValueError(f"Shape {array_slice.shape} of values for key {key} does not match the shape of the slice {np.array(values).shape}")
+
+            self.data[key][slice_indices] = np.array(values, dtype=self.dict[key]['dtype'])
+
+    # def list_to_dict(self, _list: list) -> dict:
+    #     """
+    #     Convert a flat list to a dictionary.
+
+    #     :param _list: The flat list to convert.
+    #     :return: A dictionary that matches self.dict.
+    #     """
+    #     pass
+
+    # def list_len_to_dict_shape(self, _list: list) -> dict:
+    #     """
+    #     Convert a flat list to a dictionary of shapes.
+
+    #     :param _list: The flat list to convert.
+    #     :return: shape of the dictionary of _list based on self.shape.
+    #     """
+    #     list_len = len(_list)
+    #     dict_shape = ()
+    #     for key in self.data.keys():
+    #         dict_shape += self.dict[key]['shape'][1:]
+    #     dict_len = np.prod(dict_shape)
+    #     if list_len != dict_len:
+    #         raise ValueError(f"Length of list {_list} does not match the length of the dictionary {dict_len}")
+    #     return dict_shape
+
+    def set_slice_from_list(self, slice_indices: tuple, slice_values_list: list):
+        list_index = 0
+
+        for key in self.data.keys():
+            # Determine the total number of elements required for the current key
+            num_elements = np.prod(self.dict[key]['shape'][1:])
+            print(f"[{key}] num_elements: {num_elements}")
+            
+            # Extract the slice from slice_values_list and reshape if necessary
+            slice_shape = self.dict[key]['shape'][1:]
+            slice = slice_values_list[list_index:list_index + num_elements]
+            print(f"[{key}] slice_shape: {slice_shape}, slice: {slice}")
+            
+            # Check if the slice has the correct length
+            if len(slice) != num_elements:
+                raise ValueError(f"Slice length {len(slice)} for key {key} does not match the number of elements {num_elements}")
+            
+            # Reshape the slice for ndarrays with more than 2 dimensions
+            if len(slice_shape) > 1:
+                slice = np.reshape(slice, slice_shape)
+                print(f"[{key}] (reshaping) slice_shape: {slice_shape}, slice: {slice}")
+            
+            # Assign the slice to the corresponding key
+            self.data[key][slice_indices] = slice
+            
+            list_index += num_elements
+            print(f"[{key}] list_index: {list_index}, num_elements: {num_elements}")
+        
+        print(f"data: {self.data}")
+
+        # Check if there are extra values in slice_values_list
+        if list_index != len(slice_values_list):
+            raise ValueError(f"Extra values {slice_values_list[list_index:]} in slice_values_list {slice_values_list} that do not correspond to any array")
+
+    def set_row_from_dict(self, row_index: int, row_values: dict):
         """
-        Set a value at a specific index for a given attribute.
+        Sets the values of a specified row for each array in self.data.
+
+        :param row_index: Index of the row to modify.
+        :param row_values: Dictionary of new values for the row, keyed by the dictionary keys.
+        """
+        for key, values in row_values.items():
+            if key not in self.data:
+                raise KeyError(f"Key {key} not found in data")
+            
+            if row_index >= self.dict[key]['shape'][0]:
+                raise IndexError("Row index out of bounds for key {key}")
+
+            if len(values) != self.dict[key]['shape'][1]:
+                raise ValueError(f"Length of values for key {key} does not match the number of columns")
+
+            self.data[key][row_index, :] = np.array(values, dtype=self.dict[key]['dtype'])
+
+    def set_row_from_list(self, row_index: int, row_list: list):
+        """
+        Sets the values of a specified row for each array in self.data from a flat list.
+
+        :param row_index: Index of the row to modify.
+        :param row_list: Flat list of new values for the rows, segmented by the arrays.
+        """
+        row_values = {}
+        list_index = 0
+
+        for key in self.data.keys():
+            # Determine the total number of elements required for the current key
+            num_elements = np.prod(self.dict[key]['shape'][1:])
+            if list_index + num_elements > len(row_list):
+                raise ValueError(f"Insufficient values provided for key {key}")
+
+            # Extract the segment from row_list and reshape if necessary
+            segment = row_list[list_index:list_index + num_elements]
+            if self.dict[key]['dtype'] == np.float32 and len(self.dict[key]['shape']) > 2:
+                # Reshape the segment for ndarrays with more than 2 dimensions
+                segment = np.reshape(segment, self.dict[key]['shape'][1:])
+            row_values[key] = segment
+            list_index += num_elements
+
+        if list_index != len(row_list):
+            raise ValueError("Extra values in row_list that do not correspond to any array")
+
+        self.set_row_from_dict(row_index, row_values)
+        
+    def set_attribute(self, key: str, index: tuple[int], value: Any) -> None:
+        """
+        Set an entire attribute to a given value.
 
         Args:
             key: The attribute key.
@@ -87,14 +309,15 @@ class NpNdarrayDict:
                 raise ValueError(f"Value {value} is out of range for key {key}")
         else:
             raise KeyError(f"Key {key} not found in state")
-
-    def get_value(self, key: str, index: tuple[int]) -> Any:
+    
+    def get_attribute(self, key: str, index: tuple[int], attr: str) -> np.ndarray:
         """
-        Get a value at a specific index for a given attribute.
+        Get an entire attribute.
 
         Args:
             key: The attribute key.
             index: The index from which to get the value.
+            attr: The attribute to get.
 
         Returns:
             The value at the specified index for the given key.
@@ -104,81 +327,9 @@ class NpNdarrayDict:
 
         """
         if key in self.data:
-            return self.data[key][index]
+            return self.data[key][index][attr]
         else:
             raise KeyError(f"Key {key} not found in state")
-
-    def set_row(self, key: str, row_index: int, row_values: np.ndarray) -> None:
-        """
-        Set an entire row for the specified attribute.
-
-        Args:
-            key: The attribute key in the state dictionary.
-            row_index: The index of the row to be set.
-            row_values: A numpy array of values to set in the row.
-
-        Raises:
-            ValueError: If the row length is invalid or the key is not found.
-        """
-        if key in self.data and len(row_values) == self.shape[1]:
-            self.data[key][row_index, :] = row_values
-        else:
-            raise ValueError("Invalid row length or key")
-
-    def get_row(self, key: str, row_index: int) -> np.ndarray:
-        """
-        Get an entire row for the specified attribute.
-
-        Args:
-            key: The attribute key in the state dictionary.
-            row_index: The index of the row to be retrieved.
-
-        Returns:
-            A numpy array representing the row for the specified attribute.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-        """
-        if key in self.data:
-            return self.data[key][row_index, :]
-        else:
-            raise KeyError("Key not found")
-
-    def set_col(self, key: str, col_index: int, col_values: np.ndarray) -> None:
-        """
-        Set an entire column for the specified attribute.
-
-        Args:
-            key: The attribute key in the state dictionary.
-            col_index: The index of the column to be set.
-            col_values: A numpy array of values to set in the column.
-
-        Raises:
-            ValueError: If the column length is invalid or the key is not found.
-        """
-        if key in self.data and len(col_values) == self.shape[0]:
-            self.data[key][:, col_index] = col_values
-        else:
-            raise ValueError("Invalid column length or key")
-
-    def get_col(self, key: str, col_index: int) -> np.ndarray:
-        """
-        Get an entire column for the specified attribute.
-
-        Args:
-            key: The attribute key in the state dictionary.
-            col_index: The index of the column to be retrieved.
-
-        Returns:
-            A numpy array representing the column for the specified attribute.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-        """
-        if key in self.data:
-            return self.data[key][:, col_index]
-        else:
-            raise KeyError("Key not found")
 
     def set_data(self, new_data: dict[str, np.ndarray]) -> None:
         """
@@ -236,82 +387,6 @@ class NpNdarrayDict:
 
         return True
 
-    def set_row_for_attribute(self, key: str, row_index: int, row_values: np.ndarray) -> None:
-        """
-        Set an entire row for a specific attribute.
-
-        Args:
-            key: The attribute key.
-            row_index: The index of the row to set.
-            row_values: An array of values to set in the row.
-
-        Raises:
-            ValueError: If the row length is invalid or the key is not found.
-
-        """
-        if key in self.data and len(row_values) == self.shape[1]:
-            self.data[key][row_index, :] = row_values
-        else:
-            raise ValueError("Invalid row length or key")
-
-    def get_row_for_attribute(self, key: str, row_index: int) -> np.ndarray:
-        """
-        Get an entire row for a specific attribute.
-
-        Args:
-            key: The attribute key.
-            row_index: The index of the row to get.
-
-        Returns:
-            An array representing the row for the given key.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-
-        """
-        if key in self.data:
-            return self.data[key][row_index, :]
-        else:
-            raise KeyError("Key not found")
-
-    def set_col_for_attribute(self, key: str, col_index: int, col_values: np.ndarray) -> None:
-        """
-        Set an entire column for a specific attribute.
-
-        Args:
-            key: The attribute key.
-            col_index: The index of the column to set.
-            col_values: An array of values to set in the column.
-
-        Raises:
-            ValueError: If the column length is invalid or the key is not found.
-
-        """
-        if key in self.data and len(col_values) == self.shape[0]:
-            self.data[key][:, col_index] = col_values
-        else:
-            raise ValueError("Invalid column length or key")
-
-    def get_col_for_attribute(self, key: str, col_index: int) -> np.ndarray:
-        """
-        Get an entire column for a specific attribute.
-
-        Args:
-            key: The attribute key.
-            col_index: The index of the column to get.
-
-        Returns:
-            An array representing the column for the given key.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-
-        """
-        if key in self.data:
-            return self.data[key][:, col_index]
-        else:
-            raise KeyError("Key not found")
-
     def randomise(self) -> None:
         """
         Randomize the entire state dictionary based on the datatype, minimum,
@@ -329,12 +404,12 @@ class NpNdarrayDict:
                 self.data[key] = np.random.uniform(min_val, max_val, size=shape).astype(data_type)
             # Add more conditions here if you have other data types
 
-    def randomise_index(self, index: tuple[int, int]) -> None:
+    def randomise_index(self, index: tuple[int]) -> None:
         """
         Randomize the values at a specific index for all attributes.
 
         Args:
-            index: The index to randomize (row_index, column_index).
+            index: The index to randomize.
         """
         for key in self.data:
             data_type = self.dict[key]['dtype']
@@ -346,47 +421,13 @@ class NpNdarrayDict:
             elif np.issubdtype(data_type, np.floating):
                 self.data[key][index] = np.random.uniform(min_val, max_val).astype(data_type)
 
-    def randomise_row(self, row_index: int) -> None:
-        """
-        Randomize the values in a specific row for all attributes.
-
-        Args:
-            row_index: The index of the row to randomize.
-        """
-        for key in self.data:
-            data_type = self.dict[key]['dtype']
-            min_val = self.dict[key]['min']
-            max_val = self.dict[key]['max']
-
-            if np.issubdtype(data_type, np.integer):
-                self.data[key][row_index, :] = np.random.randint(min_val, max_val + 1, size=self.shape[1], dtype=data_type)
-            elif np.issubdtype(data_type, np.floating):
-                self.data[key][row_index, :] = np.random.uniform(min_val, max_val, size=self.shape[1]).astype(data_type)
-
-    def randomise_col(self, col_index: int) -> None:
-        """
-        Randomize the values in a specific column for all attributes.
-
-        Args:
-            col_index: The index of the column to randomize.
-        """
-        for key in self.data:
-            data_type = self.dict[key]['dtype']
-            min_val = self.dict[key]['min']
-            max_val = self.dict[key]['max']
-
-            if np.issubdtype(data_type, np.integer):
-                self.data[key][:, col_index] = np.random.randint(min_val, max_val + 1, size=self.shape[0], dtype=data_type)
-            elif np.issubdtype(data_type, np.floating):
-                self.data[key][:, col_index] = np.random.uniform(min_val, max_val, size=self.shape[0]).astype(data_type)
-
-    def randomise_attribute_index(self, key: str, index: tuple[int, int]) -> None:
+    def randomise_attribute_index(self, key: str, index: tuple[int]) -> None:
         """
         Randomize the value at a specific index for a given attribute.
 
         Args:
             key: The attribute key.
-            index: The index to randomize (row_index, column_index).
+            index: The index to randomize.
 
         Raises:
             KeyError: If the key is not found in the state.
@@ -402,52 +443,6 @@ class NpNdarrayDict:
             self.data[key][index] = np.random.randint(min_val, max_val + 1, dtype=data_type)
         elif np.issubdtype(data_type, np.floating):
             self.data[key][index] = np.random.uniform(min_val, max_val).astype(data_type)
-
-    def randomise_attribute_row(self, key: str, row_index: int) -> None:
-        """
-        Randomize the values in a specific row for a given attribute.
-
-        Args:
-            key: The attribute key.
-            row_index: The index of the row to randomize.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-        """
-        if key not in self.data:
-            raise KeyError(f"Key {key} not found in state")
-
-        data_type = self.dict[key]['dtype']
-        min_val = self.dict[key]['min']
-        max_val = self.dict[key]['max']
-
-        if np.issubdtype(data_type, np.integer):
-            self.data[key][row_index, :] = np.random.randint(min_val, max_val + 1, size=self.shape[1], dtype=data_type)
-        elif np.issubdtype(data_type, np.floating):
-            self.data[key][row_index, :] = np.random.uniform(min_val, max_val, size=self.shape[1]).astype(data_type)
-
-    def randomise_attribute_col(self, key: str, col_index: int) -> None:
-        """
-        Randomize the values in a specific column for a given attribute.
-
-        Args:
-            key: The attribute key.
-            col_index: The index of the column to randomize.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-        """
-        if key not in self.data:
-            raise KeyError(f"Key {key} not found in state")
-
-        data_type = self.dict[key]['dtype']
-        min_val = self.dict[key]['min']
-        max_val = self.dict[key]['max']
-
-        if np.issubdtype(data_type, np.integer):
-            self.data[key][:, col_index] = np.random.randint(min_val, max_val + 1, size=self.shape[0], dtype=data_type)
-        elif np.issubdtype(data_type, np.floating):
-            self.data[key][:, col_index] = np.random.uniform(min_val, max_val, size=self.shape[0]).astype(data_type)
 
     def apply_function(self, key: str, func: Callable[[np.ndarray], np.ndarray]) -> None:
         """
