@@ -6,7 +6,7 @@ from sys import exit
 # Wrapped external packages
 from ._taichi import Taichi
 from ._osc import OSC
-from ._iml import IML
+from ._iml import IMLDict
 # from ._cv import CV
 
 # Tölvera components
@@ -55,7 +55,7 @@ class TolveraContext:
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
-            self.iml = IML(self, **kwargs)
+            self.iml = IMLDict(self, **kwargs)
         # if self.cv:
         #     self.cv = CV(self, **kwargs)
         self._cleanup_fns = []
