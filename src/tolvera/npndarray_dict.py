@@ -1,10 +1,23 @@
+from taichi import i32, f32
+from taichi.math import vec2, vec3, vec4
 import numpy as np
 from collections import defaultdict
 from typing import Any, Union, Callable
+from iipyper import ndarray_from_json, ndarray_from_osc_args, ndarray_from_json, ndarray_to_osc_args
 
-np_vec2 = np.array([0.0, 0.0], dtype=np.float32)
-np_vec3 = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-np_vec4 = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+from .utils import flatten
+
+np_vec2 = np.array([0.,0.], dtype=np.float32)
+np_vec3 = np.array([0.,0.,0.], dtype=np.float32)
+np_vec4 = np.array([0.,0.,0.,0.], dtype=np.float32)
+
+TiNpTypeMap = {
+    i32: np.int32,
+    f32: np.float32,
+    vec2: np_vec2,
+    vec3: np_vec3,
+    vec4: np_vec4,
+}
 
 def dict_from_vector_args(a: list, scalars=None):
     """Convert a list of arguments to a dictionary.

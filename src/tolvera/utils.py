@@ -14,15 +14,6 @@ import time
 import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi._lib.core.taichi_python import DataType
-from .npndarray_dict import np_vec2, np_vec3, np_vec4
-
-TiNpTypeMap = {
-    ti.i32: np.int32,
-    ti.f32: np.float32,
-    ti.math.vec2: np_vec2,
-    ti.math.vec3: np_vec3,
-    ti.math.vec4: np_vec4,
-}
 
 def remove_accents(input: str):
     nfkd_form = unicodedata.normalize('NFKD', input)
