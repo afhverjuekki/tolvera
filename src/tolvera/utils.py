@@ -143,3 +143,14 @@ class dotdict(dict):
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+def flatten(lst):
+    """Flatten a nested list or return a non-nested list as is."""
+    if all(isinstance(el, list) for el in lst):
+        return [item for sublist in lst for item in sublist]
+    return lst
+
+def monkey_patch_cls_methods(target_class, source_instance):
+    for attr_name in dir(source_instance):
+        if callable(getattr(source_instance, attr_name)) and not attr_name.startswith("__"):
+            setattr(target_class, attr_name, getattr(source_instance, attr_name))
