@@ -55,7 +55,7 @@ class TolveraContext:
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
-            self.iml = IMLDict(self, **kwargs)
+            self.iml = IMLDict(self)
         # if self.cv:
         #     self.cv = CV(self, **kwargs)
         self._cleanup_fns = []
