@@ -23,6 +23,8 @@ class Taichi:
         else:
             if self.gpu == "vulkan":
                 ti.init(arch=ti.vulkan, random_seed=self.seed)
+            elif self.gpu == "metal":
+                ti.init(arch=ti.metal, random_seed=self.seed)
             elif self.gpu == "cuda":
                 ti.init(arch=ti.cuda, random_seed=self.seed)
             else:
