@@ -74,10 +74,10 @@ class TolveraContext:
         print(f"[{self.name}] Running with render function {f.__name__}...")
         while self.ti.window.running:
             with _lock:
-                if f is not None: 
-                    self.canvas = f(**kwargs)
-                if self.osc is not False: 
-                    self.osc.map()
+                if f is not None: self.canvas = f(**kwargs)
+                if self.osc is not False: self.osc.map()
+                if self.iml is not False: self.iml()
+                # TODO: self.cv get latest camera frame?
                 self.ti.show(self.canvas)
                 self.i += 1
     def stop(self):
