@@ -1,6 +1,7 @@
 from typing import Any
 from anguilla import IML as iiIML
 import torch
+import numpy as np
 from iipyper import Updater
 
 from .utils import *
@@ -8,6 +9,24 @@ from .utils import *
 __all__ = ['IMLBase', 'IMLVec2Vec', 'IMLVec2Fun', 'IMLVec2OSC', 'IMLFun2Vec', 'IMLFun2Fun', 'IMLFun2OSC', 'IMLOSC2Vec', 'IMLOSC2OSC', 'IMLOSC2Fun', 'IMLDict', 'IML_TYPES']
 
 IML_TYPES = ['vec2vec', 'vec2fun', 'vec2osc', 'fun2vec', 'fun2fun', 'fun2osc', 'osc2vec', 'osc2osc', 'osc2fun']
+
+def rand(n, factor=0.5):
+    return torch.rand(n) * factor
+
+def rand_sigmoid(n, factor=0.5):
+    tensor = rand(n, factor)
+    return torch.sigmoid(tensor)
+
+def rand_beta(n, theta, beta):
+    dist = torch.distributions.beta.Beta(theta, beta)
+    return dist.sample((n,))
+
+def rand_select(method='rand'):
+    match method:
+        case 'rand': return rand
+        case 'sigmoid': return rand_sigmoid
+        case 'beta': return rand_beta
+        case _: raise ValueError(f"[tolvera._iml.rand_select] Invalid method '{method}'. Valid methods: 'rand', 'sigmoid', 'beta'.")
 
 class IMLBase(iiIML):
     """IML mapping base class
@@ -22,8 +41,11 @@ class IMLBase(iiIML):
             update_rate (int, optional): Updater's update rate (defaults to 1).
             randomise (bool, optional): Randomise mapping on init (defaults to False).
             random_pairs (int, optional): Number of random pairs to add (defaults to 32).
+            randomisation (str, optional): Randomisation type ('rand' (default), 'sigmoid','beta').
             default_args (tuple, optional): Default args to use in update().
             default_kwargs (dict, optional): Default kwargs to use in update().
+            lag (bool, optional): Lag mapped data (defaults to False).
+            lag_coef (float, optional): Lag coefficient (defaults to 0.5 if `lag` is True).
             TODO: add Lag/Interpolate
     """
     def __init__(self, **kwargs) -> None:
@@ -37,41 +59,52 @@ class IMLBase(iiIML):
         self.data = dotdict()
         if 'randomise' in kwargs:
             self.random_pairs = kwargs.get('random_pairs', 32)
-            self.randomise(self.random_pairs)
-    def randomise(self, times):
+            self.randomise(self.random_pairs, kwargs.get('randomisation', 'rand'))
+        if 'lag' in kwargs:
+            if kwargs['lag'] is True:
+                self.lag_coef = kwargs.get('lag_coef', 0.5)
+                self.lag = Lag(coef=self.lag_coef)
+    def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand'):
         while len(self.pairs) < times:
-            source = torch.rand(self.size[0])
-            target = torch.rand(self.size[1])
-            self.add(source, target)
+            method = rand_select(method)
+            indata = method(self.size[0])
+            outdata = method(self.size[1])
+            if input_weight is not None:
+                if isinstance(input_weight, np.ndarray):
+                    indata *= torch.from_numpy(input_weight)
+                elif isinstance(input_weight, (torch.Tensor, float, int)):
+                    indata *= input_weight
+                elif isinstance(input_weight, list):
+                    indata *= torch.Tensor(input_weight)
+                else:
+                    raise ValueError(f"[tolvera._iml.IMLBase] Invalid input_weight type '{type(input_weight)}'.")
+            if output_weight is not None:
+                if isinstance(output_weight, np.ndarray):
+                    outdata *= torch.from_numpy(output_weight)
+                elif isinstance(output_weight, (torch.Tensor, float, int)):
+                    outdata *= output_weight
+                elif isinstance(output_weight, list):
+                    outdata *= torch.Tensor(output_weight)
+                else:
+                    raise ValueError(f"[tolvera._iml.IMLBase] Invalid output_weight type '{type(output_weight)}'.")
+            self.add(indata, outdata)
+    def lag_mapped_data(self, lag_coef:float=0.5):
+        self.data.mapped = self.lag(self.data.mapped, lag_coef)
     def update(self, *args, **kwargs):
         self.data.mapped = self.map(*args, **kwargs)
+        if type(self.lag) is Lag: 
+            self.lag_mapped_data()
         return self.data.mapped
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Update mapping with args and kwargs. 
-        
-        Primarily facilitates calling IMLs from IMLDict without args or kwargs.
-        
-        args and kwargs are stored as prev_args and prev_kwargs.
-        If args and kwargs are None, use prev_args and prev_kwargs.
-        If prev_args and prev_kwargs are None, use default_args and default_kwargs.
-        Otherwise, raise ValueError.
-        """
-        if args is not None and kwargs is None: self.data.prev_args = args
-        if args is None and kwargs is not None: self.data.prev_kwargs = kwargs
+        """Update mapping with args and kwargs,
+        appending default_args and default_kwargs if set,
+        returning previous mapped data if no args or kwargs are passed."""
         if args is None and kwargs is None:
-            if self.data.prev_args is None and self.data.prev_kwargs is None:
-                if self.default_args is None and self.default_kwargs is None:
-                    raise ValueError(f"[tolvera._iml.IMLBase] All are None: (prev|default_)args, (prev|default_)kwargs.")
-                if self.default_args is not None and self.default_kwargs is None:
-                    args = self.default_args
-                if self.default_args is None and self.default_kwargs is not None:
-                    kwargs = self.default_kwargs
-            if self.data.prev_args is not None and self.data.prev_kwargs is None:
-                args = self.data.prev_args
-            if self.data.prev_args is None and self.data.prev_kwargs is not None:
-                kwargs = self.data.prev_kwargs
-            args = self.data.prev_args
-            kwargs = self.data.prev_kwargs
+            return self.data.mapped
+        if args is not None and self.default_args is not None:
+            args += self.default_args
+        if kwargs is not None and self.default_kwargs is not None:
+            kwargs.update(self.default_kwargs)
         return self.updater(*args, **kwargs)
 
 class IMLVec2Vec(IMLBase):
@@ -239,10 +272,10 @@ class IMLDict(dotdict):
             elif type(kwargs) is dict:
                 if 'type' not in kwargs:
                     raise ValueError(f"[tolvera._iml.IMLDict] IMLDict requires 'type' key.")
-                self.add(name, kwargs['type'], **kwargs)
+                return self.add(name, kwargs['type'], **kwargs)
             elif type(kwargs) is tuple:
                 iml_type = kwargs[0] # TODO: which index is 'iml_type'?
-                self.add(name, iml_type, *kwargs)
+                return self.add(name, iml_type, *kwargs)
             else:
                 raise TypeError(f"[tolvera._iml.IMLDict] set() requires dict|tuple, not {type(kwargs)}")
         except TypeError as e:
@@ -269,9 +302,12 @@ class IMLDict(dotdict):
             case _:
                 raise ValueError(f"[tolvera._iml.IMLDict] Invalid IML_TYPE '{iml_type}'. Valid IML_TYPES: {IML_TYPES}.")
         self[name] = ins
+        return ins
     def __call__(self, name, *args: Any, **kwargs: Any) -> Any:
         if name in self:
-            return self[name](*args, **kwargs)
+            # OSC updaters are handled by tv.osc.map (OSCMap)
+            # TODO: Rethink this?
+            if 'OSC' not in type(self[name]).__name__:
+                return self[name](*args, **kwargs)
         else:
             raise ValueError(f"[tolvera._iml.IMLDict] '{name}' not in dict.")
-
