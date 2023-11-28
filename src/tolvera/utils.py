@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 import unicodedata
+import torch
 import numpy as np
 import jsons
 import base64
@@ -154,3 +155,27 @@ def monkey_patch_cls_methods(target_class, source_instance):
     for attr_name in dir(source_instance):
         if callable(getattr(source_instance, attr_name)) and not attr_name.startswith("__"):
             setattr(target_class, attr_name, getattr(source_instance, attr_name))
+
+class Lag:
+    def __init__(self, val:Any=None, coef:float=0.5):
+        self.coef = coef
+        self.val = val
+    def __call__(self, val:Any, coef:float=None):
+        if coef is not None: self.coef = coef
+        if self.val is None: self.val = val
+        else: self.val = self._update_val(self.val, val)
+        return self.val
+    def _update_val(self, old:Any, new:Any):
+        assert type(old) is type(new), f"old type '{type(old)}' != new type '{type(new)}'"
+        assert old is not None, f"old is None"
+        assert new is not None, f"new is None"
+        if isinstance(old, float):
+            return old * self.coef + new * (1 - self.coef)
+        elif isinstance(old, list):
+            return [v * self.coef + n * (1 - self.coef) for v, n in zip(old, new)]
+        elif isinstance(old, np.ndarray):
+            return np.add(np.multiply(old, self.coef), np.multiply(new, 1 - self.coef))
+        elif torch.is_tensor(old):
+            return old * self.coef + new * (1 - self.coef)
+        else:
+            raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
