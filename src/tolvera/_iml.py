@@ -28,6 +28,85 @@ def rand_select(method='rand'):
         case 'beta': return rand_beta
         case _: raise ValueError(f"[tolvera._iml.rand_select] Invalid method '{method}'. Valid methods: 'rand', 'sigmoid', 'beta'.")
 
+class IMLDict(dotdict):
+    """IML mapping dict
+    
+    TODO: remove tolvera dependency?"""
+    def __init__(self, tolvera) -> None:
+        self.tv = tolvera
+        self.i = {} # input vectors dict
+        self.o = {} # output vectors dict
+    def set(self, name, kwargs: dict) -> None:
+        try:
+            if name == 'tv' and type(kwargs) is not dict and type(kwargs) is not tuple:
+                if name in self:
+                    raise ValueError(f"[tolvera._iml.IMLDict] '{name}' cannot be replaced.")
+                self[name] = kwargs
+            elif name == 'i' or name == 'o':
+                if type(kwargs) is not dict:
+                    raise ValueError(f"[tolvera._iml.IMLDict] '{name}' is a reserved dict.")
+                self[name] = kwargs
+            elif type(kwargs) is dict:
+                if 'type' not in kwargs:
+                    raise ValueError(f"[tolvera._iml.IMLDict] IMLDict requires 'type' key.")
+                return self.add(name, kwargs['type'], **kwargs)
+            elif type(kwargs) is tuple:
+                # iml_type = kwargs[0] # TODO: which index is 'iml_type'?
+                # return self.add(name, iml_type, *kwargs)
+                raise NotImplementedError(f"[tolvera._iml.IMLDict] set() with tuple not implemented yet.")
+            else:
+                raise TypeError(f"[tolvera._iml.IMLDict] set() requires dict|tuple, not {type(kwargs)}")
+        except TypeError as e:
+            print(f"[tolvera._iml.IMLDict] TypeError setting {name}: {e}")
+        except ValueError as e:
+            print(f"[tolvera._iml.IMLDict] ValueError setting {name}: {e}")
+        except Exception as e:
+            print(f"[tolvera._iml.IMLDict] UnexpectedError setting {name}: {e}")
+            raise
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        self.set(__name, __value)
+    def add(self, name, iml_type, **kwargs):
+        print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
+        match iml_type:
+            case 'vec2vec': ins = IMLVec2Vec(**kwargs)
+            case 'vec2fun': ins = IMLVec2Fun(**kwargs)
+            case 'vec2osc': ins = IMLVec2OSC(self.tv.osc.map, **kwargs)
+            case 'fun2vec': ins = IMLFun2Vec(**kwargs)
+            case 'fun2fun': ins = IMLFun2Fun(**kwargs)
+            case 'fun2osc': ins = IMLFun2OSC(self.tv.osc.map, **kwargs)
+            case 'osc2vec': ins = IMLOSC2Vec(self.tv.osc.map, **kwargs)
+            case 'osc2fun': ins = IMLOSC2Fun(self.tv.osc.map, **kwargs)
+            case 'osc2osc': ins = IMLOSC2OSC(self.tv.osc.map, **kwargs)
+            case _:
+                raise ValueError(f"[tolvera._iml.IMLDict] Invalid IML_TYPE '{iml_type}'. Valid IML_TYPES: {IML_TYPES}.")
+        self[name] = ins
+        self.o[name] = None
+        return ins
+    def __call__(self, name=None, *args: Any, **kwargs: Any) -> Any:
+        if name is not None:
+            if name in self:
+                # OSC updaters are handled by tv.osc.map (OSCMap)
+                # TODO: Rethink this?
+                if 'OSC' not in type(self[name]).__name__:
+                    return self[name](*args, **kwargs)
+            else:
+                raise ValueError(f"[tolvera._iml.IMLDict] '{name}' not in dict.")
+        else:
+            outvecs = {}
+            for iml in self:
+                if iml=='tv' or iml=='i' or iml=='o': continue
+                cls_name = type(self[iml]).__name__
+                if 'OSC' in cls_name: continue
+                if 'Vec2' in cls_name:
+                    if iml in self.i:
+                        invec = self.i[iml]
+                        outvecs[iml] = self[iml](invec, *args, **kwargs)
+                else:
+                    outvecs[iml] = self[iml](*args, **kwargs)
+            self.i.clear()
+            self.o.update(outvecs)
+            return self.o
+
 class IMLBase(iiIML):
     """IML mapping base class
 
@@ -40,8 +119,10 @@ class IMLBase(iiIML):
             updater (cls, optional): See iipyper.osc.update (Updater, OSCUpdater, ...).
             update_rate (int, optional): Updater's update rate (defaults to 1).
             randomise (bool, optional): Randomise mapping on init (defaults to False).
-            random_pairs (int, optional): Number of random pairs to add (defaults to 32).
-            randomisation (str, optional): Randomisation type ('rand' (default), 'sigmoid','beta').
+            rand_pairs (int, optional): Number of random pairs to add (defaults to 32).
+            rand_input_weight (Any, optional): Random input weight (defaults to None).
+            rand_output_weight (Any, optional): Random output weight (defaults to None).
+            rand_method (str, optional): rand_method type ('rand' (default), 'sigmoid','beta').
             default_args (tuple, optional): Default args to use in update().
             default_kwargs (dict, optional): Default kwargs to use in update().
             lag (bool, optional): Lag mapped data (defaults to False).
@@ -58,15 +139,18 @@ class IMLBase(iiIML):
         super().__init__(**self.config)
         self.data = dotdict()
         if 'randomise' in kwargs:
-            self.random_pairs = kwargs.get('random_pairs', 32)
-            self.randomise(self.random_pairs, kwargs.get('randomisation', 'rand'))
+            self.rand_pairs = kwargs.get('rand_pairs', 32)
+            self.rand_input_weight = kwargs.get('rand_input_weight', None)
+            self.rand_output_weight = kwargs.get('rand_output_weight', None)
+            self.rand_method = kwargs.get('rand_method', 'rand')
+            self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method)
         if 'lag' in kwargs:
             if kwargs['lag'] is True:
                 self.lag_coef = kwargs.get('lag_coef', 0.5)
                 self.lag = Lag(coef=self.lag_coef)
     def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand'):
+        method = rand_select(method)
         while len(self.pairs) < times:
-            method = rand_select(method)
             indata = method(self.size[0])
             outdata = method(self.size[1])
             if input_weight is not None:
@@ -92,18 +176,19 @@ class IMLBase(iiIML):
         self.data.mapped = self.lag(self.data.mapped, lag_coef)
     def update(self, *args, **kwargs):
         self.data.mapped = self.map(*args, **kwargs)
-        if type(self.lag) is Lag: 
+        if hasattr(self, 'lag') and type(self.lag) is Lag: 
             self.lag_mapped_data()
         return self.data.mapped
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Update mapping with args and kwargs,
         appending default_args and default_kwargs if set,
         returning previous mapped data if no args or kwargs are passed."""
-        if args is None and kwargs is None:
-            return self.data.mapped
-        if args is not None and self.default_args is not None:
+        if len(args) == 0 and len(kwargs) == 0:
+            print(f"[tolvera._iml.IMLBase] __call__(): no args or kwargs given.")
+            return None #self.data.mapped
+        if args is not None and hasattr(self, 'default_args'):
             args += self.default_args
-        if kwargs is not None and self.default_kwargs is not None:
+        if kwargs is not None and hasattr(self, 'default_kwargs'):
             kwargs.update(self.default_kwargs)
         return self.updater(*args, **kwargs)
 
@@ -174,7 +259,6 @@ class IMLFun2Vec(IMLBase):
         self.infun = kwargs['io'][0]
         super().__init__(**kwargs)
     def update(self, *args, **kwargs):
-        print(f"[tolvera._iml.IMLFun2Vec] update({args}, {kwargs})")
         self.data.mapped = self.map(self.infun(*args, **kwargs))
         return self.data.mapped
 
@@ -255,59 +339,3 @@ class IMLOSC2OSC(IMLBase):
         see iml.app.server.map?
         """
         raise NotImplementedError(f"[tolvera._iml.IMLOSC2OSC] update() not implemented.")
-
-class IMLDict(dotdict):
-    """IML mapping dict
-    
-    TODO: remove tolvera dependency?"""
-    def __init__(self, tolvera) -> None:
-        self.tv = tolvera
-    def set(self, name, kwargs: dict) -> None:
-        print(f"[tolvera._iml.IMLDict] set({name}, {kwargs})")
-        if name in self:
-            raise ValueError(f"[tolvera._iml.IMLDict] '{name}' already in dict.")
-        try:
-            if name == 'tv' and type(kwargs) is not dict and type(kwargs) is not tuple:
-                self[name] = kwargs
-            elif type(kwargs) is dict:
-                if 'type' not in kwargs:
-                    raise ValueError(f"[tolvera._iml.IMLDict] IMLDict requires 'type' key.")
-                return self.add(name, kwargs['type'], **kwargs)
-            elif type(kwargs) is tuple:
-                iml_type = kwargs[0] # TODO: which index is 'iml_type'?
-                return self.add(name, iml_type, *kwargs)
-            else:
-                raise TypeError(f"[tolvera._iml.IMLDict] set() requires dict|tuple, not {type(kwargs)}")
-        except TypeError as e:
-            print(f"[tolvera._iml.IMLDict] TypeError setting {name}: {e}")
-        except ValueError as e:
-            print(f"[tolvera._iml.IMLDict] ValueError setting {name}: {e}")
-        except Exception as e:
-            print(f"[tolvera._iml.IMLDict] UnexpectedError setting {name}: {e}")
-            raise
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        self.set(__name, __value)
-    def add(self, name, iml_type, **kwargs):
-        print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
-        match iml_type:
-            case 'vec2vec': ins = IMLVec2Vec(**kwargs)
-            case 'vec2fun': ins = IMLVec2Fun(**kwargs)
-            case 'vec2osc': ins = IMLVec2OSC(self.tv.osc.map, **kwargs)
-            case 'fun2vec': ins = IMLFun2Vec(**kwargs)
-            case 'fun2fun': ins = IMLFun2Fun(**kwargs)
-            case 'fun2osc': ins = IMLFun2OSC(self.tv.osc.map, **kwargs)
-            case 'osc2vec': ins = IMLOSC2Vec(self.tv.osc.map, **kwargs)
-            case 'osc2fun': ins = IMLOSC2Fun(self.tv.osc.map, **kwargs)
-            case 'osc2osc': ins = IMLOSC2OSC(self.tv.osc.map, **kwargs)
-            case _:
-                raise ValueError(f"[tolvera._iml.IMLDict] Invalid IML_TYPE '{iml_type}'. Valid IML_TYPES: {IML_TYPES}.")
-        self[name] = ins
-        return ins
-    def __call__(self, name, *args: Any, **kwargs: Any) -> Any:
-        if name in self:
-            # OSC updaters are handled by tv.osc.map (OSCMap)
-            # TODO: Rethink this?
-            if 'OSC' not in type(self[name]).__name__:
-                return self[name](*args, **kwargs)
-        else:
-            raise ValueError(f"[tolvera._iml.IMLDict] '{name}' not in dict.")
