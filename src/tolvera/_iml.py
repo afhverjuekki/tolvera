@@ -13,6 +13,21 @@ IML_TYPES = ['vec2vec', 'vec2fun', 'vec2osc', 'fun2vec', 'fun2fun', 'fun2osc', '
 def rand(n, factor=0.5):
     return torch.rand(n) * factor
 
+def rand_uniform(n, low=0.0, high=1.0):
+    return torch.rand(n) * (high - low) + low
+
+def rand_normal(n, mean=0.0, std=1.0):
+    return torch.randn(n) * std + mean
+
+def rand_exponential(n, lambd=1.0):
+    return torch.rand(n).exponential_(lambd)
+
+def rand_cauchy(n, median=0.0, sigma=1.0):
+    return torch.randn(n).cauchy_(median, sigma)
+
+def rand_lognormal(n, mean=0.0, std=1.0):
+    return torch.randn(n).log_normal_(mean, std)
+
 def rand_sigmoid(n, factor=0.5):
     tensor = rand(n, factor)
     return torch.sigmoid(tensor)
@@ -21,12 +36,19 @@ def rand_beta(n, theta, beta):
     dist = torch.distributions.beta.Beta(theta, beta)
     return dist.sample((n,))
 
+RAND_METHODS = ['rand', 'uniform', 'normal', 'exponential', 'cauchy', 'lognormal', 'sigmoid', 'beta']
+
 def rand_select(method='rand'):
     match method:
         case 'rand': return rand
+        case 'uniform': return rand_uniform
+        case 'normal': return rand_normal
+        case 'exponential': return rand_exponential
+        case 'cauchy': return rand_cauchy
+        case 'lognormal': return rand_lognormal
         case 'sigmoid': return rand_sigmoid
         case 'beta': return rand_beta
-        case _: raise ValueError(f"[tolvera._iml.rand_select] Invalid method '{method}'. Valid methods: 'rand', 'sigmoid', 'beta'.")
+        case _: raise ValueError(f"[tolvera._iml.rand_select] Invalid method '{method}'. Valid methods: {RAND_METHODS}.")
 
 class IMLDict(dotdict):
     """IML mapping dict
@@ -123,6 +145,7 @@ class IMLBase(iiIML):
             rand_input_weight (Any, optional): Random input weight (defaults to None).
             rand_output_weight (Any, optional): Random output weight (defaults to None).
             rand_method (str, optional): rand_method type ('rand' (default), 'sigmoid','beta').
+            rand_kwargs (dict, optional): Random kwargs to pass to rand_method.
             default_args (tuple, optional): Default args to use in update().
             default_kwargs (dict, optional): Default kwargs to use in update().
             lag (bool, optional): Lag mapped data (defaults to False).
@@ -138,21 +161,24 @@ class IMLBase(iiIML):
             self.config['emb'] = 'ProjectAndSort'
         super().__init__(**self.config)
         self.data = dotdict()
+        self.default_args = kwargs.get('default_args', ())
+        self.default_kwargs = kwargs.get('default_kwargs', {})
         if 'randomise' in kwargs:
             self.rand_pairs = kwargs.get('rand_pairs', 32)
             self.rand_input_weight = kwargs.get('rand_input_weight', None)
             self.rand_output_weight = kwargs.get('rand_output_weight', None)
             self.rand_method = kwargs.get('rand_method', 'rand')
-            self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method)
+            self.rand_kwargs = kwargs.get('rand_kwargs', {})
+            self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method, **self.rand_kwargs)
         if 'lag' in kwargs:
             if kwargs['lag'] is True:
                 self.lag_coef = kwargs.get('lag_coef', 0.5)
                 self.lag = Lag(coef=self.lag_coef)
-    def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand'):
+    def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand', **kwargs):
         method = rand_select(method)
         while len(self.pairs) < times:
-            indata = method(self.size[0])
-            outdata = method(self.size[1])
+            indata = method(self.size[0], **kwargs)
+            outdata = method(self.size[1], **kwargs)
             if input_weight is not None:
                 if isinstance(input_weight, np.ndarray):
                     indata *= torch.from_numpy(input_weight)
@@ -188,8 +214,13 @@ class IMLBase(iiIML):
             return None #self.data.mapped
         if args is not None and hasattr(self, 'default_args'):
             args += self.default_args
+        else:
+            args = self.default_args
         if kwargs is not None and hasattr(self, 'default_kwargs'):
             kwargs.update(self.default_kwargs)
+        else:
+            kwargs = self.default_kwargs
+        print(f"[tolvera._iml.IMLBase] __call__(): {args}, {kwargs}")
         return self.updater(*args, **kwargs)
 
 class IMLVec2Vec(IMLBase):
