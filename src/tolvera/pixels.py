@@ -287,6 +287,20 @@ class Pixels:
     def blend_mix(self, px: ti.template(), a: ti.f32):
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i,j] = ti.math.mix(self.px.rgba[i,j], px.rgba[i,j], a)
+    @ti.kernel
+    def blur(self, radius: ti.i32):
+        '''
+        Box blur
+        '''
+        for i, j in ti.ndrange(self.x, self.y):
+            d = ti.Vector([0.,0.,0.,0.])
+            for di in range(-radius, radius+1):
+                for dj in range(-radius, radius+1):
+                    dx = (i + di) % self.x
+                    dy = (j + dj) % self.y
+                    d += self.px.rgba[dx, dy]
+            d /= (radius*2+1)**2
+            self.px.rgba[i,j] = d
     def particles(self, particles: ti.template(), species: ti.template(), shape='circle'):
         shape = self.shape_enum[shape]
         self._particles(particles, species, shape)
