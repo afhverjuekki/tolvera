@@ -8,8 +8,8 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 taichi = "^1.6.0"
-iipyper = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/iipyper.git", branch="ja-dev"}
-anguilla = {git = "ssh://git@github.com/Intelligent-Instruments-Lab/anguilla.git", branch="ja-dev"}
+iipyper = {path = "../iipyper", develop = true}
+anguilla = {path = "../anguilla", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
