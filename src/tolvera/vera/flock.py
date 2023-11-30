@@ -33,7 +33,7 @@ class Flock:
         }, 'shape': (self.tv.pn, self.tv.pn),
         'osc': ('get'), 'randomise': False}
     def randomise(self):
-        self.species.randomise()
+        self.tv.s.flock_s.randomise()
     @ti.kernel
     def step(self, particles: ti.template()):
         n = particles.shape[0]
