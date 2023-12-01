@@ -21,7 +21,8 @@ class OSC:
         self.receive_port = kwargs.get('receive_port', 5001)
         self.send_port    = kwargs.get('send_port', 5000)
         self.trace        = kwargs.get('osc_trace', False)
-        self.host = iiOSC(self.host_ip, self.receive_port, verbose=True, concurrent=True)
+        self.verbose      = kwargs.get('osc_verbose', False)
+        self.host = iiOSC(self.host_ip, self.receive_port, verbose=self.verbose, concurrent=True)
         self.host.create_client(self.client_name, self.client_ip, self.send_port)
         if self.trace:
             def trace(address, *args):
