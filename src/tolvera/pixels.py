@@ -322,7 +322,7 @@ class Pixels:
                 side = int(s.size)*2
                 self.rect(px, py, side, side, s.rgba)
             elif shape == 3:
-                self.circle(px, py, s.size, s.rgba)
+                self.circle(px, py, p.size, s.rgba)
             elif shape == 4:
                 a = p.pos
                 b = p.pos + 1
