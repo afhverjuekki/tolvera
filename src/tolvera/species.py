@@ -1,7 +1,5 @@
 import taichi as ti
 
-from .state import State
-
 class Species:
     def __init__(self, tolvera, **kwargs) -> None:
         self.tv = tolvera
