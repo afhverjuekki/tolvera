@@ -11,6 +11,7 @@ taichi = "^1.6.0"
 iipyper = {path = "../iipyper", develop=true}
 anguilla = {path = "../anguilla", develop=true}
 jsons = "^1.6.3"
+opencv-python = "^4.8.1.78"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
