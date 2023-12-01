@@ -6,23 +6,22 @@ import random
 import fire
 from typing import List, Dict, Any
 
-def list_sketches(sketchbook_folder: str = './') -> None:
+def list_sketches(sketchbook_folder: str = './', sort: str = 'name', direction: str = 'ascending') -> None:
     """
     Lists all sketches in the given sketchbook folder.
 
     Args:
         sketchbook_folder (str): Path to the sketchbook folder. Defaults to current directory.
+        sort (str): Sort sketches by name, size, modified or created. Defaults to 'name'.
+        direction (str): Sort direction, either 'ascending' or 'descending'. Defaults to 'ascending'.
     """
     validate_sketchbook_path(sketchbook_folder)
-    files = get_sketch_files(sketchbook_folder)
-    sketches = []
-    for file in files:
-        if file.endswith('.py'):
-            sketch_info = get_sketch_info_from_file(file, sketchbook_folder)
-            sketches.append(sketch_info)
-    pretty_print_sketchbook(sketches, sketchbook_folder)
+    sketch_files_list = get_sketchbook_files(sketchbook_folder)
+    sketches = get_sketchbook_files_info(sketch_files_list, sketchbook_folder)
+    sorted_sketches = sort_sketch_files(sketches, sort, direction)
+    pretty_print_sketchbook(sorted_sketches, sketchbook_folder)
 
-def get_sketch_files(sketchbook_folder: str = './') -> List[str]:
+def get_sketchbook_files(sketchbook_folder: str = './') -> List[str]:
     """
     Gets all sketch files from the sketchbook folder.
 
@@ -33,9 +32,51 @@ def get_sketch_files(sketchbook_folder: str = './') -> List[str]:
         List[str]: List of sketch file names.
     """
     files = os.listdir(sketchbook_folder)
-    return [file for file in files if file != '__init__.py']
+    exclude = ['__init__.py', '__pycache__', '.DS_Store', 'imgui.ini']
+    return [f for f in files if f not in exclude]
 
-def get_sketch_info_from_file(sketch_file: str, sketchbook_folder: str = './') -> Dict[str, Any]:
+def get_sketchbook_files_info(sketches: List[str], sketchbook_folder: str = './') -> List[Dict[str, Any]]:
+    """
+    Gets information about all sketch files in the sketchbook folder.
+
+    Args:
+        sketches (List[str]): List of sketch file names.
+        sketchbook_folder (str): Path to the sketchbook folder. Defaults to current directory.
+
+    Returns:
+        List[Dict[str, Any]]: List of sketch information dictionaries.
+    """
+    sketch_infos = []
+    for sketch in sketches:
+        sketch_info = get_sketch_info(sketch, sketchbook_folder)
+        sketch_infos.append(sketch_info)
+    return sketch_infos
+
+def sort_sketch_files(sketch_files: List[Dict[str, Any]], sort:str = 'name', direction: str = 'ascending') -> List[Dict[str, Any]]:
+    """
+    Sorts sketch files by name, size, modified or created.
+
+    Args:
+        sort (str): Sort sketches by name, size, modified or created. Defaults to 'name'.
+        sketch_files (List[Dict[str, Any]]): List of sketch information dictionaries.
+        direction (str): Sort direction, either 'ascending' or 'descending'. Defaults to 'ascending'.
+
+    Returns:
+        List[Dict[str, Any]]: List of sorted sketch information dictionaries.
+    """
+    reverse = True if direction == 'descending' else False
+    if sort == 'name':
+        return sorted(sketch_files, key=lambda k: k['name'], reverse=reverse)
+    elif sort == 'size':
+        return sorted(sketch_files, key=lambda k: k['size'], reverse=reverse)
+    elif sort == 'modified':
+        return sorted(sketch_files, key=lambda k: k['modified'], reverse=reverse)
+    elif sort == 'created':
+        return sorted(sketch_files, key=lambda k: k['created'], reverse=reverse)
+    else:
+        return sketch_files
+
+def get_sketch_info(sketch_file: str, sketchbook_folder: str = './') -> Dict[str, Any]:
     """
     Gets information about a specific sketch file.
 
@@ -83,7 +124,7 @@ def run_sketch_by_index(index: int, sketchbook_folder: str = './', *args:Any, **
         sketchbook_folder (str): Path to the sketchbook folder. Defaults to current directory.
     """
     validate_sketchbook_path(sketchbook_folder)
-    files = get_sketch_files(sketchbook_folder)
+    files = get_sketchbook_files(sketchbook_folder)
     for file in files:
         if file.endswith('.py'):
             module_name = os.path.splitext(file)[0]
@@ -114,7 +155,7 @@ def run_random_sketch(sketchbook='./'):
         sketchbook (str): Path to the sketchbook folder. Defaults to current directory.
     """
     validate_sketchbook_path(sketchbook)
-    files = get_sketch_files(sketchbook)
+    files = get_sketchbook_files(sketchbook)
     sketch_file = files[random.randint(0, len(files)-1)]
     run_sketch_by_name(sketch_file, sketchbook)
 
@@ -225,9 +266,12 @@ def main(*args, **kwargs):
         if isinstance(sketch, str):
             run_sketch_by_name(sketch, sketchbook, *args, **kwargs)
         elif isinstance(sketch, int):
+            print(f"Running sketch by index: {sketch}")
             run_sketch_by_index(sketch, sketchbook, *args, **kwargs)
     elif 'sketches' in kwargs:
-        list_sketches(sketchbook)
+        sort = kwargs['sort'] if 'sort' in kwargs else 'name'
+        direction = kwargs['direction'] if 'direction' in kwargs else 'ascending'
+        list_sketches(sketchbook, sort, direction)
         exit()
     elif 'random' in kwargs:
         run_random_sketch(sketchbook)
