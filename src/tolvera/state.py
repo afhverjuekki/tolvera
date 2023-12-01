@@ -17,7 +17,7 @@ import taichi as ti
 import numpy as np
 import jsons
 
-from .npndarray_dict import NpNdarrayDict, np_vec2, np_vec3, np_vec4
+from .npndarray_dict import NpNdarrayDict, np_vec2, np_vec3, np_vec4, TiNpTypeMap
 from .utils import *
 
 class StateDict(dotdict):

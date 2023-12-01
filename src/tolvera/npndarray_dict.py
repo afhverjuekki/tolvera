@@ -3,7 +3,7 @@ from taichi.math import vec2, vec3, vec4
 import numpy as np
 from collections import defaultdict
 from typing import Any, Union, Callable
-from iipyper import ndarray_from_json, ndarray_from_osc_args, ndarray_from_json, ndarray_to_osc_args
+from iipyper import ndarray_from_json, ndarray_from_json
 
 from .utils import flatten
 
