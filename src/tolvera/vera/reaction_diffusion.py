@@ -68,7 +68,7 @@ class ReactionDiffusion():
             self.uv[0, int(p.pos.x), int(p.pos.y)] += [0.1, 0.0]
     @ti.kernel
     def compute(self, phase: int):
-        p = self.tv.s.params.field[0,0]
+        p = self.tv.s.rd.field[0]
         for i, j in ti.ndrange(self.tv.x, self.tv.y):
             cen = self.uv[phase, i, j]
             lapl = self.uv[phase, i + 1, j] + self.uv[phase, i, j + 1] + self.uv[
@@ -92,8 +92,9 @@ class ReactionDiffusion():
                     color = ti.math.mix(c0.xyz, c1.xyz, a)
             self.field.px.rgba[i, j] = [color.x, color.y, color.z, 1.0]
     def process(self):
-        for _ in range(self.substep[None]):
-            self.compute(self.tv.i % 2)
+        # for _ in range(self.substep[None]):
+        for _ in range(self.tv.s.rd.field[0].substep):
+            self.compute(self.tv.ctx.i % 2)
     def __call__(self):
         self.process()
         self.render()

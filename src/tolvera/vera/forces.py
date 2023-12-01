@@ -29,9 +29,11 @@ def attract_species(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, r
 @ti.func
 def _attract(p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32) -> ti.math.vec2:
     target_distance = (pos-p.pos).norm()
+    vel = ti.Vector([0.0, 0.0])
     if target_distance < radius:
         factor = (radius-target_distance)/radius
-        return (pos-p.pos).normalized() * mass * factor
+        vel = (pos-p.pos).normalized() * mass * factor
+    return vel
 
 @ti.kernel
 def repel(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32):
@@ -42,7 +44,7 @@ def repel(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.
 
 @ti.kernel
 def repel_species(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32, species: ti.i32):
-    for i in range(particles.shape[0]):
+    for i in range(particles.field.shape[0]):
         p = particles.field[i]
         if p.active == 0: continue
         if p.species != species: continue
@@ -51,9 +53,11 @@ def repel_species(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, rad
 @ti.func
 def _repel(p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32) -> ti.math.vec2:
     target_distance = (pos-p.pos).norm()
+    vel = ti.Vector([0.0, 0.0])
     if target_distance < radius:
         factor = (target_distance-radius)/radius
-        return (pos-p.pos).normalized() * mass * factor
+        vel = (pos-p.pos).normalized() * mass * factor
+    return vel
 
 @ti.kernel
 def gravitate(particles: ti.template(), G: ti.f32, radius: ti.f32):

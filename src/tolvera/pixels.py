@@ -308,7 +308,7 @@ class Pixels:
     def _particles(self, particles: ti.template(), species: ti.template(), shape: int):
         for i in range(self.tv.p.n):
             p = particles.field[i]
-            s = species.field[p.species]
+            s = species[p.species]
             if p.active == 0.0: continue
             px = ti.cast(p.pos[0], ti.i32)
             py = ti.cast(p.pos[1], ti.i32)

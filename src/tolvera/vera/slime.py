@@ -108,4 +108,4 @@ class Slime:
             self.trail.diffuse(self.evaporate[None])
     def __call__(self, particles, species):
         self.step(particles, species)
-        return self.trail.px
+        return self.trail
