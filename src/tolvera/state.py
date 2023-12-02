@@ -202,10 +202,32 @@ class State:
         self.deserialize(json_str)
 
     def from_nddict(self):
-        self.field.from_numpy(self.nddict.get_data())
+        try:
+            data = self.nddict.get_data()
+            self.field.from_numpy(data)
+        except TypeError as e:
+            print(f"[tolvera.state.from_nddict] TypeError: {e}")
+            raise
+        except ValueError as e:
+            print(f"[tolvera.state.from_nddict] ValueError: {e}")
+            raise
+        except Exception as e:
+            print(f"[tolvera.state.from_nddict] UnexpectedError: {e}")
+            raise
 
     def to_nddict(self):
-        self.nddict.set_data(self.field.to_numpy())
+        try:
+            data = self.field.to_numpy()
+            self.nddict.set_data(data)
+        except TypeError as e:
+            print(f"[tolvera.state.to_nddict] TypeError: {e}")
+            raise
+        except ValueError as e:
+            print(f"[tolvera.state.to_nddict] ValueError: {e}")
+            raise
+        except Exception as e:
+            print(f"[tolvera.state.to_nddict] UnexpectedError: {e}")
+            raise
 
     @ti.func
     def __getitem__(self, key):
