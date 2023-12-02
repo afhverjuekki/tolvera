@@ -37,8 +37,10 @@ class StateDict(dotdict):
                 raise TypeError(f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}")
         except TypeError as e:
             print(f"[tolvera.state.StateDict] TypeError setting {name}: {e}")
+            raise
         except ValueError as e:
             print(f"[tolvera.state.StateDict] ValueError setting {name}: {e}")
+            raise
         except Exception as e:
             print(f"[tolvera.state.StateDict] UnexpectedError setting {name}: {e}")
             raise
@@ -51,7 +53,7 @@ class State:
                  tolvera,
                  name: str,
                  state: dict[str, tuple[DataType, Any, Any]],
-                 shape: int|tuple[int],
+                 shape: int|tuple[int] = None,
                  iml: str|tuple = None, # 'get' | ('get', 'set')
                  osc: str|tuple = None, # 'get' | ('get', 'set')
                  randomise: bool = True,
@@ -59,6 +61,7 @@ class State:
         self.tv = tolvera
         assert name is not None, "State must have a name."
         self.name = name
+        shape = 1 if shape is None else shape
         self.setup_data(state, shape, randomise, methods)
         self.setup_accessors(iml, osc)
 
@@ -73,7 +76,8 @@ class State:
         if methods is None:
             self.struct = ti.types.struct(**{k: v[0] for k, v in self.dict.items()})
         else:
-            self.struct = ti.types.struct(**{k: v[0] for k, v in self.dict.items()}, methods=methods)
+            self.methods = methods if methods is not None else {}
+            self.struct = ti.types.struct(**{k: v[0] for k, v in self.dict.items()}, methods=self.methods)
         self.field = self.struct.field(shape=self.shape)
 
     def create_npndarray_dict(self):
