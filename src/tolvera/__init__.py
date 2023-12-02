@@ -199,6 +199,7 @@ class Tolvera:
         self.x       = context.x
         self.y       = context.y
         self.ti      = context.ti
+        self.show    = context.show
         self.canvas  = context.canvas
         self.osc     = context.osc
         self.iml     = context.iml
