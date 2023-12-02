@@ -89,6 +89,7 @@ class State:
                 raise NotImplementedError(f"no nptype for {titype}")
             nddict[k] = (nptype, min_val, max_val)
         self.nddict = NpNdarrayDict(nddict, self.shape)
+        self.size = self.nddict.size
 
     def randomise(self):
         self.nddict.randomise()
