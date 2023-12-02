@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import taichi as ti
 from taichi.lang.struct import StructField
-from tolvera.npndarray_dict import NpNdarrayDict, np_vec2, np_vec3, np_vec4, dict_to_vector_args, shapes_from_ndarray_dict, ndarraydict_from_vector_args
+from tolvera.npndarray_dict import NpNdarrayDict, np_vec2, np_vec3, np_vec4, dict_to_vector_args, dict_from_vector_args, shapes_from_ndarray_dict, ndarraydict_from_vector_args
 
 shape = (2,2)
 
@@ -307,7 +307,7 @@ def test_shapes_from_ndarray_dict(setup_vector_args):
     assert shapes['i'] == (2, 2)
     assert shapes['f'] == (2, 2)
     assert shapes['v2'] == (2, 2, 2)
-
+    
 def test_ndarraydict_from_vector_args(setup_vector_args):
     vector_args = dict_to_vector_args(setup_vector_args.data)
     shapes = shapes_from_ndarray_dict(setup_vector_args.data)
@@ -315,3 +315,11 @@ def test_ndarraydict_from_vector_args(setup_vector_args):
     assert np.all(setup_vector_args.data['i'] == npdict['i'])
     assert np.all(setup_vector_args.data['f'] == npdict['f'])
     assert np.all(setup_vector_args.data['v2'] == npdict['v2'])
+
+def test_dict_from_vector_args(setup_vector_args):
+    vector_args = dict_to_vector_args(setup_vector_args.data)
+    data_dict = dict_from_vector_args(vector_args)
+    assert np.all(setup_vector_args.data['i'].flatten() == data_dict['i'])
+    assert np.all(setup_vector_args.data['f'].flatten() == data_dict['f'])
+    assert np.all(setup_vector_args.data['v2'].flatten() == data_dict['v2'])
+
