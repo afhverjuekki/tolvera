@@ -1,3 +1,4 @@
+from typing import Any
 import taichi as ti
 import time
 
@@ -37,3 +38,5 @@ class Taichi:
     def show(self, px):
         self.canvas.set_image(px.px.rgba)
         if not self.headless: self.window.show()
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        self.show(*args, **kwds)
