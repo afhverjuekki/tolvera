@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Any, Union, Callable
 from iipyper import ndarray_from_json, ndarray_to_json, ndarray_from_repr
 
-from .utils import flatten
+from .utils import flatten, create_safe_slice
 
 np_vec2 = np.array([0.,0.], dtype=np.float32)
 np_vec3 = np.array([0.,0.,0.], dtype=np.float32)
@@ -166,7 +166,7 @@ class NpNdarrayDict:
     def init(self, data_dict: dict[str, tuple[Any, Any, Any]], shape: tuple[int]) -> None:
         self.dict = {}
         self.data = {}
-        self.data_len = 0
+        self.size = 0
         for key, (dtype, min_val, max_val) in data_dict.items():
             dshape = self.shape
             length = 1
@@ -179,12 +179,114 @@ class NpNdarrayDict:
                 'dtype': dtype, 
                 'min': min_val, 
                 'max': max_val, 
-                'attr_len': length,
-                'arr_len': np.prod(dshape),
+                'length': length,
                 'shape': dshape
             }
             self.data[key] = np.zeros(dshape, dtype=dtype)
-            self.data_len += np.prod(dshape)
+            size = self.data[key].size
+            self.dict[key]['size'] = size
+            self.size += size
+
+    """
+    to|from vec | list (iml)
+    """
+    
+    def from_vec(self, vec: list):
+        vec_start, vec_end = 0, 1
+        for key in self.data.keys():
+            attr_vec_size = self.dict[key]['size']
+            attr_vec = vec[vec_start:vec_start + attr_vec_size]
+            self.attr_from_vec(key, attr_vec)
+            vec_start += attr_vec_size
+    
+    def to_vec(self) -> list:
+        vec = []
+        for key in self.data.keys():
+            vec += self.attr_to_vec(key).tolist()
+        return vec
+    
+    def attr_from_vec(self, attr:str, vec: list):
+        if attr not in self.data:
+            raise KeyError(f"Key {attr} not in {self.data.keys()}")
+        attr_shape, attr_dtype = self.dict[attr]['shape'], self.dict[attr]['dtype']
+        if len(vec) != np.prod(attr_shape):
+            raise ValueError(f"Length of vec {len(vec)} does not match the shape of {attr} {attr_shape}")
+        nparr = np.array(vec, dtype=attr_dtype)
+        if len(attr_shape) > 1:
+            nparr = np.reshape(nparr, attr_shape)
+        try:
+            self.data[attr] = nparr
+        except ValueError as e:
+            print(f"ValueError occurred while setting {attr}: {e}")
+            raise
+    
+    def attr_to_vec(self, attr:str) -> list:
+        if attr not in self.data:
+            raise KeyError(f"Key {attr} not in {self.data.keys()}")
+        vec = self.data[attr].flatten()
+        return vec
+    
+    def slice_from_vec(self, slice_args:list, slice_vec: list):
+        # TODO: unique slice obj needed per key...
+        # slice_obj = create_safe_slice(slice_args)
+        raise NotImplementedError(f"slice_from_vec()")
+    
+    def slice_to_vec(self, slice_args:list) -> list:
+        # TODO: unique slice obj needed per key...
+        # vec = []
+        # for key in self.data.keys():
+        #     slice_obj = create_safe_slice(slice_args)
+        #     vec += self.attr_slice_to_vec(key, slice_obj)
+        # return vec
+        raise NotImplementedError(f"slice_from_vec()")
+    
+    def attr_slice_from_vec(self, attr:str, slice_args:list, slice_vec: list):
+        if attr not in self.data:
+            raise KeyError(f"Key {attr} not in {self.data.keys()}")
+        slice_obj = create_safe_slice(slice_args)
+        attr_shape, attr_dtype = self.dict[attr]['shape'], self.dict[attr]['dtype']
+        nparr = np.array(slice_vec, dtype=attr_dtype)
+        if len(attr_shape) > 1:
+            nparr = np.reshape(nparr, attr_shape)
+        try:
+            self.data[attr][slice_obj] = nparr
+        except ValueError as e:
+            print(f"ValueError occurred while setting slice: {e}")
+            raise
+    
+    def attr_slice_to_vec(self, attr:str, slice_args:list) -> list:
+        if attr not in self.data:
+            raise KeyError(f"Key {attr} not in {self.data.keys()}")
+        slice_obj = create_safe_slice(slice_args)
+        vec = self.data[attr][slice_obj].flatten()
+        return vec
+    
+    """
+    vec slice helpers
+    """
+    
+    def get_slice_size(self, slice_args:list) -> int:
+        slice_obj = create_safe_slice(slice_args)
+        return np.sum([self.data[key][slice_obj].size for key in self.data.keys()])
+
+    def get_attr_slice_size(self, attr:str, slice_args:list) -> int:
+        if attr not in self.data:
+            raise KeyError(f"Key {attr} not in {self.data.keys()}")
+        slice_obj = create_safe_slice(slice_args)
+        return self.data[attr][slice_obj].size
+
+    """
+    to|from vec_args (simple osc)
+    """
+
+    """
+    to|from ndarray | ndarraydict (serialised formats, complex osc)
+    """
+    
+
+    """
+    ...
+    """
 
     def set_slice_from_dict(self, slice_indices: tuple, slice_values: dict):
         for key, values in slice_values.items():
@@ -256,97 +358,6 @@ class NpNdarrayDict:
         if list_index != len(slice_values_list):
             raise ValueError(f"Extra values {slice_values_list[list_index:]} in slice_values_list {slice_values_list} that do not correspond to any array")
 
-    def set_row_from_dict(self, row_index: int, row_values: dict):
-        """
-        Sets the values of a specified row for each array in self.data.
-
-        :param row_index: Index of the row to modify.
-        :param row_values: Dictionary of new values for the row, keyed by the dictionary keys.
-        """
-        for key, values in row_values.items():
-            if key not in self.data:
-                raise KeyError(f"Key {key} not found in data")
-            
-            if row_index >= self.dict[key]['shape'][0]:
-                raise IndexError("Row index out of bounds for key {key}")
-
-            if len(values) != self.dict[key]['shape'][1]:
-                raise ValueError(f"Length of values for key {key} does not match the number of columns")
-
-            self.data[key][row_index, :] = np.array(values, dtype=self.dict[key]['dtype'])
-
-    def set_row_from_list(self, row_index: int, row_list: list):
-        """
-        Sets the values of a specified row for each array in self.data from a flat list.
-
-        :param row_index: Index of the row to modify.
-        :param row_list: Flat list of new values for the rows, segmented by the arrays.
-        """
-        row_values = {}
-        list_index = 0
-
-        for key in self.data.keys():
-            # Determine the total number of elements required for the current key
-            num_elements = np.prod(self.dict[key]['shape'][1:])
-            if list_index + num_elements > len(row_list):
-                raise ValueError(f"Insufficient values provided for key {key}")
-
-            # Extract the segment from row_list and reshape if necessary
-            segment = row_list[list_index:list_index + num_elements]
-            if self.dict[key]['dtype'] == np.float32 and len(self.dict[key]['shape']) > 2:
-                # Reshape the segment for ndarrays with more than 2 dimensions
-                segment = np.reshape(segment, self.dict[key]['shape'][1:])
-            row_values[key] = segment
-            list_index += num_elements
-
-        if list_index != len(row_list):
-            raise ValueError("Extra values in row_list that do not correspond to any array")
-
-        self.set_row_from_dict(row_index, row_values)
-        
-    def set_attribute(self, key: str, index: tuple[int], value: Any) -> None:
-        """
-        Set an entire attribute to a given value.
-
-        Args:
-            key: The attribute key.
-            index: The index at which to set the value.
-            value: The value to set.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-            ValueError: If the value is out of the specified range for the key.
-
-        """
-        if key in self.data:
-            if self.dict[key]['min'] <= value <= self.dict[key]['max']:
-                self.data[key][index] = value
-            else:
-                raise ValueError(f"Value {value} is out of range for key {key}")
-        else:
-            raise KeyError(f"Key {key} not found in state")
-    
-    def get_attribute(self, key: str, index: tuple[int], attr: str) -> np.ndarray:
-        """
-        Get an entire attribute.
-
-        Args:
-            key: The attribute key.
-            index: The index from which to get the value.
-            attr: The attribute to get.
-
-        Returns:
-            The value at the specified index for the given key.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-
-        """
-        if key in self.data:
-            return self.data[key][index][attr]
-        else:
-            raise KeyError(f"Key {key} not found in state")
-
     def set_data(self, new_data: dict[str, np.ndarray]) -> None:
         """
         Set the data with a new data dictionary.
@@ -358,10 +369,11 @@ class NpNdarrayDict:
         Raises:
             ValueError: If the new data is invalid (e.g., wrong shape, type, or value range).
         """
-        if self.validate_new_state(new_data):
+        try:
             self.data = new_data
-        else:
-            raise ValueError("Invalid data")
+        except ValueError as e:
+            print(f"ValueError occurred while setting data: {e}")
+            raise
 
     def get_data(self) -> dict[str, np.ndarray]:
         """
@@ -372,36 +384,8 @@ class NpNdarrayDict:
         """
         return self.data
 
-    def validate_new_state(self, new_state: dict[str, np.ndarray]) -> bool:
-        """
-        Validate a new state dictionary to ensure it conforms to the expected structure and constraints.
-
-        Args:
-            new_state: A dictionary representing the new state to be validated.
-
-        Returns:
-            True if the new state is valid, False otherwise.
-        """
-        for key, array in new_state.items():
-            # Check if the key exists in the current state
-            if key not in self.data:
-                print(f"Key {key} not found in current state")
-                return False
-
-            # Check if the shape of the array matches
-            if array.shape != self.data[key].shape:
-                print(f"Shape {array.shape} does not match expected shape {self.data[key].shape}")
-                return False
-
-            # # Check if the data type of the array matches
-            # if array.dtype != self.data[key].dtype:
-            #     return False
-
-            # # Check if all values are within the specified range
-            # if not (self.data[key]['min'] <= array).all() or not (array <= self.data[key]['max']).all():
-            #     return False
-
-        return True
+    def validate(self, new_state: dict[str, np.ndarray]) -> bool:
+        raise NotImplementedError("validate() not implemented")
 
     def randomise(self) -> None:
         """
@@ -420,47 +404,7 @@ class NpNdarrayDict:
                 self.data[key] = np.random.uniform(min_val, max_val, size=shape).astype(data_type)
             # Add more conditions here if you have other data types
 
-    def randomise_index(self, index: tuple[int]) -> None:
-        """
-        Randomize the values at a specific index for all attributes.
-
-        Args:
-            index: The index to randomize.
-        """
-        for key in self.data:
-            data_type = self.dict[key]['dtype']
-            min_val = self.dict[key]['min']
-            max_val = self.dict[key]['max']
-
-            if np.issubdtype(data_type, np.integer):
-                self.data[key][index] = np.random.randint(min_val, max_val + 1, dtype=data_type)
-            elif np.issubdtype(data_type, np.floating):
-                self.data[key][index] = np.random.uniform(min_val, max_val).astype(data_type)
-
-    def randomise_attribute_index(self, key: str, index: tuple[int]) -> None:
-        """
-        Randomize the value at a specific index for a given attribute.
-
-        Args:
-            key: The attribute key.
-            index: The index to randomize.
-
-        Raises:
-            KeyError: If the key is not found in the state.
-        """
-        if key not in self.data:
-            raise KeyError(f"Key {key} not found in state")
-
-        data_type = self.dict[key]['dtype']
-        min_val = self.dict[key]['min']
-        max_val = self.dict[key]['max']
-
-        if np.issubdtype(data_type, np.integer):
-            self.data[key][index] = np.random.randint(min_val, max_val + 1, dtype=data_type)
-        elif np.issubdtype(data_type, np.floating):
-            self.data[key][index] = np.random.uniform(min_val, max_val).astype(data_type)
-
-    def apply_function(self, key: str, func: Callable[[np.ndarray], np.ndarray]) -> None:
+    def attr_apply(self, key: str, func: Callable[[np.ndarray], np.ndarray]) -> None:
         """
         Apply a user-defined function to the array of a specified key.
 
@@ -476,26 +420,7 @@ class NpNdarrayDict:
         
         self.data[key] = func(self.data[key])
 
-    def elementwise_operation(self, key1: str, key2: str, op: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> None:
-        """
-        Perform an element-wise operation between two arrays in the dictionary.
-
-        Args:
-            key1: The first attribute key.
-            key2: The second attribute key.
-            op: A function to perform element-wise operation.
-
-        Raises:
-            KeyError: If either key is not found.
-        """
-        if key1 not in self.data or key2 not in self.data:
-            raise KeyError(f"One of the keys {key1}, {key2} not found")
-
-        array1 = self.data[key1]
-        array2 = self.data[key2]
-        self.data[key1] = op(array1, array2)
-
-    def broadcast_operation(self, key: str, other: Union[np.ndarray, 'NpNdarrayDict'], op: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> None:
+    def attr_broadcast(self, key: str, other: Union[np.ndarray, 'NpNdarrayDict'], op: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> None:
         """
         Perform a broadcasting operation between the array of the specified key and another array or NpNdarrayDict.
 
