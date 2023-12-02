@@ -10,32 +10,6 @@ __all__ = ['IMLBase', 'IMLVec2Vec', 'IMLVec2Fun', 'IMLVec2OSC', 'IMLFun2Vec', 'I
 
 IML_TYPES = ['vec2vec', 'vec2fun', 'vec2osc', 'fun2vec', 'fun2fun', 'fun2osc', 'osc2vec', 'osc2osc', 'osc2fun']
 
-def rand(n, factor=0.5):
-    return torch.rand(n) * factor
-
-def rand_uniform(n, low=0.0, high=1.0):
-    return torch.rand(n) * (high - low) + low
-
-def rand_normal(n, mean=0.0, std=1.0):
-    return torch.randn(n) * std + mean
-
-def rand_exponential(n, lambd=1.0):
-    return torch.rand(n).exponential_(lambd)
-
-def rand_cauchy(n, median=0.0, sigma=1.0):
-    return torch.randn(n).cauchy_(median, sigma)
-
-def rand_lognormal(n, mean=0.0, std=1.0):
-    return torch.randn(n).log_normal_(mean, std)
-
-def rand_sigmoid(n, factor=0.5):
-    tensor = rand(n, factor)
-    return torch.sigmoid(tensor)
-
-def rand_beta(n, theta, beta):
-    dist = torch.distributions.beta.Beta(theta, beta)
-    return dist.sample((n,))
-
 RAND_METHODS = ['rand', 'uniform', 'normal', 'exponential', 'cauchy', 'lognormal', 'sigmoid', 'beta']
 
 def rand_select(method='rand'):
@@ -79,7 +53,7 @@ class IMLDict(dotdict):
             else:
                 raise TypeError(f"[tolvera._iml.IMLDict] set() requires dict|tuple, not {type(kwargs)}")
         except TypeError as e:
-            print(f"[tolvera._iml.IMLDict] TypeError setting {name}: {e}")
+            print(f"[tolvera._iml.IMLDict] TypeError setting {name} {kwargs}: {e}")
         except ValueError as e:
             print(f"[tolvera._iml.IMLDict] ValueError setting {name}: {e}")
         except Exception as e:
@@ -144,8 +118,8 @@ class IMLBase(iiIML):
             rand_pairs (int, optional): Number of random pairs to add (defaults to 32).
             rand_input_weight (Any, optional): Random input weight (defaults to None).
             rand_output_weight (Any, optional): Random output weight (defaults to None).
-            rand_method (str, optional): rand_method type ('rand' (default), 'sigmoid','beta').
-            rand_kwargs (dict, optional): Random kwargs to pass to rand_method.
+            rand_method (str, optional): rand_method type (see utils).
+            rand_kwargs (dict, optional): Random kwargs to pass to rand_method (see utils).
             default_args (tuple, optional): Default args to use in update().
             default_kwargs (dict, optional): Default kwargs to use in update().
             lag (bool, optional): Lag mapped data (defaults to False).
@@ -220,7 +194,7 @@ class IMLBase(iiIML):
             kwargs.update(self.default_kwargs)
         else:
             kwargs = self.default_kwargs
-        print(f"[tolvera._iml.IMLBase] __call__(): {args}, {kwargs}")
+        # print(f"[tolvera._iml.IMLBase] __call__(): {args}, {kwargs}")
         return self.updater(*args, **kwargs)
 
 class IMLVec2Vec(IMLBase):

@@ -4,7 +4,7 @@ TODO: Save/load
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, Tuple
 import unicodedata
 import torch
 import numpy as np
@@ -15,6 +15,56 @@ import time
 import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi._lib.core.taichi_python import DataType
+
+def rand(n, factor=0.5):
+    return torch.rand(n) * factor
+
+def rand_uniform(n, low=0.0, high=1.0):
+    return torch.rand(n) * (high - low) + low
+
+def rand_normal(n, mean=0.0, std=1.0):
+    return torch.randn(n) * std + mean
+
+def rand_exponential(n, lambd=1.0):
+    return torch.rand(n).exponential_(lambd)
+
+def rand_cauchy(n, median=0.0, sigma=1.0):
+    return torch.randn(n).cauchy_(median, sigma)
+
+def rand_lognormal(n, mean=0.0, std=1.0):
+    return torch.randn(n).log_normal_(mean, std)
+
+def rand_sigmoid(n, factor=0.5):
+    tensor = rand(n, factor)
+    return torch.sigmoid(tensor)
+
+def rand_beta(n, theta, beta):
+    dist = torch.distributions.beta.Beta(theta, beta)
+    return dist.sample((n,))
+
+"""
+def np_rand(n, factor=0.5):
+    return np.random.rand(n) * factor
+
+def np_rand_uniform(n, low=0.0, high=1.0):
+    return np.random.uniform(low, high, n)
+
+def np_rand_normal(n, mean=0.0, std=1.0):
+    return np.random.normal(mean, std, n)
+
+def np_rand_exponential(n, lambd=1.0):
+    return np.random.exponential(1 / lambd, n)
+
+def np_rand_lognormal(n, mean=0.0, std=1.0):
+    return np.random.lognormal(mean, std, n)
+
+def np_rand_sigmoid(n, factor=0.5):
+    tensor = np_rand(n, factor)
+    return sigmoid(tensor)
+
+def np_rand_beta(n, alpha, beta):
+    return np.random.beta(alpha, beta, n)
+"""
 
 def remove_accents(input: str):
     nfkd_form = unicodedata.normalize('NFKD', input)
@@ -179,3 +229,82 @@ class Lag:
             return old * self.coef + new * (1 - self.coef)
         else:
             raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
+
+def create_and_validate_slice(arg: Union[int, Tuple[int, ...], slice], target_array: np.ndarray) -> slice:
+    """
+    Creates and validates a slice object based on the target array.
+    """
+    try:
+        slice_obj = create_safe_slice(arg)
+        if not validate_slice(slice_obj, target_array):
+            raise ValueError(f"Invalid slice: {slice_obj}")
+        return slice_obj
+    except TypeError as e:
+        print(f"TypeError occurred while creating slice: {e}")
+        raise
+    except ValueError as e:
+        print(f"ValueError occurred while creating slice: {e}")
+        raise
+
+def create_safe_slice(arg: Union[int, Tuple[int, ...], slice]) -> slice:
+    """
+    Creates a slice object based on the input argument.
+
+    Args:
+        arg (int, tuple, slice): The argument for creating the slice. It can be an integer, 
+                                 a tuple with slice parameters, or a slice object itself.
+
+    Returns:
+        slice: A slice object created based on the provided argument.
+    """
+    try:
+        if isinstance(arg, slice):
+            return arg
+        elif isinstance(arg, tuple):
+            return slice(*arg)
+        elif isinstance(arg, int):
+            return slice(arg, arg + 1)
+    except TypeError as e:
+        print(f"TypeError occurred while creating slice: {e}")
+        raise
+    except ValueError as e:
+        print(f"ValueError occurred while creating slice: {e}")
+        raise
+
+def generic_slice(array: np.ndarray, slice_params: Union[Tuple[Union[int, Tuple[int, ...], slice], ...], Union[int, Tuple[int, ...], slice]]) -> np.ndarray:
+    """
+    Slices a NumPy array based on a list of slice parameters for each dimension.
+
+    Args:
+        array (np.ndarray): The array to be sliced.
+        slice_params (list): A list where each item is either an integer, a tuple with 
+                             slice parameters, or a slice object.
+
+    Returns:
+        ndarray: The sliced array.
+    """
+    if not isinstance(slice_params, tuple):
+        slice_params = (slice_params,)
+    slices = tuple(create_safe_slice(param) for param in slice_params)
+    return array.__getitem__(slices)
+
+def validate_slice(slice_obj: Tuple[slice], target_array: np.ndarray) -> bool:
+    """
+    Validates if the given slice object is applicable to the target ndarray.
+
+    Args:
+        slice_obj (Tuple[slice]): A tuple containing slice objects for each dimension.
+        target_array (np.ndarray): The array to be sliced.
+
+    Returns:
+        bool: True if the slice is valid for the given array, False otherwise.
+    """
+    if len(slice_obj) != target_array.ndim:
+        return False
+
+    for sl, size in zip(slice_obj, target_array.shape):
+        # Check if slice start and stop are within the dimension size
+        start, stop, _ = sl.indices(size)
+        if not (0 <= start < size and (0 <= stop <= size or stop == -1)):
+            return False
+    return True
