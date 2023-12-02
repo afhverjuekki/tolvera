@@ -233,6 +233,49 @@ class State:
             print(f"[tolvera.state.to_nddict] UnexpectedError: {e}")
             raise
 
+    """
+    npndarray_dict wrappers
+    """
+    
+    def from_vec(self, vec: list):
+        self.to_nddict()
+        self.nddict.from_vec(vec)
+        self.from_nddict()
+    
+    def to_vec(self) -> list:
+        self.to_nddict()
+        return self.nddict.to_vec()
+    
+    def attr_from_vec(self, attr:str, vec: list):
+        self.to_nddict()
+        self.nddict.attr_from_vec(attr, vec)
+        self.from_nddict()
+    
+    def attr_to_vec(self, attr:str) -> list:
+        self.to_nddict()
+        return self.nddict.attr_to_vec(attr)
+    
+    def slice_from_vec(self, slice_args:list, slice_vec: list):
+        self.to_nddict()
+        self.nddict.slice_from_vec(slice_args, slice_vec)
+        self.from_nddict()
+    
+    def slice_to_vec(self, slice_args:list) -> list:
+        self.to_nddict()
+        return self.nddict.slice_to_vec(slice_args)
+    
+    def attr_slice_from_vec(self, attr:str, slice_args:list, slice_vec: list):
+        self.to_nddict()
+        self.nddict.attr_slice_from_vec(attr, slice_args, slice_vec)
+        self.from_nddict()
+    
+    def attr_slice_to_vec(self, attr:str, slice_args:list) -> list:
+        self.to_nddict()
+        return self.nddict.attr_slice_to_vec(attr, slice_args)
+    
+    def attr_size(self, attr:str) -> int:
+        return self.nddict.data[attr].size
+
     @ti.func
     def __getitem__(self, key):
         return self.field[key]
