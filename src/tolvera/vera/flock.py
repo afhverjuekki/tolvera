@@ -13,6 +13,9 @@ class Flock:
     def __init__(self, tolvera, **kwargs):
         self.tv = tolvera
         self.kwargs = kwargs
+        self.CONSTS = CONSTS({
+            'MAX_RADIUS': (ti.f32, 300.0)
+        })
         self.tv.s.flock_p = {'state': {
             'separate': (ti.math.vec2, 0., 1.),
             'align':    (ti.math.vec2, 0., 1.),
@@ -24,7 +27,7 @@ class Flock:
             'separate': (ti.f32, .01, 1.),
             'align':    (ti.f32, .01, 1.),
             'cohere':   (ti.f32, .01, 1.),
-            'radius':   (ti.f32, .01, 300.)
+            'radius':   (ti.f32, .01, 1.)
         }, 'shape': (self.tv.sn, self.tv.sn),
         'osc': ('set'), 'randomise': True}
         self.tv.s.flock_dist = {'state': {
@@ -51,7 +54,7 @@ class Flock:
                 species = self.tv.s.flock_s[p1.species, p2.species]
                 dis_wrap = p1.dist_wrap(p2, self.tv.x, self.tv.y)
                 dis_wrap_norm = dis_wrap.norm()
-                if dis_wrap_norm < species.radius:
+                if dis_wrap_norm < species.radius * self.CONSTS.MAX_RADIUS:
                     separate += dis_wrap
                     align    += p2.vel
                     cohere   += p2.pos
