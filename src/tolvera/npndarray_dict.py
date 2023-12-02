@@ -3,7 +3,7 @@ from taichi.math import vec2, vec3, vec4
 import numpy as np
 from collections import defaultdict
 from typing import Any, Union, Callable
-from iipyper import ndarray_from_json, ndarray_from_json
+from iipyper import ndarray_from_json, ndarray_to_json, ndarray_from_repr
 
 from .utils import flatten
 
@@ -34,12 +34,11 @@ def dict_from_vector_args(a: list, scalars=None):
     k = None
     while len(a):
         item = a.pop(0)
-        # print(type(item), item)
         if isinstance(item, str):
             k = item
         else:
             if k is None:
-                print(f'ERROR: anguilla: bad OSC syntax in {a}')
+                print(f'ERROR: bad syntax in {a}')
             kw[k].append(item)
     # unwrap scalars
     for item in scalars or []:
@@ -167,9 +166,11 @@ class NpNdarrayDict:
     def init(self, data_dict: dict[str, tuple[Any, Any, Any]], shape: tuple[int]) -> None:
         self.dict = {}
         self.data = {}
+        self.data_len = 0
         for key, (dtype, min_val, max_val) in data_dict.items():
             dshape = self.shape
             length = 1
+            # handle np_vec2, np_vec3, np_vec4
             if isinstance(dtype, np.ndarray):
                 dshape = dshape + dtype.shape
                 length = dtype.shape[0]
@@ -178,10 +179,12 @@ class NpNdarrayDict:
                 'dtype': dtype, 
                 'min': min_val, 
                 'max': max_val, 
-                'length': length,
+                'attr_len': length,
+                'arr_len': np.prod(dshape),
                 'shape': dshape
             }
             self.data[key] = np.zeros(dshape, dtype=dtype)
+            self.data_len += np.prod(dshape)
 
     def set_slice_from_dict(self, slice_indices: tuple, slice_values: dict):
         for key, values in slice_values.items():
