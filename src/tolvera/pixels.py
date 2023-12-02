@@ -9,6 +9,9 @@ TODO: add functions for symmetry? (e.g. mirror, rotate, etc.)
 
 import taichi as ti
 
+from taichi.lang.struct import StructField
+from taichi.lang.matrix import MatrixField
+
 vec1 = ti.types.vector(1, ti.f32)
 vec2 = ti.math.vec2
 vec3 = ti.math.vec3
@@ -83,7 +86,12 @@ class Pixels:
             'polygon':  5,
         }
     def set(self, px):
-        self.px.rgba = px.rgba
+        if isinstance(px, Pixels):
+            self.px.rgba = px.px.rgba
+        elif isinstance(px, MatrixField):
+            self.px.rgba = px
+        elif isinstance(px, StructField):
+            self.px.rgba = px.rgba
     def get(self):
         return self.px
     @ti.kernel
