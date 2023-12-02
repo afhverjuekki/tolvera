@@ -7,7 +7,7 @@ from sys import exit
 from ._taichi import Taichi
 from ._osc import OSC
 from ._iml import IMLDict
-# from ._cv import CV
+from ._cv import CV
 
 # Tölvera components
 from .patches import *
@@ -48,6 +48,7 @@ class TolveraContext:
         self.x = kwargs.get('x', 1920)
         self.y = kwargs.get('y', 1080)
         self.ti = Taichi(self, **kwargs)
+        self.show = self.ti.show
         self.canvas = Pixels(self, **kwargs)
         self.osc = kwargs.get('osc', False)
         self.iml = kwargs.get('iml', False)
@@ -56,8 +57,8 @@ class TolveraContext:
             self.osc = OSC(self, **kwargs)
         if self.iml:
             self.iml = IMLDict(self)
-        # if self.cv:
-        #     self.cv = CV(self, **kwargs)
+        if self.cv:
+            self.cv = CV(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
         print(f"[{self.name}] Context initialization complete.")
@@ -71,13 +72,16 @@ class TolveraContext:
             f: Function to run.
             **kwargs: Keyword arguments for function.
         """
-        print(f"[{self.name}] Running with render function {f.__name__}...")
+        if f is not None:
+            print(f"[{self.name}] Running with render function {f.__name__}...")
+        else:
+            print(f"[{self.name}] Running with no render function...")
         while self.ti.window.running:
             with _lock:
                 if f is not None: self.canvas = f(**kwargs)
                 if self.osc is not False: self.osc.map()
                 if self.iml is not False: self.iml()
-                # TODO: self.cv get latest camera frame?
+                if self.cv is not False: self.cv()
                 self.ti.show(self.canvas)
                 self.i += 1
     def stop(self):
@@ -180,10 +184,10 @@ class Tolvera:
         self.kwargs = kwargs
         self.name = kwargs.get('name', 'Tölvera')
         self.name_clean = clean_name(self.name)
-        if 'context' not in kwargs:
+        if 'ctx' not in kwargs:
             self.init_context(**kwargs)
         else:
-            self.share_context(kwargs['context'])
+            self.share_context(kwargs['ctx'])
         self.setup(**kwargs)
         print(f"[{self.name}] Initialization and setup complete.")
     def init_context(self, **kwargs):
