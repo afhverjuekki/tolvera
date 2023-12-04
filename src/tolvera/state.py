@@ -23,18 +23,12 @@ from .utils import *
 class StateDict(dotdict):
     def __init__(self, tolvera) -> None:
         self.tv = tolvera
+        self.size = 0
     def set(self, name, kwargs: Any) -> None:
-        if name in self:
+        if name in self and name != 'size':
             raise ValueError(f"[tolvera.state.StateDict] '{name}' already in dict.")
         try:
-            if name == 'tv' and type(kwargs) is not dict and type(kwargs) is not tuple:
-                self[name] = kwargs
-            elif type(kwargs) is dict:
-                self[name] = State(self.tv, name=name, **kwargs)
-            elif type(kwargs) is tuple:
-                self[name] = State(self.tv, name, *kwargs)
-            else:
-                raise TypeError(f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}")
+            self.add(name, kwargs)
         except TypeError as e:
             print(f"[tolvera.state.StateDict] TypeError setting {name}: {e}")
             raise
@@ -44,6 +38,31 @@ class StateDict(dotdict):
         except Exception as e:
             print(f"[tolvera.state.StateDict] UnexpectedError setting {name}: {e}")
             raise
+    def add(self, name, kwargs: Any):
+        if name == 'tv' and type(kwargs) is not dict and type(kwargs) is not tuple:
+            self[name] = kwargs
+        elif name == 'size' and type(kwargs) is int:
+            self[name] = kwargs
+        elif type(kwargs) is dict:
+            self[name] = State(self.tv, name=name, **kwargs)
+            self.size += self[name].size
+        elif type(kwargs) is tuple:
+            self[name] = State(self.tv, name, *kwargs)
+            self.size += self[name].size
+        else:
+            raise TypeError(f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}")
+    def from_vec(states: list[str], vector: list[float]):
+        sizes_sum = self.get_size(states)
+        assert sizes_sum == len(vector), f"sizes_sum={sizes_sum} != len(vector)={len(vector)}"
+        vec_start = 0
+        for state in states:
+            s = self.tv.s[state]
+            vec = vector[vec_start:vec_start+s.size]
+            s.from_vec(vec)
+            vec_start += s.size
+    def get_size(self, states: str|list[str]) -> int:
+        if isinstance(states, str): states = [states]
+        return sum([self.tv.s[state].size for state in states])
     def __setattr__(self, __name: str, __value: Any) -> None:
         self.set(__name, __value)
 
