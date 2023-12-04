@@ -192,7 +192,7 @@ class NpNdarrayDict:
     """
     
     def from_vec(self, vec: list):
-        vec_start, vec_end = 0, 1
+        vec_start = 0
         for key in self.data.keys():
             attr_vec_size = self.dict[key]['size']
             attr_vec = vec[vec_start:vec_start + attr_vec_size]
