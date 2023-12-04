@@ -51,7 +51,7 @@ class StateDict(dotdict):
             self.size += self[name].size
         else:
             raise TypeError(f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}")
-    def from_vec(states: list[str], vector: list[float]):
+    def from_vec(self, states: list[str], vector: list[float]):
         sizes_sum = self.get_size(states)
         assert sizes_sum == len(vector), f"sizes_sum={sizes_sum} != len(vector)={len(vector)}"
         vec_start = 0
