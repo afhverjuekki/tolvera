@@ -1,8 +1,9 @@
-from typing import Any
-from anguilla import IML as iiIML
+import inspect
 import torch
 import numpy as np
 from iipyper import Updater
+from typing import Any
+from anguilla import IML as iiIML
 
 from .utils import *
 
@@ -62,6 +63,7 @@ class IMLDict(dotdict):
     def __setattr__(self, __name: str, __value: Any) -> None:
         self.set(__name, __value)
     def add(self, name, iml_type, **kwargs):
+        # TODO: should ^ be kwargs and not **kwargs?
         print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
         match iml_type:
             case 'vec2vec': ins = IMLVec2Vec(**kwargs)
@@ -119,9 +121,10 @@ class IMLBase(iiIML):
             rand_input_weight (Any, optional): Random input weight (defaults to None).
             rand_output_weight (Any, optional): Random output weight (defaults to None).
             rand_method (str, optional): rand_method type (see utils).
-            rand_kwargs (dict, optional): Random kwargs to pass to rand_method (see utils).
-            default_args (tuple, optional): Default args to use in update().
-            default_kwargs (dict, optional): Default kwargs to use in update().
+            rand_kw (dict, optional): Random kwargs to pass to rand_method (see utils).
+            map_kw (dict, optional): kwargs to use in IML.map().
+            infun_kw (dict, optional): kwargs to use in infun() (type 'Fun2*' only).
+            outfun_kw (dict, optional): kwargs to use in outfun() (type '*2Fun' only).
             lag (bool, optional): Lag mapped data (defaults to False).
             lag_coef (float, optional): Lag coefficient (defaults to 0.5 if `lag` is True).
             TODO: add Lag/Interpolate
@@ -135,15 +138,16 @@ class IMLBase(iiIML):
             self.config['emb'] = 'ProjectAndSort'
         super().__init__(**self.config)
         self.data = dotdict()
-        self.default_args = kwargs.get('default_args', ())
-        self.default_kwargs = kwargs.get('default_kwargs', {})
+        self.map_kw = kwargs.get('map_kw', {})
+        self.infun_kw = kwargs.get('infun_kw', {})
+        self.outfun_kw = kwargs.get('outfun_kw', {})
         if 'randomise' in kwargs:
             self.rand_pairs = kwargs.get('rand_pairs', 32)
             self.rand_input_weight = kwargs.get('rand_input_weight', None)
             self.rand_output_weight = kwargs.get('rand_output_weight', None)
             self.rand_method = kwargs.get('rand_method', 'rand')
-            self.rand_kwargs = kwargs.get('rand_kwargs', {})
-            self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method, **self.rand_kwargs)
+            self.rand_kw = kwargs.get('rand_kw', {})
+            self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method, **self.rand_kw)
         if 'lag' in kwargs:
             if kwargs['lag'] is True:
                 self.lag_coef = kwargs.get('lag_coef', 0.5)
@@ -174,28 +178,13 @@ class IMLBase(iiIML):
             self.add(indata, outdata)
     def lag_mapped_data(self, lag_coef:float=0.5):
         self.data.mapped = self.lag(self.data.mapped, lag_coef)
-    def update(self, *args, **kwargs):
-        self.data.mapped = self.map(*args, **kwargs)
+    def update(self, invec):
+        self.data.mapped = self.map(invec, **self.map_kw)
         if hasattr(self, 'lag') and type(self.lag) is Lag: 
             self.lag_mapped_data()
         return self.data.mapped
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Update mapping with args and kwargs,
-        appending default_args and default_kwargs if set,
-        returning previous mapped data if no args or kwargs are passed."""
-        if len(args) == 0 and len(kwargs) == 0:
-            print(f"[tolvera._iml.IMLBase] __call__(): no args or kwargs given.")
-            return None #self.data.mapped
-        if args is not None and hasattr(self, 'default_args'):
-            args += self.default_args
-        else:
-            args = self.default_args
-        if kwargs is not None and hasattr(self, 'default_kwargs'):
-            kwargs.update(self.default_kwargs)
-        else:
-            kwargs = self.default_kwargs
-        # print(f"[tolvera._iml.IMLBase] __call__(): {args}, {kwargs}")
-        return self.updater(*args, **kwargs)
+    def __call__(self, *args) -> Any:
+        return self.updater(*args)
 
 class IMLVec2Vec(IMLBase):
     """IML vector to vector mapping
@@ -221,8 +210,9 @@ class IMLVec2Fun(IMLBase):
         assert callable(kwargs['io'][1]), f"IMLVec2Fun requires 'io' kwarg to be (None, outfun)."
         self.outfun = kwargs['io'][1]
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
-        self.data.mapped = self.outfun(self.map(*args, **kwargs))
+    def update(self, invec):
+        mapped = self.map(invec, **self.map_kw)
+        self.data.mapped = self.outfun(mapped, **self.outfun_kw)
         return self.data.mapped
 
 class IMLVec2OSC(IMLBase):
@@ -246,7 +236,7 @@ class IMLVec2OSC(IMLBase):
         assert type(kwargs['io'][1]) is str, f"IMLVec2OSC requires 'io' kwarg to be (None, osc_route)."
         self.route = kwargs['io'][1]
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
+    def update(self, invec):
         raise NotImplementedError(f"[tolvera._iml.IMLVec2OSC] update() not implemented.")
 
 class IMLFun2Vec(IMLBase):
@@ -262,9 +252,14 @@ class IMLFun2Vec(IMLBase):
         assert callable(kwargs['io'][0]), f"IMLFun2Vec requires 'io' kwarg to be (infun, None)."
         assert kwargs['io'][1] is None, f"IMLFun2Vec requires 'io' kwarg to be (infun, None)."
         self.infun = kwargs['io'][0]
+        self.infun_params = inspect.signature(self.infun).parameters
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
-        self.data.mapped = self.map(self.infun(*args, **kwargs))
+    def update(self):
+        if len(self.infun_params) > 0:
+            invec = self.infun(**self.infun_kw)
+        else:
+            invec = self.infun()
+        self.data.mapped = self.map(invec, **self.map_kw)
         return self.data.mapped
 
 class IMLFun2Fun(IMLBase):
@@ -280,10 +275,17 @@ class IMLFun2Fun(IMLBase):
         assert callable(kwargs['io'][0]), f"IMLFun2Fun requires 'io' kwarg to be (infun, outfun)."
         assert callable(kwargs['io'][1]), f"IMLFun2Fun requires 'io' kwarg to be (infun, outfun)."
         self.infun = kwargs['io'][0]
+        self.infun_params = inspect.signature(self.infun).parameters
         self.outfun = kwargs['io'][1]
+        self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
-        self.data.mapped = self.outfun(self.map(self.infun(*args, **kwargs)))
+    def update(self):
+        if len(self.infun_params) > 0:
+            invec = self.infun(**self.infun_kw)
+        else:
+            invec = self.infun()
+        mapped = self.map(invec, **self.map_kw)
+        self.data.mapped = self.outfun(mapped, **self.outfun_kw)
         return self.data.mapped
 
 class IMLFun2OSC(IMLBase):
@@ -297,7 +299,7 @@ class IMLFun2OSC(IMLBase):
     def __init__(self, osc_map, **kwargs) -> None:
         self.osc_map = osc_map
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
+    def update(self, invec):
         raise NotImplementedError(f"[tolvera._iml.IMLFun2OSC] update() not implemented.")
 
 class IMLOSC2Vec(IMLBase):
@@ -311,7 +313,7 @@ class IMLOSC2Vec(IMLBase):
     def __init__(self, osc_map, **kwargs) -> None:
         self.osc_map = osc_map
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
+    def update(self, invec):
         raise NotImplementedError(f"[tolvera._iml.IMLOSC2Vec] update() not implemented.")
 
 class IMLOSC2Fun(IMLBase):
@@ -325,7 +327,7 @@ class IMLOSC2Fun(IMLBase):
     def __init__(self, osc_map, **kwargs) -> None:
         self.osc_map = osc_map
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
+    def update(self, invec):
         raise NotImplementedError(f"[tolvera._iml.IMLOSC2Fun] update() not implemented.")
 
 class IMLOSC2OSC(IMLBase):
@@ -339,7 +341,7 @@ class IMLOSC2OSC(IMLBase):
     def __init__(self, osc_map, **kwargs) -> None:
         self.osc_map = osc_map
         super().__init__(**kwargs)
-    def update(self, *args, **kwargs):
+    def update(self, invec):
         """
         see iml.app.server.map?
         """
