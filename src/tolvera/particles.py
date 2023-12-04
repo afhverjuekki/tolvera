@@ -122,13 +122,15 @@ class Particles:
         for i in range(self.n):
             si = self.field[i].species
             s = self.tv.s.species[si]
+            # FIXME: ugly
+            # c = self.tv.species_consts
             species = si
             active  = 1.0
             pos     = [self.tv.x*ti.random(ti.f32),self.tv.y*ti.random(ti.f32)]
             vel     = [2*(ti.random(ti.f32)-0.5), 2*(ti.random(ti.f32)-0.5)]
-            mass    = ti.random(ti.f32) * s.mass
-            size    = ti.random(ti.f32) * s.size
-            speed   = ti.random(ti.f32) * s.speed
+            size    = ti.random(ti.f32) * s.size * self.tv.species_consts.MAX_SIZE + self.tv.species_consts.MIN_SIZE
+            speed   = ti.random(ti.f32) * s.speed * self.tv.species_consts.MAX_SPEED + self.tv.species_consts.MIN_SPEED
+            mass    = ti.random(ti.f32) * s.mass * self.tv.species_consts.MAX_MASS
             self.field[i] = Particle(species=species, pos=pos, vel=vel, active=active, mass=mass, size=size, speed=speed)
     @ti.kernel
     def update(self):
@@ -157,8 +159,11 @@ class Particles:
     def limit_speed(self, i: int):
         p = self.field[i]
         s = self.tv.s.species[p.species]
+        # FIXME: ugly
+        sp = s.speed * self.tv.species_consts.MAX_SPEED + self.tv.species_consts.MIN_SPEED
         if p.vel.norm() > s.speed:
-            self.field[i].vel = p.vel.normalized() * s.speed * self._speed[None]
+            # self.field[i].vel = p.vel.normalized() * s.speed * self._speed[None]
+            self.field[i].vel = p.vel.normalized() * sp * self._speed[None]
     @ti.kernel
     def activity_decay(self):
         for i in range(self.active_count[None]):
