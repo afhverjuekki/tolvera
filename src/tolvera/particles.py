@@ -102,8 +102,8 @@ class Particles:
         # }, shape=(self.n,), osc=('get'), name='particles_pos')
         self.tmp_pos = ti.Vector.field(2, ti.f32, shape=(self.n))
         self.tmp_vel = ti.Vector.field(2, ti.f32, shape=(self.n))
-        self.tmp_pos_species = ti.Vector.field(2, ti.f32, shape=(self.tv.species))
-        self.tmp_vel_species = ti.Vector.field(2, ti.f32, shape=(self.tv.species))
+        self.tmp_pos_species = ti.Vector.field(2, ti.f32, shape=(self.tv.pn))
+        self.tmp_vel_species = ti.Vector.field(2, ti.f32, shape=(self.tv.pn))
         self.tmp_vel_stats = ti.Vector.field(1, ti.f32, shape=(7))
         self.active_indexes = ti.field(ti.i32, shape=(self.n))
         self.active_count = ti.field(ti.i32, shape=())
@@ -231,10 +231,10 @@ class Particles:
             p = self.field[i]
             if p.active > 0.0:
                 self.tmp_vel[i] = p.vel
-    def get_pos_species_1d(self, species):
+    def get_pos_species_1d(self, species:int):
         self._get_pos_species()
         return self.tmp_pos_species.to_numpy().flatten().tolist()
-    def get_pos_species_2d(self, species):
+    def get_pos_species_2d(self, species:int):
         self._get_pos_species(species)
         return self.tmp_pos_species.to_numpy().tolist()
     @ti.kernel
@@ -243,10 +243,10 @@ class Particles:
             p = self.field[i]
             if self.field[j].species == i and p.active > 0.0:
                 self.tmp_pos_species[j] = p.pos / [self.tv.x, self.tv.y]
-    def get_vel_species_1d(self, species):
+    def get_vel_species_1d(self, species:int):
         self._get_vel_species(species)
         return self.tmp_vel_species.to_numpy().flatten().tolist()
-    def get_vel_species_2d(self, species):
+    def get_vel_species_2d(self, species:int):
         self._get_vel_species(species)
         return self.tmp_vel_species.to_numpy().tolist()
     @ti.kernel
