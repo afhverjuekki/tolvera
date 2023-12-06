@@ -33,7 +33,7 @@ class OSC:
         print(f"[Tölvera.OSC] Initialising OSCMap for '{self.client_name}'.")
         self.create_patch   = kwargs.get('create_patch', False)
         self.patch_type     = kwargs.get('patch_type', "Pd")
-        self.patch_filepath = kwargs.get('patch_filepath', "tolvera_osc")
+        self.patch_filepath  = kwargs.get('patch_filepath', self.client_name)
         self.export_patch   = kwargs.get('export_patch', None)
         if self.create_patch:
             print(f"[Tölvera.OSC] Creating {self.patch_type} patch '{self.patch_filepath}'.")

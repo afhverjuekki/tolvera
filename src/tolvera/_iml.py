@@ -53,18 +53,13 @@ class IMLDict(dotdict):
                 raise NotImplementedError(f"[tolvera._iml.IMLDict] set() with tuple not implemented yet.")
             else:
                 raise TypeError(f"[tolvera._iml.IMLDict] set() requires dict|tuple, not {type(kwargs)}")
-        except TypeError as e:
-            print(f"[tolvera._iml.IMLDict] TypeError setting {name} {kwargs}: {e}")
-        except ValueError as e:
-            print(f"[tolvera._iml.IMLDict] ValueError setting {name}: {e}")
         except Exception as e:
-            print(f"[tolvera._iml.IMLDict] UnexpectedError setting {name}: {e}")
-            raise
+            raise type(e)(f"[tolvera._iml.IMLDict] {e}") from e
     def __setattr__(self, __name: str, __value: Any) -> None:
         self.set(__name, __value)
     def add(self, name, iml_type, **kwargs):
         # TODO: should ^ be kwargs and not **kwargs?
-        print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
+        # print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
         match iml_type:
             case 'vec2vec': ins = IMLVec2Vec(**kwargs)
             case 'vec2fun': ins = IMLVec2Fun(**kwargs)
