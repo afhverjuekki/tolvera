@@ -133,7 +133,8 @@ class IMLBase(iiIML):
         assert 'size' in kwargs, f"IMLBase requires 'size' kwarg."
         self.size = kwargs['size']
         self.updater = kwargs.get('updater', Updater(self.update, kwargs.get('update_rate', 1)))
-        self.config = kwargs.get('config', {'feature_size': self.size[0]})
+        self.config = kwargs.get('config', {})
+        self.config['feature_size'] = self.size[0]
         if isinstance(self.size[0], tuple):
             self.config['emb'] = 'ProjectAndSort'
         print(f"[tolvera._iml.IMLBase] Initialising IML with config: {self.config}")
