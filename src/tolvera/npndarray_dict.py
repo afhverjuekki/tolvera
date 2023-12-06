@@ -180,7 +180,8 @@ class NpNdarrayDict:
                 'min': min_val, 
                 'max': max_val, 
                 'length': length,
-                'shape': dshape
+                'shape': dshape,
+                'ndims': len(dshape),
             }
             self.data[key] = np.zeros(dshape, dtype=dtype)
             size = self.data[key].size
@@ -226,12 +227,12 @@ class NpNdarrayDict:
         vec = self.data[attr].flatten()
         return vec
     
-    def slice_from_vec(self, slice_args:list, slice_vec: list):
+    def slice_from_vec(self, slice_args:Union[int, tuple[int, ...], slice], slice_vec: list):
         # TODO: unique slice obj needed per key...
         # slice_obj = create_safe_slice(slice_args)
         raise NotImplementedError(f"slice_from_vec()")
     
-    def slice_to_vec(self, slice_args:list) -> list:
+    def slice_to_vec(self, slice_args:Union[int, tuple[int, ...], slice]) -> list:
         # TODO: unique slice obj needed per key...
         # vec = []
         # for key in self.data.keys():
@@ -240,7 +241,7 @@ class NpNdarrayDict:
         # return vec
         raise NotImplementedError(f"slice_from_vec()")
     
-    def attr_slice_from_vec(self, attr:str, slice_args:list, slice_vec: list):
+    def attr_slice_from_vec(self, attr:str, slice_args:Union[int, tuple[int, ...], slice], slice_vec: list):
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)
@@ -254,7 +255,7 @@ class NpNdarrayDict:
             print(f"ValueError occurred while setting slice: {e}")
             raise
     
-    def attr_slice_to_vec(self, attr:str, slice_args:list) -> list:
+    def attr_slice_to_vec(self, attr:str, slice_args:Union[int, tuple[int, ...], slice]) -> list:
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)
@@ -265,11 +266,11 @@ class NpNdarrayDict:
     vec slice helpers
     """
     
-    def get_slice_size(self, slice_args:list) -> int:
+    def get_slice_size(self, slice_args:Union[int, tuple[int, ...], slice]) -> int:
         slice_obj = create_safe_slice(slice_args)
         return np.sum([self.data[key][slice_obj].size for key in self.data.keys()])
 
-    def get_attr_slice_size(self, attr:str, slice_args:list) -> int:
+    def get_attr_slice_size(self, attr:str, slice_args:Union[int, tuple[int, ...], slice]) -> int:
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)

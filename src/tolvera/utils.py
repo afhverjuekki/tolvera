@@ -4,7 +4,7 @@ TODO: Save/load
 
 import os
 from pathlib import Path
-from typing import Any, Union, Tuple
+from typing import Any, Union
 import unicodedata
 import torch
 import numpy as np
@@ -230,7 +230,7 @@ class Lag:
         else:
             raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
 
-def create_and_validate_slice(arg: Union[int, Tuple[int, ...], slice], target_array: np.ndarray) -> slice:
+def create_and_validate_slice(arg: Union[int, tuple[int, ...], slice], target_array: np.ndarray) -> slice:
     """
     Creates and validates a slice object based on the target array.
     """
@@ -239,14 +239,10 @@ def create_and_validate_slice(arg: Union[int, Tuple[int, ...], slice], target_ar
         if not validate_slice(slice_obj, target_array):
             raise ValueError(f"Invalid slice: {slice_obj}")
         return slice_obj
-    except TypeError as e:
-        print(f"TypeError occurred while creating slice: {e}")
-        raise
-    except ValueError as e:
-        print(f"ValueError occurred while creating slice: {e}")
-        raise
+    except Exception as e:
+        raise type(e)(f"Error creating slice: {e}")
 
-def create_safe_slice(arg: Union[int, Tuple[int, ...], slice]) -> slice:
+def create_safe_slice(arg: Union[int, tuple[int, ...], slice]) -> slice:
     """
     Creates a slice object based on the input argument.
 
@@ -264,20 +260,30 @@ def create_safe_slice(arg: Union[int, Tuple[int, ...], slice]) -> slice:
             return slice(*arg)
         elif isinstance(arg, int):
             return slice(arg, arg + 1)
-    except TypeError as e:
-        print(f"TypeError occurred while creating slice: {e}")
-        raise
-    except ValueError as e:
-        print(f"ValueError occurred while creating slice: {e}")
-        raise
+        else:
+            raise TypeError(f"Invalid slice type: {type(arg)} {arg}")
+    except Exception as e:
+        raise type(e)(f"[create_safe_slice] Error creating slice: {e}")
 
-def generic_slice(array: np.ndarray, slice_params: Union[Tuple[Union[int, Tuple[int, ...], slice], ...], Union[int, Tuple[int, ...], slice]]) -> np.ndarray:
+def create_ndslices(dims: list[tuple, ...]) -> np.s_:
     """
-    Slices a NumPy array based on a list of slice parameters for each dimension.
+    Create a multi-dimensional slice from a list of tuples.
+
+    Args:
+        dims (list[tuple, ...]): A list of tuples containing the slice parameters for each dimension.
+    
+    Returns:
+        np.s_: A multi-dimensional slice object.
+    """
+    return np.s_[tuple(slice(*dim) if isinstance(dim, tuple) else dim for dim in dims)]
+
+def generic_slice(array: np.ndarray, slice_params: Union[tuple[Union[int, tuple[int, ...], slice], ...], Union[int, tuple[int, ...], slice]]) -> np.ndarray:
+    """
+    Slices a NumPy array based on a tuple of slice parameters for each dimension.
 
     Args:
         array (np.ndarray): The array to be sliced.
-        slice_params (list): A list where each item is either an integer, a tuple with 
+        slice_params (tuple): A tuple where each item is either an integer, a tuple with 
                              slice parameters, or a slice object.
 
     Returns:
@@ -288,12 +294,12 @@ def generic_slice(array: np.ndarray, slice_params: Union[Tuple[Union[int, Tuple[
     slices = tuple(create_safe_slice(param) for param in slice_params)
     return array.__getitem__(slices)
 
-def validate_slice(slice_obj: Tuple[slice], target_array: np.ndarray) -> bool:
+def validate_slice(slice_obj: tuple[slice], target_array: np.ndarray) -> bool:
     """
     Validates if the given slice object is applicable to the target ndarray.
 
     Args:
-        slice_obj (Tuple[slice]): A tuple containing slice objects for each dimension.
+        slice_obj (tuple[slice]): A tuple containing slice objects for each dimension.
         target_array (np.ndarray): The array to be sliced.
 
     Returns:
