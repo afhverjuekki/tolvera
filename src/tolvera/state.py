@@ -229,29 +229,15 @@ class State:
         try:
             data = self.nddict.get_data()
             self.field.from_numpy(data)
-        except TypeError as e:
-            print(f"[tolvera.state.from_nddict] TypeError: {e}")
-            raise
-        except ValueError as e:
-            print(f"[tolvera.state.from_nddict] ValueError: {e}")
-            raise
         except Exception as e:
-            print(f"[tolvera.state.from_nddict] UnexpectedError: {e}")
-            raise
+            raise Exception(f"[tolvera.state.from_nddict] {e}") from e
 
     def to_nddict(self):
         try:
             data = self.field.to_numpy()
             self.nddict.set_data(data)
-        except TypeError as e:
-            print(f"[tolvera.state.to_nddict] TypeError: {e}")
-            raise
-        except ValueError as e:
-            print(f"[tolvera.state.to_nddict] ValueError: {e}")
-            raise
         except Exception as e:
-            print(f"[tolvera.state.to_nddict] UnexpectedError: {e}")
-            raise
+            raise Exception(f"[tolvera.state.to_nddict] {e}") from e
 
     """
     npndarray_dict wrappers
