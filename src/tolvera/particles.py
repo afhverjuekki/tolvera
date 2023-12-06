@@ -90,6 +90,7 @@ class Particles:
         self.tv = tolvera
         self.kwargs = kwargs
         self.n = self.tv.pn
+        self.p_per_s = self.tv.p_per_s
         # self.s = species
         self._speed = ti.field(ti.f32, shape=())
         self._speed[None] = 1.0
@@ -102,8 +103,8 @@ class Particles:
         # }, shape=(self.n,), osc=('get'), name='particles_pos')
         self.tmp_pos = ti.Vector.field(2, ti.f32, shape=(self.n))
         self.tmp_vel = ti.Vector.field(2, ti.f32, shape=(self.n))
-        self.tmp_pos_species = ti.Vector.field(2, ti.f32, shape=(self.tv.pn))
-        self.tmp_vel_species = ti.Vector.field(2, ti.f32, shape=(self.tv.pn))
+        self.tmp_pos_species = ti.Vector.field(2, ti.f32, shape=(self.p_per_s))
+        self.tmp_vel_species = ti.Vector.field(2, ti.f32, shape=(self.p_per_s))
         self.tmp_vel_stats = ti.Vector.field(1, ti.f32, shape=(7))
         self.active_indexes = ti.field(ti.i32, shape=(self.n))
         self.active_count = ti.field(ti.i32, shape=())
@@ -235,14 +236,18 @@ class Particles:
         self._get_pos_species()
         return self.tmp_pos_species.to_numpy().flatten().tolist()
     def get_pos_species_2d(self, species:int):
+        if species > self.tv.species-1: return
         self._get_pos_species(species)
         return self.tmp_pos_species.to_numpy().tolist()
     @ti.kernel
     def _get_pos_species(self, i: ti.i32):
         for j in range(self.n):
-            p = self.field[i]
-            if self.field[j].species == i and p.active > 0.0:
-                self.tmp_pos_species[j] = p.pos / [self.tv.x, self.tv.y]
+            si = j % self.tv.species
+            p = self.field[j]
+            if i == si and p.active > 0.0:
+                species_index = (j - i) // self.tv.species
+                pos = p.pos / [self.tv.x, self.tv.y]
+                self.tmp_pos_species[species_index] = pos
     def get_vel_species_1d(self, species:int):
         self._get_vel_species(species)
         return self.tmp_vel_species.to_numpy().flatten().tolist()
@@ -252,9 +257,12 @@ class Particles:
     @ti.kernel
     def _get_vel_species(self, i: ti.i32):
         for j in range(self.n):
-            p = self.field[i]
-            if self.field[j].species == i and p.active > 0.0:
-                self.tmp_vel_species[j] = p.vel
+            si = j % self.tv.species
+            p = self.field[j]
+            if i == si and p.active > 0.0:
+                species_index = (j - i) // self.tv.species
+                vel = p.vel / [self.tv.x, self.tv.y]
+                self.tmp_vel_species[species_index] = vel
     def get_vel_stats_species_1d(self, species):
         self._species_velocity_statistics(species)
         return self.tmp_vel_stats.to_numpy().flatten().tolist()
