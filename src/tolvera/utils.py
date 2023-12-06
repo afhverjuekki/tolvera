@@ -16,7 +16,7 @@ import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi._lib.core.taichi_python import DataType
 
-def rand(n, factor=0.5):
+def rand_n(n, factor=0.5):
     return torch.rand(n) * factor
 
 def rand_uniform(n, low=0.0, high=1.0):

@@ -15,7 +15,7 @@ RAND_METHODS = ['rand', 'uniform', 'normal', 'exponential', 'cauchy', 'lognormal
 
 def rand_select(method='rand'):
     match method:
-        case 'rand': return rand
+        case 'rand': return rand_n
         case 'uniform': return rand_uniform
         case 'normal': return rand_normal
         case 'exponential': return rand_exponential
@@ -138,7 +138,8 @@ class IMLBase(iiIML):
         self.map_kw = kwargs.get('map_kw', {})
         self.infun_kw = kwargs.get('infun_kw', {})
         self.outfun_kw = kwargs.get('outfun_kw', {})
-        if 'randomise' in kwargs:
+        randomise = kwargs.get('randomise', False)
+        if randomise:
             self.rand_pairs = kwargs.get('rand_pairs', 32)
             self.rand_input_weight = kwargs.get('rand_input_weight', None)
             self.rand_output_weight = kwargs.get('rand_output_weight', None)
@@ -150,32 +151,56 @@ class IMLBase(iiIML):
                 self.lag_coef = kwargs.get('lag_coef', 0.5)
                 self.lag = Lag(coef=self.lag_coef)
     def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand', **kwargs):
-        method = rand_select(method)
+        self.rand = rand_select(method)
         while len(self.pairs) < times:
-            indata = method(self.size[0], **kwargs)
-            outdata = method(self.size[1], **kwargs)
-            if input_weight is not None:
-                if isinstance(input_weight, np.ndarray):
-                    indata *= torch.from_numpy(input_weight)
-                elif isinstance(input_weight, (torch.Tensor, float, int)):
-                    indata *= input_weight
-                elif isinstance(input_weight, list):
-                    indata *= torch.Tensor(input_weight)
-                else:
-                    raise ValueError(f"[tolvera._iml.IMLBase] Invalid input_weight type '{type(input_weight)}'.")
-            if output_weight is not None:
-                if isinstance(output_weight, np.ndarray):
-                    outdata *= torch.from_numpy(output_weight)
-                elif isinstance(output_weight, (torch.Tensor, float, int)):
-                    outdata *= output_weight
-                elif isinstance(output_weight, list):
-                    outdata *= torch.Tensor(output_weight)
-                else:
-                    raise ValueError(f"[tolvera._iml.IMLBase] Invalid output_weight type '{type(output_weight)}'.")
-            self.add(indata, outdata)
+            self.add_random_pair(input_weight, output_weight, **kwargs)
+    def set_random_method(self, method:str='rand'):
+        self.rand = rand_select(method)
+    def add_random_pair(self, input_weight=None, output_weight=None, **kwargs):
+        indata, outdata = self.create_random_pair(input_weight, output_weight, **kwargs)
+        self.add(indata, outdata)
+    def create_random_pair(self, input_weight=None, output_weight=None, **kwargs):
+        if self.rand == None and 'rand_method' not in kwargs:
+            print(f"[tolvera._iml.IMLBase] No 'rand' method set. Using 'rand'.")
+            self.set_random_method()
+        elif 'rand_method' in kwargs:
+            self.set_random_method(kwargs['rand_method'])
+        if input_weight is None: input_weight = self.rand_input_weight
+        if output_weight is None: output_weight = self.rand_output_weight
+        indata = self.rand(self.size[0], **kwargs)
+        outdata = self.rand(self.size[1], **kwargs)
+        if input_weight is not None:
+            if isinstance(input_weight, np.ndarray):
+                indata *= torch.from_numpy(input_weight)
+            elif isinstance(input_weight, (torch.Tensor, float, int)):
+                indata *= input_weight
+            elif isinstance(input_weight, list):
+                indata *= torch.Tensor(input_weight)
+            else:
+                raise ValueError(f"[tolvera._iml.IMLBase] Invalid input_weight type '{type(input_weight)}'.")
+        if output_weight is not None:
+            if isinstance(output_weight, np.ndarray):
+                outdata *= torch.from_numpy(output_weight)
+            elif isinstance(output_weight, (torch.Tensor, float, int)):
+                outdata *= output_weight
+            elif isinstance(output_weight, list):
+                outdata *= torch.Tensor(output_weight)
+            else:
+                raise ValueError(f"[tolvera._iml.IMLBase] Invalid output_weight type '{type(output_weight)}'.")
+        return indata, outdata
+    def remove_oldest(self, n:int=1):
+        if len(self.pairs) > n-1:
+            [self.remove(max(self.pairs.keys())) for _ in range(n)]
+    def remove_newest(self, n:int=1):
+        if len(self.pairs) > n-1:
+            [self.remove(max(self.pairs.keys())) for _ in range(n)]
+    def remove_random(self, n:int=1):
+        if len(self.pairs) > n-1:
+            [self.remove(np.random.choice(list(self.pairs.keys()))) for _ in range(n)]
     def lag_mapped_data(self, lag_coef:float=0.5):
         self.data.mapped = self.lag(self.data.mapped, lag_coef)
     def update(self, invec):
+        if len(self.pairs) == 0: return None
         self.data.mapped = self.map(invec, **self.map_kw)
         if hasattr(self, 'lag') and type(self.lag) is Lag: 
             self.lag_mapped_data()
