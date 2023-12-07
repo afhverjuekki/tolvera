@@ -314,3 +314,30 @@ def validate_slice(slice_obj: tuple[slice], target_array: np.ndarray) -> bool:
         if not (0 <= start < size and (0 <= stop <= size or stop == -1)):
             return False
     return True
+
+def norm_freqs(freqs, min_freq=20, max_freq=20000):
+    normalized_freqs = [norm_freq(f, min_freq, max_freq) for f in freqs]
+    return normalized_freqs
+
+def norm_freq(freq, min_freq=20, max_freq=20000):
+    log_freq = np.log10(max(freq, min_freq))
+    normalized_freq = (log_freq - np.log10(min_freq)) / (np.log10(max_freq) - np.log10(min_freq))
+    return normalized_freq
+
+def denorm_freqs(normalized_freqs, min_freq=20, max_freq=20000):
+    denormalized_freqs = [denorm_freq(f, min_freq, max_freq) for f in normalized_freqs]
+    return denormalized_freqs
+
+def denorm_freq(normalized_freq, min_freq=20, max_freq=20000):
+    denormalized_freq = 10**(normalized_freq * (np.log10(max_freq) - np.log10(min_freq)) + np.log10(min_freq))
+    return denormalized_freq
+
+def norm_decibel(decibel, min_db=-120, max_db=0):
+    normalized_decibel = (decibel - min_db) / (max_db - min_db)
+    return normalized_decibel
+
+def npall_are_multiples(arr, tolerance=100):
+    if len(arr) == 0: return True
+    min_element = np.min(arr)
+    ratios = arr / min_element
+    return np.all([np.isclose(ratio, round(ratio), atol=tolerance) for ratio in ratios])

@@ -136,10 +136,10 @@ class State:
 
     def setup_iml_mapping(self):
         self.iml = self.tv.iml
-        if self.iml_set:
-            self.add_iml_setters()
-        if self.iml_get:
-            self.add_iml_getters()
+        # if self.iml_set:
+        #     self.add_iml_setters()
+        # if self.iml_get:
+        #     self.add_iml_getters()
     
     def add_iml_setters(self):
         name = self.setter_name
@@ -159,29 +159,16 @@ class State:
         self.osc = self.tv.osc
         if self.osc_set:
             self.add_osc_setters()
-            if self.iml_set:
-                self.add_iml_osc_setters()
-        if self.osc_get:
-            self.add_osc_getters()
-            if self.iml_get:
-                self.add_iml_osc_getters()
+        #     if self.iml_set:
+        #         self.add_iml_osc_setters()
+        # if self.osc_get:
+        #     self.add_osc_getters()
+        #     if self.iml_get:
+        #         self.add_iml_osc_getters()
 
     def add_osc_setters(self):
         name = self.setter_name
-        # randomise
-        self.osc.map.receive_args_inline(name+'_randomise', self._randomise)
-        # state
-        f = self.osc.map.receive_list_with_idx
-        f(f"{name}_idx", self.set_state_idx_from_list, 2, getattr(self,'len_state_idx'))
-        f(f"{name}_row", self.set_state_row_from_list, 1, getattr(self,'len_state_row'))
-        f(f"{name}_col", self.set_state_col_from_list, 1, getattr(self,'len_state_col'))
-        f(f"{name}_all", self.set_state_all_from_list, 0, getattr(self,'len_state_all'))
-        # state attributes
-        for k,v in self.dict.items():
-            f(f"{name}_{k}_idx", self.set_attr_idx, 2, 1, k)
-            f(f"{name}_{k}_row", self.set_attr_row, 1, getattr(self,'len_attr_row'), k)
-            f(f"{name}_{k}_col", self.set_attr_col, 1, getattr(self,'len_attr_col'), k)
-            f(f"{name}_{k}_all", self.set_attr_all, 0, getattr(self,'len_attr_all'), k)
+        self.osc.map.receive_args_inline(name+'_randomise', self.randomise)
 
     def add_osc_getters(self):
         name = self.getter_name

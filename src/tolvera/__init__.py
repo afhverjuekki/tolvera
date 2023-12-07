@@ -218,6 +218,7 @@ class Tolvera:
         Args:
             **kwargs: Keyword arguments for setup.
         """
+        self._speed    = kwargs.get('speed', 1) # global timebase
         self.particles = kwargs.get('particles', 1024)
         self.species   = kwargs.get('species', 4)
         self.pn = self.particles
@@ -260,6 +261,11 @@ class Tolvera:
         if kwargs is not None:
             self.kwargs = kwargs
         self.setup()
+    def speed(self, speed:float=None):
+        if speed is not None:
+            self._speed = speed
+            self.p.speed(speed)
+        return self._speed
     def add_to_osc_map(self):
         """
         Add top-level Tölvera functions to OSC map.
@@ -269,7 +275,9 @@ class Tolvera:
         self.osc.map.receive_args_inline(setter_name+'_randomise', self.randomise)
         # self.osc.map.receive_args_inline(setter_name+'_reset', self.reset) # TODO: kwargs?
         self.osc.map.receive_args_inline(setter_name+'_particles_randomise', self.p._randomise) # TODO: move inside Particles
-
+        @self.osc.map.receive_args(speed=(1,0,100), count=1)
+        def tolvera_set_speed(speed:float):
+            self.speed(speed)
 
 def main(**kwargs):
     tv = Tolvera(**kwargs)

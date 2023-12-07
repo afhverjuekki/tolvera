@@ -11,7 +11,7 @@ class Species:
             'MIN_SIZE': (ti.f32, 1.),
             'MAX_SIZE': (ti.f32, 4.),
             'MIN_SPEED': (ti.f32, 0.2),
-            'MAX_SPEED': (ti.f32, 4.),
+            'MAX_SPEED': (ti.f32, 2.),
             'MAX_MASS': (ti.f32, 1.),
         })
         self.tv.s.species = ({

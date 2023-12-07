@@ -120,9 +120,8 @@ class IMLBase(iiIML):
             map_kw (dict, optional): kwargs to use in IML.map().
             infun_kw (dict, optional): kwargs to use in infun() (type 'Fun2*' only).
             outfun_kw (dict, optional): kwargs to use in outfun() (type '*2Fun' only).
-            lag (bool, optional): Lag mapped data (defaults to False).
+            lag (bool, optional): Lag mapped data (defaults to False). Incompatible with '*2Fun' types.
             lag_coef (float, optional): Lag coefficient (defaults to 0.5 if `lag` is True).
-            TODO: add Lag/Interpolate
     """
     def __init__(self, **kwargs) -> None:
         assert 'size' in kwargs, f"IMLBase requires 'size' kwarg."
@@ -146,10 +145,11 @@ class IMLBase(iiIML):
             self.rand_method = kwargs.get('rand_method', 'rand')
             self.rand_kw = kwargs.get('rand_kw', {})
             self.randomise(self.rand_pairs, self.rand_input_weight, self.rand_output_weight, self.rand_method, **self.rand_kw)
-        if 'lag' in kwargs:
-            if kwargs['lag'] is True:
-                self.lag_coef = kwargs.get('lag_coef', 0.5)
-                self.lag = Lag(coef=self.lag_coef)
+        self.lag = kwargs.get('lag', False)
+        if self.lag:
+            self.lag_coef = kwargs.get('lag_coef', 0.5)
+            self.lag = Lag(coef=self.lag_coef)
+            print(f"[tolvera._iml.IMLBase] Lagging mapped data with coef {self.lag_coef}.")
     def randomise(self, times:int, input_weight=None, output_weight=None, method:str='rand', **kwargs):
         self.rand = rand_select(method)
         while len(self.pairs) < times:
