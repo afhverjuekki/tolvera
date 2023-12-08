@@ -17,10 +17,14 @@ class Slime:
     def __init__(self, tolvera, evaporate: ti.f32 = 0.99, **kwargs):
         self.tv = tolvera
         self.kwargs = kwargs
+        brightness = kwargs.get('brightness', 1.0)
         self.CONSTS = CONSTS({
             'SENSE_ANGLE': (ti.f32, ti.math.pi * 0.3),
+            'SENSE_DIST':  (ti.f32, 50.),
             'MOVE_ANGLE':  (ti.f32, ti.math.pi * 0.3),
-            'SUBSTEP':     (ti.i32, 1)
+            'MOVE_DIST':   (ti.f32, 4.),
+            'SUBSTEP':     (ti.i32, 1),
+            'BRIGHTNESS': (ti.f32, brightness)
         })
         self.tv.s.slime_p = {'state': {
             'sense_angle':  (ti.f32, 0., 10.),
@@ -31,9 +35,9 @@ class Slime:
         'osc': ('get'), 'randomise': True}
         self.tv.s.slime_s = {'state': {
             'sense_angle': (ti.f32, 0., 1.),
-            'sense_dist':  (ti.f32, 0., 50.),
+            'sense_dist':  (ti.f32, 0., 1.),
             'move_angle':  (ti.f32, 0., 1.),
-            'move_dist':   (ti.f32, 0., 4.),
+            'move_dist':   (ti.f32, 0., 1.),
             'evaporate':   (ti.f32, 0., 1.)
         }, 'shape': self.tv.sn, # multi-species: (self.tv.sn, self.tv.sn),
         'osc': ('set'), 'randomise': True}
@@ -44,7 +48,7 @@ class Slime:
         self.tv.s.slime_s.randomise()
         self.tv.s.slime_p.randomise()
     @ti.kernel
-    def move(self, field: ti.template()):
+    def move(self, field: ti.template(), weight: ti.f32):
         for i in range(field.shape[0]):
             if field[i].active == 0.0: continue
 
@@ -53,11 +57,13 @@ class Slime:
             species = self.tv.s.slime_s[p.species]
 
             sense_angle = species.sense_angle * self.CONSTS.SENSE_ANGLE
+            sense_dist  = species.sense_dist  * self.CONSTS.SENSE_DIST
             move_angle  = species.move_angle  * self.CONSTS.MOVE_ANGLE
+            move_dist   = species.move_dist   * self.CONSTS.MOVE_DIST
             
-            c = self.sense(p.pos, ang, species.sense_dist).norm()
-            l = self.sense(p.pos, ang - sense_angle, species.sense_dist).norm()
-            r = self.sense(p.pos, ang + sense_angle, species.sense_dist).norm()
+            c = self.sense(p.pos, ang, sense_dist).norm()
+            l = self.sense(p.pos, ang - sense_angle, sense_dist).norm()
+            r = self.sense(p.pos, ang + sense_angle, sense_dist).norm()
             
             if l < c < r:
                 ang += move_angle
@@ -68,7 +74,7 @@ class Slime:
                 ang += move_angle * (2 * (ti.random() < 0.5) - 1)
             
             p.pos += ti.Vector([ti.cos(ang), ti.sin(ang)]) \
-                * species.move_dist * p.active
+                * move_dist * p.active * weight
             
             self.tv.s.slime_p[i].sense_angle  = ang
             self.tv.s.slime_p[i].sense_centre = c
@@ -100,12 +106,13 @@ class Slime:
             p, s = particles[i], species[particles[i].species]
             x = ti.cast(p.pos[0], ti.i32) % self.tv.x
             y = ti.cast(p.pos[1], ti.i32) % self.tv.y
-            self.trail.circle(x, y, p.size, s.rgba * p.active)
-    def step(self, particles, species):
+            rgba = s.rgba * self.CONSTS.BRIGHTNESS * p.active
+            self.trail.circle(x, y, p.size, rgba)
+    def step(self, particles, species, weight:ti.f32=1.0):
         for i in range(self.CONSTS.SUBSTEP):
-            self.move(particles.field)
+            self.move(particles.field, weight)
             self.deposit_particles(particles.field, species)
             self.trail.diffuse(self.evaporate[None])
-    def __call__(self, particles, species):
-        self.step(particles, species)
+    def __call__(self, particles, species, weight:ti.f32=1.0):
+        self.step(particles, species, weight)
         return self.trail

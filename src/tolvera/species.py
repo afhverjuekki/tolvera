@@ -11,7 +11,7 @@ class Species:
             'MIN_SIZE': (ti.f32, 1.),
             'MAX_SIZE': (ti.f32, 4.),
             'MIN_SPEED': (ti.f32, 0.2),
-            'MAX_SPEED': (ti.f32, 2.),
+            'MAX_SPEED': (ti.f32, 3.),
             'MAX_MASS': (ti.f32, 1.),
         })
         self.tv.s.species = ({
@@ -19,7 +19,7 @@ class Species:
             'speed': (ti.f32, 0., 1.),
             'mass':  (ti.f32, 0., 1.),
             # 'decay': (ti.f32, .9, .999),
-            'rgba':  (ti.math.vec4, 0., 1.),
+            'rgba':  (ti.math.vec4, 0.25, 1.),
         }, self.n, 'set', 'set')
         # self.tv.s.species = ({
         #     'size':  (ti.f32, 1., 4.),

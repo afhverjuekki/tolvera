@@ -205,6 +205,10 @@ class IMLBase(iiIML):
         if hasattr(self, 'lag') and type(self.lag) is Lag: 
             self.lag_mapped_data()
         return self.data.mapped
+    def update_rate(self, rate:int=None):
+        if rate is not None:
+            self.updater.count = rate
+        return self.updater.count
     def __call__(self, *args) -> Any:
         return self.updater(*args)
 

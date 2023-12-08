@@ -12,6 +12,8 @@ import taichi as ti
 from taichi.lang.struct import StructField
 from taichi.lang.matrix import MatrixField
 
+from .utils import CONSTS
+
 vec1 = ti.types.vector(1, ti.f32)
 vec2 = ti.math.vec2
 vec3 = ti.math.vec3
@@ -77,6 +79,10 @@ class Pixels:
         self.x = self.tv.x
         self.y = self.tv.y
         self.px = Pixel.field(shape=(self.x, self.y))
+        brightness=kwargs.get('brightness', 1.)
+        self.CONSTS = CONSTS({
+            'BRIGHTNESS': (ti.f32, brightness),
+        })
         self.shape_enum = {
             'point':    0,
             'line':     1,
@@ -322,22 +328,23 @@ class Pixels:
             py = ti.cast(p.pos[1], ti.i32)
             vx = ti.cast(p.pos[0] + p.vel[0]*20, ti.i32)
             vy = ti.cast(p.pos[1] + p.vel[1]*20, ti.i32)
+            rgba = s.rgba * self.CONSTS.BRIGHTNESS
             if shape == 0:
-                self.point(px, py, s.rgba)
+                self.point(px, py, rgba)
             elif shape == 1:
-                self.line(px, py, vx, vy, s.rgba)
+                self.line(px, py, vx, vy, rgba)
             elif shape == 2:
                 side = int(s.size)*2
-                self.rect(px, py, side, side, s.rgba)
+                self.rect(px, py, side, side, rgba)
             elif shape == 3:
-                self.circle(px, py, p.size, s.rgba)
+                self.circle(px, py, p.size, rgba)
             elif shape == 4:
                 a = p.pos
                 b = p.pos + 1
                 c = a + b
-                self.triangle(a,b,c, s.rgba)
+                self.triangle(a,b,c, rgba)
             # elif shape == 5:
-            #     self.polygon(px, py, s.rgba)
+            #     self.polygon(px, py, rgba)
     @ti.kernel
     def update(self):
         pass

@@ -341,3 +341,6 @@ def npall_are_multiples(arr, tolerance=100):
     min_element = np.min(arr)
     ratios = arr / min_element
     return np.all([np.isclose(ratio, round(ratio), atol=tolerance) for ratio in ratios])
+
+def map_range(arr, in_min, in_max, out_min, out_max):
+    return out_min + ((arr - in_min) * (out_max - out_min)) / (in_max - in_min)

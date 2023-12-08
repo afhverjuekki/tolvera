@@ -38,7 +38,7 @@ class Flock:
     def randomise(self):
         self.tv.s.flock_s.randomise()
     @ti.kernel
-    def step(self, particles: ti.template()):
+    def step(self, particles: ti.template(), weight: ti.f32):
         n = particles.shape[0]
         for i in range(n):
             if particles[i].active == 0: continue
@@ -62,13 +62,12 @@ class Flock:
                 self.tv.s.flock_dist[i,j].dist = p1.dist(p2).norm()
                 self.tv.s.flock_dist[i,j].dist_wrap = dis_wrap_norm
             if nearby > 0:
-                separate = separate/nearby        * p1.active * species.separate
+                separate = separate/nearby        * p1.active * ti.math.max(species.separate, 0.2)
                 align    = align/nearby           * p1.active * species.align
                 cohere   = (cohere/nearby-p1.pos) * p1.active * species.cohere
                 vel      = (separate+align+cohere).normalized()
-                particles[i].vel += vel
+                particles[i].vel += vel * weight
                 particles[i].pos += particles[i].vel * p1.speed * p1.active
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(separate, align, cohere, nearby)
-
-    def __call__(self, particles):
-        self.step(particles.field)
+    def __call__(self, particles, weight:ti.f32=1.0):
+        self.step(particles.field, weight)

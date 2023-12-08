@@ -189,6 +189,15 @@ class Particles:
                     self.field[j].active = 0
                 else:
                     self.field[j].active = 1
+    @ti.kernel
+    def set_active_amount(self, a: ti.f32):
+        for i in range(self.field.shape[0]):
+            self.field[i].active = a
+    @ti.kernel
+    def set_species_active_amount(self, i: ti.i32, a: ti.f32):
+        for j in range(self.field.shape[0]):
+            if self.field[j].species == i:
+                self.field[j].active = a
     def set_pos(self, i, x, y):
         self.field[i].pos = [x, y]
     def set_vel(self, i, x, y):
@@ -222,8 +231,8 @@ class Particles:
         # TODO: Only send active particle positions...? Or inactive=-1?
         for i in range(self.n):
             p = self.field[i]
-            if p.active > 0.0:
-                self.tmp_pos[i] = p.pos / [self.tv.x, self.tv.y]
+            # if p.active > 0.0: # causes IML shape assertion error
+            self.tmp_pos[i] = p.pos / [self.tv.x, self.tv.y]
             # else:
             #     self.tmp_pos[i] = [0.0,0.0] # ???
     @ti.kernel
@@ -302,7 +311,7 @@ class Particles:
         self.init()
     def speed(self, speed: float=None):
         if speed is not None:
-            self._speed[None] = speed
+            self._speed[None] = 1/speed
         else:
             return self._speed[None]
     def __call__(self):
