@@ -210,7 +210,8 @@ class Lag:
     def __init__(self, val:Any=None, coef:float=0.5):
         self.coef = coef
         self.val = val
-    def __call__(self, val:Any, coef:float=None):
+    def __call__(self, val:Any=None, coef:float=None):
+        if val is None: return self.val
         if coef is not None: self.coef = coef
         if self.val is None: self.val = val
         else: self.val = self._update_val(self.val, val)
