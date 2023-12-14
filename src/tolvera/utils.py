@@ -327,12 +327,12 @@ def create_safe_slice(arg: Union[int, tuple[int, ...], slice]) -> slice:
         raise type(e)(f"[create_safe_slice] Error creating slice: {e}")
 
 
-def create_ndslices(dims: list[tuple, ...]) -> np.s_:
+def create_ndslices(dims: list[tuple]) -> np.s_:
     """
     Create a multi-dimensional slice from a list of tuples.
 
     Args:
-        dims (list[tuple, ...]): A list of tuples containing the slice parameters for each dimension.
+        dims (list[tuple]): A list of tuples containing the slice parameters for each dimension.
 
     Returns:
         np.s_: A multi-dimensional slice object.

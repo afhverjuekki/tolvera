@@ -2,12 +2,12 @@ from sys import exit
 
 from iipyper.state import _lock
 
+from ._taichi import Taichi
 from .cv import CV
 from .iml import IMLDict
 from .osc import OSC
 from .patches import *
 from .pixels import *
-from .ti import Taichi
 from .utils import *
 
 
