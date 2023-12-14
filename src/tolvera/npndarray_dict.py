@@ -1,15 +1,16 @@
-from taichi import i32, f32
-from taichi.math import vec2, vec3, vec4
-import numpy as np
 from collections import defaultdict
-from typing import Any, Union, Callable
-from iipyper import ndarray_from_json, ndarray_to_json, ndarray_from_repr
+from typing import Any, Callable, Union
 
-from .utils import flatten, create_safe_slice
+import numpy as np
+from iipyper import ndarray_from_json, ndarray_from_repr, ndarray_to_json
+from taichi import f32, i32
+from taichi.math import vec2, vec3, vec4
 
-np_vec2 = np.array([0.,0.], dtype=np.float32)
-np_vec3 = np.array([0.,0.,0.], dtype=np.float32)
-np_vec4 = np.array([0.,0.,0.,0.], dtype=np.float32)
+from .utils import create_safe_slice, flatten
+
+np_vec2 = np.array([0.0, 0.0], dtype=np.float32)
+np_vec3 = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+np_vec4 = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
 TiNpTypeMap = {
     i32: np.int32,
@@ -18,6 +19,7 @@ TiNpTypeMap = {
     vec3: np_vec3,
     vec4: np_vec4,
 }
+
 
 def dict_from_vector_args(a: list, scalars=None):
     """Convert a list of arguments to a dictionary.
@@ -38,13 +40,14 @@ def dict_from_vector_args(a: list, scalars=None):
             k = item
         else:
             if k is None:
-                print(f'ERROR: bad syntax in {a}')
+                print(f"ERROR: bad syntax in {a}")
             kw[k].append(item)
     # unwrap scalars
     for item in scalars or []:
         if item in kw:
             kw[item] = kw[item][0]
     return kw
+
 
 def dict_to_vector_args(kw):
     """Convert a dictionary to a list of arguments.
@@ -70,11 +73,12 @@ def dict_to_vector_args(kw):
             args.append(value)
     return args
 
+
 def ndarraydict_from_vector_args(lst, shapes):
     """Convert a list to a dictionary where each list is turned into a numpy array.
 
-    This function takes a list in the format output by `dict_from_vector_args` and converts it 
-    into a dictionary. Each key's list of values is converted into a numpy array with a 
+    This function takes a list in the format output by `dict_from_vector_args` and converts it
+    into a dictionary. Each key's list of values is converted into a numpy array with a
     specified shape.
 
     Args:
@@ -85,6 +89,7 @@ def ndarraydict_from_vector_args(lst, shapes):
     Returns:
     - A dictionary with keys mapped to numpy arrays.
     """
+
     def flatten(lst):
         """Flatten a nested list or return a non-nested list as is."""
         if all(isinstance(el, list) for el in lst):
@@ -105,10 +110,13 @@ def ndarraydict_from_vector_args(lst, shapes):
             values = flatten(kw[key])
             array_size = np.prod(shape)
             if len(values) != array_size:
-                raise ValueError(f"Shape mismatch for key '{key}': expected {array_size} elements, got {len(values)}.")
+                raise ValueError(
+                    f"Shape mismatch for key '{key}': expected {array_size} elements, got {len(values)}."
+                )
             kw[key] = np.array(values).reshape(shape)
 
     return dict(kw)
+
 
 def shapes_from_ndarray_dict(ndarray_dict):
     """Return a dictionary of shapes given a dictionary of numpy ndarrays.
@@ -127,14 +135,15 @@ def shapes_from_ndarray_dict(ndarray_dict):
         shapes[key] = array.shape
     return shapes
 
+
 class NpNdarrayDict:
     """
-    A class that encapsulates a dictionary of NumPy ndarrays, each associated with a specific data type and a defined min-max range. 
-    It provides a structured and efficient way to manage and manipulate multidimensional arrays with constraints on their values. 
+    A class that encapsulates a dictionary of NumPy ndarrays, each associated with a specific data type and a defined min-max range.
+    It provides a structured and efficient way to manage and manipulate multidimensional arrays with constraints on their values.
 
     Attributes:
-        data (Dict[str, Dict[str, Union[np.ndarray, Any]]]): A dictionary where each key represents an attribute, 
-        and the value is another dictionary with keys 'array', 'min', and 'max', representing the ndarray, 
+        data (Dict[str, Dict[str, Union[np.ndarray, Any]]]): A dictionary where each key represents an attribute,
+        and the value is another dictionary with keys 'array', 'min', and 'max', representing the ndarray,
         its minimum value, and its maximum value, respectively.
         shape (Tuple[int, int]): The shape of the ndarrays, which is consistent across all attributes.
 
@@ -150,6 +159,7 @@ class NpNdarrayDict:
         >>> print(state.get_value('i', (0, 0)))
         5
     """
+
     def __init__(self, data_dict: dict[str, tuple[Any, Any, Any]], shape: tuple[int]):
         """
         Initialize the State class.
@@ -162,8 +172,10 @@ class NpNdarrayDict:
         """
         self.shape = shape
         self.init(data_dict, shape)
-    
-    def init(self, data_dict: dict[str, tuple[Any, Any, Any]], shape: tuple[int]) -> None:
+
+    def init(
+        self, data_dict: dict[str, tuple[Any, Any, Any]], shape: tuple[int]
+    ) -> None:
         self.dict = {}
         self.data = {}
         self.size = 0
@@ -176,42 +188,44 @@ class NpNdarrayDict:
                 length = dtype.shape[0]
                 dtype = np.float32
             self.dict[key] = {
-                'dtype': dtype, 
-                'min': min_val, 
-                'max': max_val, 
-                'length': length,
-                'shape': dshape,
-                'ndims': len(dshape),
+                "dtype": dtype,
+                "min": min_val,
+                "max": max_val,
+                "length": length,
+                "shape": dshape,
+                "ndims": len(dshape),
             }
             self.data[key] = np.zeros(dshape, dtype=dtype)
             size = self.data[key].size
-            self.dict[key]['size'] = size
+            self.dict[key]["size"] = size
             self.size += size
 
     """
     to|from vec | list (iml)
     """
-    
+
     def from_vec(self, vec: list):
         vec_start = 0
         for key in self.data.keys():
-            attr_vec_size = self.dict[key]['size']
-            attr_vec = vec[vec_start:vec_start + attr_vec_size]
+            attr_vec_size = self.dict[key]["size"]
+            attr_vec = vec[vec_start : vec_start + attr_vec_size]
             self.attr_from_vec(key, attr_vec)
             vec_start += attr_vec_size
-    
+
     def to_vec(self) -> list:
         vec = []
         for key in self.data.keys():
             vec += self.attr_to_vec(key).tolist()
         return vec
-    
-    def attr_from_vec(self, attr:str, vec: list):
+
+    def attr_from_vec(self, attr: str, vec: list):
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
-        attr_shape, attr_dtype = self.dict[attr]['shape'], self.dict[attr]['dtype']
+        attr_shape, attr_dtype = self.dict[attr]["shape"], self.dict[attr]["dtype"]
         if len(vec) != np.prod(attr_shape):
-            raise ValueError(f"Length of vec {len(vec)} does not match the shape of {attr} {attr_shape}")
+            raise ValueError(
+                f"Length of vec {len(vec)} does not match the shape of {attr} {attr_shape}"
+            )
         nparr = np.array(vec, dtype=attr_dtype)
         if len(attr_shape) > 1:
             nparr = np.reshape(nparr, attr_shape)
@@ -220,19 +234,21 @@ class NpNdarrayDict:
         except ValueError as e:
             print(f"ValueError occurred while setting {attr}: {e}")
             raise
-    
-    def attr_to_vec(self, attr:str) -> list:
+
+    def attr_to_vec(self, attr: str) -> list:
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         vec = self.data[attr].flatten()
         return vec
-    
-    def slice_from_vec(self, slice_args:Union[int, tuple[int, ...], slice], slice_vec: list):
+
+    def slice_from_vec(
+        self, slice_args: Union[int, tuple[int, ...], slice], slice_vec: list
+    ):
         # TODO: unique slice obj needed per key...
         # slice_obj = create_safe_slice(slice_args)
         raise NotImplementedError(f"slice_from_vec()")
-    
-    def slice_to_vec(self, slice_args:Union[int, tuple[int, ...], slice]) -> list:
+
+    def slice_to_vec(self, slice_args: Union[int, tuple[int, ...], slice]) -> list:
         # TODO: unique slice obj needed per key...
         # vec = []
         # for key in self.data.keys():
@@ -240,12 +256,14 @@ class NpNdarrayDict:
         #     vec += self.attr_slice_to_vec(key, slice_obj)
         # return vec
         raise NotImplementedError(f"slice_from_vec()")
-    
-    def attr_slice_from_vec(self, attr:str, slice_args:Union[int, tuple[int, ...], slice], slice_vec: list):
+
+    def attr_slice_from_vec(
+        self, attr: str, slice_args: Union[int, tuple[int, ...], slice], slice_vec: list
+    ):
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)
-        attr_shape, attr_dtype = self.dict[attr]['shape'], self.dict[attr]['dtype']
+        attr_shape, attr_dtype = self.dict[attr]["shape"], self.dict[attr]["dtype"]
         nparr = np.array(slice_vec, dtype=attr_dtype)
         if len(attr_shape) > 1:
             nparr = np.reshape(nparr, attr_shape)
@@ -254,23 +272,27 @@ class NpNdarrayDict:
         except ValueError as e:
             print(f"ValueError occurred while setting slice: {e}")
             raise
-    
-    def attr_slice_to_vec(self, attr:str, slice_args:Union[int, tuple[int, ...], slice]) -> list:
+
+    def attr_slice_to_vec(
+        self, attr: str, slice_args: Union[int, tuple[int, ...], slice]
+    ) -> list:
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)
         vec = self.data[attr][slice_obj].flatten()
         return vec
-    
+
     """
     vec slice helpers
     """
-    
-    def get_slice_size(self, slice_args:Union[int, tuple[int, ...], slice]) -> int:
+
+    def get_slice_size(self, slice_args: Union[int, tuple[int, ...], slice]) -> int:
         slice_obj = create_safe_slice(slice_args)
         return np.sum([self.data[key][slice_obj].size for key in self.data.keys()])
 
-    def get_attr_slice_size(self, attr:str, slice_args:Union[int, tuple[int, ...], slice]) -> int:
+    def get_attr_slice_size(
+        self, attr: str, slice_args: Union[int, tuple[int, ...], slice]
+    ) -> int:
         if attr not in self.data:
             raise KeyError(f"Key {attr} not in {self.data.keys()}")
         slice_obj = create_safe_slice(slice_args)
@@ -283,7 +305,6 @@ class NpNdarrayDict:
     """
     to|from ndarray | ndarraydict (serialised formats, complex osc)
     """
-    
 
     """
     ...
@@ -293,12 +314,16 @@ class NpNdarrayDict:
         for key, values in slice_values.items():
             if key not in self.data:
                 raise KeyError(f"Key {key} not found in data")
-            
+
             array_slice = self.data[key][slice_indices]
             if array_slice.shape != np.array(values).shape:
-                raise ValueError(f"Shape {array_slice.shape} of values for key {key} does not match the shape of the slice {np.array(values).shape}")
+                raise ValueError(
+                    f"Shape {array_slice.shape} of values for key {key} does not match the shape of the slice {np.array(values).shape}"
+                )
 
-            self.data[key][slice_indices] = np.array(values, dtype=self.dict[key]['dtype'])
+            self.data[key][slice_indices] = np.array(
+                values, dtype=self.dict[key]["dtype"]
+            )
 
     # def list_to_dict(self, _list: list) -> dict:
     #     """
@@ -330,34 +355,38 @@ class NpNdarrayDict:
 
         for key in self.data.keys():
             # Determine the total number of elements required for the current key
-            num_elements = np.prod(self.dict[key]['shape'][1:])
+            num_elements = np.prod(self.dict[key]["shape"][1:])
             print(f"[{key}] num_elements: {num_elements}")
-            
+
             # Extract the slice from slice_values_list and reshape if necessary
-            slice_shape = self.dict[key]['shape'][1:]
-            slice = slice_values_list[list_index:list_index + num_elements]
+            slice_shape = self.dict[key]["shape"][1:]
+            slice = slice_values_list[list_index : list_index + num_elements]
             print(f"[{key}] slice_shape: {slice_shape}, slice: {slice}")
-            
+
             # Check if the slice has the correct length
             if len(slice) != num_elements:
-                raise ValueError(f"Slice length {len(slice)} for key {key} does not match the number of elements {num_elements}")
-            
+                raise ValueError(
+                    f"Slice length {len(slice)} for key {key} does not match the number of elements {num_elements}"
+                )
+
             # Reshape the slice for ndarrays with more than 2 dimensions
             if len(slice_shape) > 1:
                 slice = np.reshape(slice, slice_shape)
                 print(f"[{key}] (reshaping) slice_shape: {slice_shape}, slice: {slice}")
-            
+
             # Assign the slice to the corresponding key
             self.data[key][slice_indices] = slice
-            
+
             list_index += num_elements
             print(f"[{key}] list_index: {list_index}, num_elements: {num_elements}")
-        
+
         print(f"data: {self.data}")
 
         # Check if there are extra values in slice_values_list
         if list_index != len(slice_values_list):
-            raise ValueError(f"Extra values {slice_values_list[list_index:]} in slice_values_list {slice_values_list} that do not correspond to any array")
+            raise ValueError(
+                f"Extra values {slice_values_list[list_index:]} in slice_values_list {slice_values_list} that do not correspond to any array"
+            )
 
     def set_data(self, new_data: dict[str, np.ndarray]) -> None:
         """
@@ -394,15 +423,19 @@ class NpNdarrayDict:
         and maximum values for each attribute.
         """
         for key in self.data:
-            data_type = self.dict[key]['dtype']
-            min_val   = self.dict[key]['min']
-            max_val   = self.dict[key]['max']
-            shape     = self.dict[key]['shape']
+            data_type = self.dict[key]["dtype"]
+            min_val = self.dict[key]["min"]
+            max_val = self.dict[key]["max"]
+            shape = self.dict[key]["shape"]
 
             if np.issubdtype(data_type, np.integer):
-                self.data[key] = np.random.randint(min_val, max_val + 1, size=shape, dtype=data_type)
+                self.data[key] = np.random.randint(
+                    min_val, max_val + 1, size=shape, dtype=data_type
+                )
             elif np.issubdtype(data_type, np.floating):
-                self.data[key] = np.random.uniform(min_val, max_val, size=shape).astype(data_type)
+                self.data[key] = np.random.uniform(min_val, max_val, size=shape).astype(
+                    data_type
+                )
             # Add more conditions here if you have other data types
 
     def attr_apply(self, key: str, func: Callable[[np.ndarray], np.ndarray]) -> None:
@@ -418,10 +451,15 @@ class NpNdarrayDict:
         """
         if key not in self.data:
             raise KeyError(f"Key {key} not found")
-        
+
         self.data[key] = func(self.data[key])
 
-    def attr_broadcast(self, key: str, other: Union[np.ndarray, 'NpNdarrayDict'], op: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> None:
+    def attr_broadcast(
+        self,
+        key: str,
+        other: Union[np.ndarray, "NpNdarrayDict"],
+        op: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    ) -> None:
         """
         Perform a broadcasting operation between the array of the specified key and another array or NpNdarrayDict.
 
@@ -444,12 +482,16 @@ class NpNdarrayDict:
         elif isinstance(other, np.ndarray):
             other_array = other
         else:
-            raise ValueError("The 'other' parameter must be either a NumPy ndarray or NpNdarrayDict")
+            raise ValueError(
+                "The 'other' parameter must be either a NumPy ndarray or NpNdarrayDict"
+            )
 
         result = op(self.data[key], other_array)
 
         # Check if the result is within the allowed min-max range
-        if np.any(result < self.dict[key]['min']) or np.any(result > self.dict[key]['max']):
+        if np.any(result < self.dict[key]["min"]) or np.any(
+            result > self.dict[key]["max"]
+        ):
             raise ValueError("Operation result violates min-max constraints")
 
         self.data[key] = result

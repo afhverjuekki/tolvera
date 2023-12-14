@@ -1,4 +1,4 @@
-'''
+"""
 TODO: save/load? serialise/deserialise
 TODO: OSCMap getters
     state analysers -> OSC senders
@@ -9,23 +9,26 @@ TODO: Sardine: pattern utils?
 TODO: @ti.func struct methods - can these be monkey patched?
     if not add to constructor as a dict
     use case would be Particles.Particle
-'''
+"""
 
 from typing import Any
-from taichi._lib.core.taichi_python import DataType
-import taichi as ti
-import numpy as np
-import jsons
 
-from .npndarray_dict import NpNdarrayDict, np_vec2, np_vec3, np_vec4, TiNpTypeMap
+import jsons
+import numpy as np
+import taichi as ti
+from taichi._lib.core.taichi_python import DataType
+
+from .npndarray_dict import NpNdarrayDict, TiNpTypeMap, np_vec2, np_vec3, np_vec4
 from .utils import *
+
 
 class StateDict(dotdict):
     def __init__(self, tolvera) -> None:
         self.tv = tolvera
         self.size = 0
+
     def set(self, name, kwargs: Any) -> None:
-        if name in self and name != 'size':
+        if name in self and name != "size":
             raise ValueError(f"[tolvera.state.StateDict] '{name}' already in dict.")
         try:
             self.add(name, kwargs)
@@ -38,10 +41,11 @@ class StateDict(dotdict):
         except Exception as e:
             print(f"[tolvera.state.StateDict] UnexpectedError setting {name}: {e}")
             raise
+
     def add(self, name, kwargs: Any):
-        if name == 'tv' and type(kwargs) is not dict and type(kwargs) is not tuple:
+        if name == "tv" and type(kwargs) is not dict and type(kwargs) is not tuple:
             self[name] = kwargs
-        elif name == 'size' and type(kwargs) is int:
+        elif name == "size" and type(kwargs) is int:
             self[name] = kwargs
         elif type(kwargs) is dict:
             self[name] = State(self.tv, name=name, **kwargs)
@@ -50,33 +54,44 @@ class StateDict(dotdict):
             self[name] = State(self.tv, name, *kwargs)
             self.size += self[name].size
         else:
-            raise TypeError(f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}")
+            raise TypeError(
+                f"[tolvera.state.StateDict] set() requires dict|tuple, not {type(kwargs)}"
+            )
+
     def from_vec(self, states: list[str], vector: list[float]):
         sizes_sum = self.get_size(states)
-        assert sizes_sum == len(vector), f"sizes_sum={sizes_sum} != len(vector)={len(vector)}"
+        assert sizes_sum == len(
+            vector
+        ), f"sizes_sum={sizes_sum} != len(vector)={len(vector)}"
         vec_start = 0
         for state in states:
             s = self.tv.s[state]
-            vec = vector[vec_start:vec_start+s.size]
+            vec = vector[vec_start : vec_start + s.size]
             s.from_vec(vec)
             vec_start += s.size
-    def get_size(self, states: str|list[str]) -> int:
-        if isinstance(states, str): states = [states]
+
+    def get_size(self, states: str | list[str]) -> int:
+        if isinstance(states, str):
+            states = [states]
         return sum([self.tv.s[state].size for state in states])
+
     def __setattr__(self, __name: str, __value: Any) -> None:
         self.set(__name, __value)
 
+
 @ti.data_oriented
 class State:
-    def __init__(self, 
-                 tolvera,
-                 name: str,
-                 state: dict[str, tuple[DataType, Any, Any]],
-                 shape: int|tuple[int] = None,
-                 iml: str|tuple = None, # 'get' | ('get', 'set')
-                 osc: str|tuple = None, # 'get' | ('get', 'set')
-                 randomise: bool = True,
-                 methods: dict[str, Any] = None):
+    def __init__(
+        self,
+        tolvera,
+        name: str,
+        state: dict[str, tuple[DataType, Any, Any]],
+        shape: int | tuple[int] = None,
+        iml: str | tuple = None,  # 'get' | ('get', 'set')
+        osc: str | tuple = None,  # 'get' | ('get', 'set')
+        randomise: bool = True,
+        methods: dict[str, Any] = None,
+    ):
         self.tv = tolvera
         assert name is not None, "State must have a name."
         self.name = name
@@ -84,19 +99,33 @@ class State:
         self.setup_data(state, shape, randomise, methods)
         self.setup_accessors(iml, osc)
 
-    def setup_data(self, dict: dict[str, tuple[DataType, Any, Any]], shape: int|tuple[int], randomise: bool = True, methods: dict[str, Any] = None):
+    def setup_data(
+        self,
+        dict: dict[str, tuple[DataType, Any, Any]],
+        shape: int | tuple[int],
+        randomise: bool = True,
+        methods: dict[str, Any] = None,
+    ):
         self.create_struct_field(dict, shape, methods)
         self.create_npndarray_dict()
-        if randomise: self.randomise()
+        if randomise:
+            self.randomise()
 
-    def create_struct_field(self, dict: dict[str, tuple[DataType, Any, Any]], shape: int|tuple[int], methods: dict[str, Any] = None):
+    def create_struct_field(
+        self,
+        dict: dict[str, tuple[DataType, Any, Any]],
+        shape: int | tuple[int],
+        methods: dict[str, Any] = None,
+    ):
         self.dict = dict
         self.shape = (shape,) if isinstance(shape, int) else shape
         if methods is None:
             self.struct = ti.types.struct(**{k: v[0] for k, v in self.dict.items()})
         else:
             self.methods = methods if methods is not None else {}
-            self.struct = ti.types.struct(**{k: v[0] for k, v in self.dict.items()}, methods=self.methods)
+            self.struct = ti.types.struct(
+                **{k: v[0] for k, v in self.dict.items()}, methods=self.methods
+            )
         self.field = self.struct.field(shape=self.shape)
 
     def create_npndarray_dict(self):
@@ -113,8 +142,8 @@ class State:
     def randomise(self):
         self.nddict.randomise()
         self.from_nddict()
-    
-    def setup_accessors(self, iml: tuple=None, osc: tuple=None):
+
+    def setup_accessors(self, iml: tuple = None, osc: tuple = None):
         self.setter_name = f"{self.tv.name_clean}_set_{self.name}"
         self.getter_name = f"{self.tv.name_clean}_get_{self.name}"
         self.handle_accessor_flags(iml, osc)
@@ -129,9 +158,10 @@ class State:
 
     def handle_get_set(self, flag):
         enabled = flag is not None
-        if isinstance(flag, str): flag = (flag,)
-        get = 'get' in flag if enabled else False
-        set = 'set' in flag if enabled else False
+        if isinstance(flag, str):
+            flag = (flag,)
+        get = "get" in flag if enabled else False
+        set = "set" in flag if enabled else False
         return enabled, get, set
 
     def setup_iml_mapping(self):
@@ -140,20 +170,20 @@ class State:
         #     self.add_iml_setters()
         # if self.iml_get:
         #     self.add_iml_getters()
-    
+
     def add_iml_setters(self):
         name = self.setter_name
         """
         self.iml[name] = IMLOSCToFunc(self.tv)
         """
-        self.iml.add_instance(name+'')
+        self.iml.add_instance(name + "")
 
     def add_iml_getters(self):
         name = self.getter_name
         """
         self.iml[name] = IMLFuncToOSC(self.tv)
         """
-        self.iml.add_instance(name+'')
+        self.iml.add_instance(name + "")
 
     def setup_osc_mapping(self):
         self.osc = self.tv.osc
@@ -168,27 +198,29 @@ class State:
 
     def add_osc_setters(self):
         name = self.setter_name
-        self.osc.map.receive_args_inline(name+'_randomise', self.randomise)
+        self.osc.map.receive_args_inline(name + "_randomise", self.randomise)
 
     def add_osc_getters(self):
         name = self.getter_name
-        for k,v in self.dict.items():
+        for k, v in self.dict.items():
             ranges = (int(v[0]), int(v[0]), int(v[1]))
-            kwargs = {'i': ranges, 'j': ranges, 'attr': (k,k,k)}
+            kwargs = {"i": ranges, "j": ranges, "attr": (k, k, k)}
             self.osc.map.receive_args_inline(f"{name}", self.osc_getter, **kwargs)
 
     def osc_getter(self, i: int, j: int, attribute: str):
-        ret = self.get((i,j), attribute)
+        ret = self.get((i, j), attribute)
         if ret is not None:
-            route = self.osc.map.pascal_to_path(self.getter_name)#+'/'+attribute
-            self.osc.host.return_to_sender_by_name((route, attribute,ret), self.osc.client_name)
+            route = self.osc.map.pascal_to_path(self.getter_name)  # +'/'+attribute
+            self.osc.host.return_to_sender_by_name(
+                (route, attribute, ret), self.osc.client_name
+            )
         return ret
 
-    '''
+    """
     def add_osc_streams(self, name):
         add in broadcast mode
         pass
-    '''
+    """
 
     def add_iml_osc_setters(self):
         name = self.setter_name
@@ -198,14 +230,14 @@ class State:
 
     def serialize(self) -> str:
         return ti_serialize(self.field)
-    
+
     def deserialize(self, json_str: str):
         ti_deserialize(self.field, json_str)
 
     def save(self, path: str):
         # TODO: path validation, save to path, etc.
         json_str = self.serialize()
-    
+
     def load(self, path: str):
         # TODO: path validation, file ext., etc.
         # TODO: data validation (pydantic?)
@@ -229,44 +261,44 @@ class State:
     """
     npndarray_dict wrappers
     """
-    
+
     def from_vec(self, vec: list):
         self.to_nddict()
         self.nddict.from_vec(vec)
         self.from_nddict()
-    
+
     def to_vec(self) -> list:
         self.to_nddict()
         return self.nddict.to_vec()
-    
-    def attr_from_vec(self, attr:str, vec: list):
+
+    def attr_from_vec(self, attr: str, vec: list):
         self.to_nddict()
         self.nddict.attr_from_vec(attr, vec)
         self.from_nddict()
-    
-    def attr_to_vec(self, attr:str) -> list:
+
+    def attr_to_vec(self, attr: str) -> list:
         self.to_nddict()
         return self.nddict.attr_to_vec(attr)
-    
-    def slice_from_vec(self, slice_args:list, slice_vec: list):
+
+    def slice_from_vec(self, slice_args: list, slice_vec: list):
         self.to_nddict()
         self.nddict.slice_from_vec(slice_args, slice_vec)
         self.from_nddict()
-    
-    def slice_to_vec(self, slice_args:list) -> list:
+
+    def slice_to_vec(self, slice_args: list) -> list:
         self.to_nddict()
         return self.nddict.slice_to_vec(slice_args)
-    
-    def attr_slice_from_vec(self, attr:str, slice_args:list, slice_vec: list):
+
+    def attr_slice_from_vec(self, attr: str, slice_args: list, slice_vec: list):
         self.to_nddict()
         self.nddict.attr_slice_from_vec(attr, slice_args, slice_vec)
         self.from_nddict()
-    
-    def attr_slice_to_vec(self, attr:str, slice_args:list) -> list:
+
+    def attr_slice_to_vec(self, attr: str, slice_args: list) -> list:
         self.to_nddict()
         return self.nddict.attr_slice_to_vec(attr, slice_args)
-    
-    def attr_size(self, attr:str) -> int:
+
+    def attr_size(self, attr: str) -> int:
         return self.nddict.data[attr].size
 
     @ti.func
