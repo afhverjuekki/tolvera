@@ -23,12 +23,13 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 ## Features
 
 - `tv.v`: a collection of "vera" (beings) including Move, Flock, Slime and Swarm, with more being continuously added. Vera can be combined and composed in various ways.
-- `tv.p`: extensible particle system.
-- `tv.s`: multi-species system where each species has a unique relationship with every other species, including itself.
-- `tv.px`: drawing library including various shapes and blend modes.
-- `tv.osc`: Open Sound Control (OSC) via [iipyper](), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
-- `tv.iml`: Interactive Machine Learning via [iml]().
+- `tv.p`: extensible particle system. Particles are divided into multiple species, where each species has a unique relationship with every other species, including itself
+- `tv.s`: n-dimensional state structures that can be used by "vera", including built-in OSC and IML creation (see below).
+- `tv.px`: drawing library including various shapes and blend modes, styled similarly to p5.js etc.
+- `tv.osc`: Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
+- `tv.iml`: Interactive Machine Learning via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla).
 - `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
+- `tv.cv`: computer vision integration based on OpenCV.
 
 ## Install
 
@@ -116,15 +117,15 @@ Tölvera is being written about and used in a number of contexts (see [reference
 
 `tolvera` is developed by the [Intelligent Instruments Lab](https://iil.is/about). Get in touch to [collaborate](https://iil.is/collaborate):
 
- ◦ <a href="https://iil.is" target="_blank" rel="noopener" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
-<a href="https://facebook.com/intelligentinstrumentslab" target="_blank" rel="noopener" title="facebook.com">Facebook</a> ◦ 
-<a href="https://instagram.com/intelligentinstruments" target="_blank" rel="noopener" title="instagram.com">Instagram</a> ◦ 
-<a href="https://x.com/_iil_is" target="_blank" rel="noopener" title="x.com">X (Twitter)</a> ◦ 
-<a href="https://youtube.com/@IntelligentInstruments" target="_blank" rel="noopener" title="youtube.com">YouTube</a> ◦ 
-<a href="https://discord.gg/fY9GYMebtJ" target="_blank" rel="noopener" title="discord.gg">Discord</a> ◦ 
-<a href="https://github.com/intelligent-instruments-lab" target="_blank" rel="noopener" title="github.com">GitHub</a> ◦ 
-<a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" rel="noopener" title="www.linkedin.com">LinkedIn</a> ◦ 
-<a href="mailto:iil@lhi.is" target="_blank" rel="noopener" title="">Email</a> ◦ 
+ ◦ <a href="https://iil.is" target="_blank" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
+<a href="https://facebook.com/intelligentinstrumentslab" target="_blank" title="facebook.com">Facebook</a> ◦ 
+<a href="https://instagram.com/intelligentinstruments" target="_blank" title="instagram.com">Instagram</a> ◦ 
+<a href="https://x.com/_iil_is" target="_blank" title="x.com">X (Twitter)</a> ◦ 
+<a href="https://youtube.com/@IntelligentInstruments" target="_blank" title="youtube.com">YouTube</a> ◦ 
+<a href="https://discord.gg/fY9GYMebtJ" target="_blank" title="discord.gg">Discord</a> ◦ 
+<a href="https://github.com/intelligent-instruments-lab" target="_blank" title="github.com">GitHub</a> ◦ 
+<a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" title="www.linkedin.com">LinkedIn</a> ◦ 
+<a href="mailto:iil@lhi.is" target="_blank" title="">Email</a> ◦ 
 
 ## Funding
 
