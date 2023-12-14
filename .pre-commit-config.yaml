@@ -1,0 +1,19 @@
+fail_fast: true
+repos:
+- repo: local
+  hooks:
+    - id: black
+      name: black
+      entry: poetry run black
+      language: system
+      types: [file, python]
+    - id: isort
+      name: isort
+      entry: poetry run isort
+      language: system
+      types: [file, python]
+    - id: flake8
+      name: flake8
+      entry: poetry run flake8
+      language: system
+      types: [file, python]
