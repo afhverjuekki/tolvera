@@ -4,8 +4,8 @@ from typing import Any
 import numpy as np
 import torch
 from anguilla import IML as iiIML
-from iipyper import Updater
 
+from .osc.update import Updater
 from .utils import *
 
 __all__ = [
