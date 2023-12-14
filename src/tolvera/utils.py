@@ -1,7 +1,3 @@
-"""
-TODO: Save/load
-"""
-
 import base64
 import os
 import time
@@ -42,7 +38,7 @@ def rand_lognormal(n, mean=0.0, std=1.0):
 
 
 def rand_sigmoid(n, factor=0.5):
-    tensor = rand(n, factor)
+    tensor = rand_n(n, factor)
     return torch.sigmoid(tensor)
 
 

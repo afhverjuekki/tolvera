@@ -6,6 +6,7 @@ repos:
       name: black
       entry: poetry run black
       language: system
+      args: ['--verbose']
       types: [file, python]
     - id: isort
       name: isort

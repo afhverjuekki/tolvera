@@ -1,8 +1,5 @@
 """
-FIXME: still some NaNs happening?
-TODO: particle state analysis/applications?
-TODO: is half of self.state.dist redundant? print with low n
-TODO: re-add credit
+Inspired by https://forum.taichi-lang.cn/t/homework0-boids/563
 """
 import taichi as ti
 

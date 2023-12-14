@@ -1,11 +1,3 @@
-"""
-TODO: color palette - implement using State
-TODO: Rewrite Particle class as tv.s.particle
-TODO: Particle.dist debug toroidal distance wrap function
-TODO: expose self.speed over OSC
-FIXME: refactor tmp_* fields and setters to use State
-"""
-
 import taichi as ti
 
 from .species import Species
@@ -204,7 +196,6 @@ class Particles:
             + self.tv.species_consts.MIN_SPEED
         )
         if p.vel.norm() > s.speed:
-            # self.field[i].vel = p.vel.normalized() * s.speed * self._speed[None]
             self.field[i].vel = p.vel.normalized() * sp * self._speed[None]
 
     @ti.kernel

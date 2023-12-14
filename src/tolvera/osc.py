@@ -1,8 +1,3 @@
-"""
-TODO: subclass OSC? or wrap common funcs?
-TODO: allow passing in external iipyper.osc instance?
-"""
-
 from iipyper import OSC as iiOSC
 from iipyper import OSCMap
 

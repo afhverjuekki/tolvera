@@ -1,9 +1,5 @@
-# https://github.com/taichi-dev/faster-python-with-taichi/blob/main/reaction_diffusion_taichi.py
 """
-TODO: why does substep > 20 crash?
-TODO: make toroidal
-TODO: improve stability
-TODO: make reset() work
+Inspired by https://github.com/taichi-dev/faster-python-with-taichi/blob/main/reaction_diffusion_taichi.py
 """
 
 import numpy as np

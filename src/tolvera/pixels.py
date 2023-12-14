@@ -1,12 +1,3 @@
-"""
-TODO: convert all ints to floats
-FIXME: @ti.dataclass inheritance https://github.com/taichi-dev/taichi/issues/7422
-TODO: add convex hull algorithm
-TODO: add algobets-style shape analysis (to CV?)
-TODO: add draw funcs to OSCMap? how to handle state/repainting?
-TODO: add functions for symmetry? (e.g. mirror, rotate, etc.)
-"""
-
 import taichi as ti
 from taichi.lang.matrix import MatrixField
 from taichi.lang.struct import StructField
@@ -102,12 +93,7 @@ class Pixels:
         }
 
     def set(self, px):
-        if isinstance(px, Pixels):
-            self.px.rgba = px.px.rgba
-        elif isinstance(px, MatrixField):
-            self.px.rgba = px
-        elif isinstance(px, StructField):
-            self.px.rgba = px.rgba
+        self.px.rgba = self.rgba_from_px(px)
 
     def get(self):
         return self.px
@@ -299,50 +285,77 @@ class Pixels:
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] *= evaporate
 
-    @ti.kernel
     def blend_add(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] += px.rgba[i, j]
+        self._blend_add(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_add(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] += rgba[i, j]
+
     def blend_sub(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] -= px.rgba[i, j]
+        self._blend_sub(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_sub(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] -= rgba[i, j]
+
     def blend_mul(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] *= px.rgba[i, j]
+        self._blend_mul(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_mul(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] *= rgba[i, j]
+
     def blend_div(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] /= px.rgba[i, j]
+        self._blend_div(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_div(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] /= rgba[i, j]
+
     def blend_min(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] = ti.min(self.px.rgba[i, j], px.rgba[i, j])
+        self._blend_min(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_min(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] = ti.min(self.px.rgba[i, j], rgba[i, j])
+
     def blend_max(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] = ti.max(self.px.rgba[i, j], px.rgba[i, j])
+        self._blend_max(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_max(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] = ti.max(self.px.rgba[i, j], rgba[i, j])
+
     def blend_diff(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] = ti.abs(self.px.rgba[i, j] - px.rgba[i, j])
+        self._blend_diff(self.rgba_from_px(px))
 
     @ti.kernel
+    def _blend_diff(self, rgba: ti.template()):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] = ti.abs(self.px.rgba[i, j] - rgba[i, j])
+
     def blend_diff_inv(self, px: ti.template()):
-        for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] = ti.abs(px.rgba[i, j] - self.px.rgba[i, j])
+        self._blend_diff_inv(self.rgba_from_px(px))
 
     @ti.kernel
-    def blend_mix(self, px: ti.template(), a: ti.f32):
+    def _blend_diff_inv(self, rgba: ti.template()):
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] = ti.math.mix(self.px.rgba[i, j], px.rgba[i, j], a)
+            self.px.rgba[i, j] = ti.abs(rgba[i, j] - self.px.rgba[i, j])
+
+    def blend_mix(self, px: ti.template(), a: ti.f32):
+        self._blend_mix(self.rgba_from_px(px))
+
+    @ti.kernel
+    def _blend_mix(self, rgba: ti.template(), amount: ti.f32):
+        for i, j in ti.ndrange(self.x, self.y):
+            self.px.rgba[i, j] = ti.math.mix(self.px.rgba[i, j], rgba[i, j], amount)
 
     @ti.kernel
     def blur(self, radius: ti.i32):
@@ -393,6 +406,19 @@ class Pixels:
                 self.triangle(a, b, c, rgba)
             # elif shape == 5:
             #     self.polygon(px, py, rgba)
+
+    def rgba_from_px(self, px):
+        if isinstance(px, Pixels):
+            return px.px.rgba
+        elif isinstance(px, StructField):
+            return px.rgba
+        elif isinstance(px, MatrixField):
+            return px
+        else:
+            try:
+                return px.px.px.rgba
+            except:
+                raise TypeError(f"Cannot find pixel field in {type(px)}")
 
     @ti.kernel
     def update(self):

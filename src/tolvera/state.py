@@ -1,16 +1,3 @@
-"""
-TODO: save/load? serialise/deserialise
-TODO: OSCMap getters
-    state analysers -> OSC senders
-    iipyper osc returns?
-TODO: tidy up `osc_receive_randomise`, move into iipyper.map.py?
-TODO: IML: add default mapping?
-TODO: Sardine: pattern utils?
-TODO: @ti.func struct methods - can these be monkey patched?
-    if not add to constructor as a dict
-    use case would be Particles.Particle
-"""
-
 from typing import Any
 
 import jsons
@@ -216,11 +203,9 @@ class State:
             )
         return ret
 
-    """
     def add_osc_streams(self, name):
-        add in broadcast mode
-        pass
-    """
+        # add send in broadcast mode
+        raise NotImplementedError("add_osc_streams not implemented")
 
     def add_iml_osc_setters(self):
         name = self.setter_name
@@ -237,12 +222,14 @@ class State:
     def save(self, path: str):
         # TODO: path validation, save to path, etc.
         json_str = self.serialize()
+        raise NotImplementedError("save not implemented")
 
     def load(self, path: str):
         # TODO: path validation, file ext., etc.
         # TODO: data validation (pydantic?)
         json_str = jsons.load(path)
         self.deserialize(json_str)
+        raise NotImplementedError("load not implemented")
 
     def from_nddict(self):
         try:

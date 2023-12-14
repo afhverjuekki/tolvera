@@ -41,7 +41,7 @@ def main(**kwargs):
         exit()
     else:
         help()
-        exit()
+        demo(**kwargs)
 
 
 if __name__ == "__main__":

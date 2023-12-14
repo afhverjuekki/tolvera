@@ -1,10 +1,5 @@
 """
-FIXME: deposit: bug in species indexing causing color changes
-TODO: sense_rgba: 
-    test
-    remove `a` from `rgba`?
-    separate slime class? slimergba?
-TODO: re-add credit
+Inspired by https://github.com/taichi-dev/taichi/blob/master/python/taichi/examples/simulation/physarum.py
 """
 
 import taichi as ti

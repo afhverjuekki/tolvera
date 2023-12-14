@@ -18,13 +18,13 @@ class Taichi:
     def init(self):
         self.init_ti()
         self.init_ui()
-        print(f"[Tölvera] Taichi initialised with: {vars(self)}")
+        print(f"[Tölvera.Taichi] Taichi initialised with: {vars(self)}")
 
     def init_ti(self):
         if self.cpu:
             ti.init(arch=ti.cpu, random_seed=self.seed)
             self.gpu = None
-            print("[Tölvera] Running on CPU")
+            print("[Tölvera.Taichi] Running on CPU")
         else:
             if self.gpu == "vulkan":
                 ti.init(arch=ti.vulkan, random_seed=self.seed)
@@ -33,9 +33,9 @@ class Taichi:
             elif self.gpu == "cuda":
                 ti.init(arch=ti.cuda, random_seed=self.seed)
             else:
-                print(f"[Tölvera] Invalid GPU: {self.gpu}")
+                print(f"[Tölvera.Taichi] Invalid GPU: {self.gpu}")
                 return False
-            print(f"[Tölvera] Running on {self.gpu}")
+            print(f"[Tölvera.Taichi] Running on {self.gpu}")
 
     def init_ui(self):
         self.window = ti.ui.Window(
