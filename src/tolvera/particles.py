@@ -6,6 +6,7 @@ from .state import State
 
 @ti.dataclass
 class Particle:
+    """Particle data structure and methods."""
     species: ti.i32
     active: ti.f32
     pos: ti.math.vec2
@@ -16,18 +17,52 @@ class Particle:
 
     @ti.func
     def dist(self, other):
+        """Distance between two particles.
+
+        Args:
+            other (Particle): Other particle.
+
+        Returns:
+            ti.math.vec2: Distance between the two particles.
+        """
         return self.pos - other.pos
 
     @ti.func
     def dist_norm(self, other):
+        """ti.math.norm() distance between two particles.
+
+        Args:
+            other (Particle): Other particle.
+
+        Returns:
+            ti.math.vec2: ti.math.norm() distance between the two particles.
+        """
         return self.dist(self.pos - other.pos).norm()
 
     @ti.func
     def dist_normalized(self, other):
+        """ti.math.normalized() distance between two particles.
+
+        Args:
+            other (Particle): Other particle.
+
+        Returns:
+            ti.math.vec2: ti.math.normalized() distance between the two particles.
+        """
         return self.dist(self.pos - other.pos).normalized()
 
     @ti.func
     def dist_wrap(self, other, x, y):
+        """Wrap around distance between two particles.
+
+        Args:
+            other (Particle): Other particle.
+            x (float): Width.
+            y (float): Height.
+        
+        Returns:
+            ti.math.vec2: Wrap around distance between the two particles.
+        """
         dx = self.pos[0] - other.pos[0]
         dy = self.pos[1] - other.pos[1]
         if abs(dx) > x / 2:  # x-axis
@@ -74,27 +109,45 @@ class Particle:
     #     return delta
     @ti.func
     def randomise(self, x, y):
+        """Randomise the particle's position and velocity.
+
+        Args:
+            x (ti.f32): Width.
+            y (ti.f32): Height.
+        """
         self.randomise_pos(x, y)
         self.randomise_vel()
 
     @ti.func
     def randomise_pos(self, x, y):
+        """Randomise the particle's position.
+
+        Args:
+            x (ti.f32): Width.
+            y (ti.f32): Height.
+        """
         self.pos = [x * ti.random(ti.f32), y * ti.random(ti.f32)]
 
     @ti.func
     def randomise_vel(self):
+        """Randomise the particle's velocity."""
         self.vel = [2 * (ti.random(ti.f32) - 0.5), 2 * (ti.random(ti.f32) - 0.5)]
 
 
 @ti.data_oriented
 class Particles:
-    # def __init__(self, tolvera, species: Species, **kwargs):
+    """Particle system."""
     def __init__(self, tolvera, **kwargs):
+        """Initialise the particle system.
+
+        Args:
+            tolvera (Tolvera): Tolvera instance.
+            **kwargs: Keyword arguments (currently there are none).
+        """
         self.tv = tolvera
         self.kwargs = kwargs
         self.n = self.tv.pn
         self.p_per_s = self.tv.p_per_s
-        # self.s = species
         self._speed = ti.field(ti.f32, shape=())
         self._speed[None] = 1.0
         self.substep = self.tv.substep
@@ -114,19 +167,23 @@ class Particles:
         self.init()
 
     def init(self):
+        """Initialise the particle system."""
         self.assign_species()
         self.randomise()
 
     @ti.kernel
     def assign_species(self):
+        """Assign species to particles."""
         for i in range(self.n):
             self.field[i].species = i % self.tv.species
 
     def _randomise(self):
+        """Randomise the particle system (Python scope)."""
         self.randomise()
 
     @ti.kernel
     def randomise(self):
+        """Randomise the particle system (Taichi scope)."""
         for i in range(self.n):
             si = self.field[i].species
             s = self.tv.s.species[si]
@@ -157,6 +214,7 @@ class Particles:
 
     @ti.kernel
     def update(self):
+        """Update the particle system."""
         # TODO: collisions
         for i in range(self.n):
             if self.field[i] == 0.0:
@@ -166,6 +224,7 @@ class Particles:
 
     @ti.kernel
     def update_active(self):
+        """Update the active particles."""
         j = 0
         for i in range(self.n):
             p = self.field[i]
@@ -175,7 +234,12 @@ class Particles:
         self.active_count[None] = j
 
     @ti.func
-    def toroidal_wrap(self, i):
+    def toroidal_wrap(self, i: ti.i32):
+        """Toroidal wrap a particle.
+
+        Args:
+            i (ti.i32): Particle index.
+        """
         p = self.field[i]
         if p.pos[0] > self.tv.x:
             self.field[i].pos[0] = 0.0
@@ -187,7 +251,12 @@ class Particles:
             self.field[i].pos[1] = self.tv.y
 
     @ti.func
-    def limit_speed(self, i: int):
+    def limit_speed(self, i: ti.i32):
+        """Limit the speed of a particle.
+
+        Args:
+            i (ti.i32): Particle index.
+        """
         p = self.field[i]
         s = self.tv.s.species[p.species]
         # FIXME: ugly
@@ -200,17 +269,24 @@ class Particles:
 
     @ti.kernel
     def activity_decay(self):
+        """Decay the activity of the particles."""
         for i in range(self.active_count[None]):
             idx = self.active_indexes[i]
             self.field[idx].active *= self.field[i].decay
 
     def process(self):
+        """Process the particle system."""
         for i in range(self.substep):
             self.update_active()
             self.update()
 
     @ti.kernel
     def set_active(self, a: ti.i32):
+        """Set the active particles.
+
+        Args:
+            a (ti.i32): Amount of active particles.
+        """
         for i in range(self.field.shape[0]):
             if i > a:
                 self.field[i].active = 0
@@ -219,23 +295,18 @@ class Particles:
 
     @ti.kernel
     def set_species_active(self, i: ti.i32, a: ti.i32):
+        """Set the active particles of a species.
+
+        Args:
+            i (ti.i32): Species index.
+            a (ti.i32): Amount of active particles.
+        """
         for j in range(self.field.shape[0]):
             if self.field[j].species == i:
                 if j > a:
                     self.field[j].active = 0
                 else:
                     self.field[j].active = 1
-
-    @ti.kernel
-    def set_active_amount(self, a: ti.f32):
-        for i in range(self.field.shape[0]):
-            self.field[i].active = a
-
-    @ti.kernel
-    def set_species_active_amount(self, i: ti.i32, a: ti.f32):
-        for j in range(self.field.shape[0]):
-            if self.field[j].species == i:
-                self.field[j].active = a
 
     def set_pos(self, i, x, y):
         self.field[i].pos = [x, y]
@@ -370,13 +441,23 @@ class Particles:
         self.tmp_vel_stats[6] = temperature[0]
 
     def reset(self):
+        """Reset the particle system."""
         self.init()
 
     def speed(self, speed: float = None):
+        """Get or set the speed of the particle system.
+
+        Args:
+            speed (float, optional): Speed. Defaults to None.
+        
+        Returns:
+            float: Speed.
+        """
         if speed is not None:
             self._speed[None] = 1 / (speed + 0.0001)
         else:
             return self._speed[None]
 
     def __call__(self):
+        """Call will process the particle system."""
         self.process()

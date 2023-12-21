@@ -373,7 +373,7 @@ class Pixels:
             self.px.rgba[i, j] *= rate
 
     def blend_add(self, px: ti.template()):
-        """Blend by adding pixels together.
+        """Blend by adding pixels together (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -382,7 +382,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_add(self, rgba: ti.template()):
-        """Blend by adding pixels together.
+        """Blend by adding pixels together (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -391,7 +391,7 @@ class Pixels:
             self.px.rgba[i, j] += rgba[i, j]
 
     def blend_sub(self, px: ti.template()):
-        """Blend by subtracting pixels.
+        """Blend by subtracting pixels (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -400,7 +400,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_sub(self, rgba: ti.template()):
-        """Blend by subtracting pixels.
+        """Blend by subtracting pixels (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -409,7 +409,7 @@ class Pixels:
             self.px.rgba[i, j] -= rgba[i, j]
 
     def blend_mul(self, px: ti.template()):
-        """Blend by multiplying pixels.
+        """Blend by multiplying pixels (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -418,7 +418,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_mul(self, rgba: ti.template()):
-        """Blend by multiplying pixels.
+        """Blend by multiplying pixels (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -427,7 +427,7 @@ class Pixels:
             self.px.rgba[i, j] *= rgba[i, j]
 
     def blend_div(self, px: ti.template()):
-        """Blend by dividing pixels.
+        """Blend by dividing pixels (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -436,7 +436,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_div(self, rgba: ti.template()):
-        """Blend by dividing pixels.
+        """Blend by dividing pixels (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -445,7 +445,7 @@ class Pixels:
             self.px.rgba[i, j] /= rgba[i, j]
 
     def blend_min(self, px: ti.template()):
-        """Blend by taking the minimum of each pixel.
+        """Blend by taking the minimum of each pixel (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -454,7 +454,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_min(self, rgba: ti.template()):
-        """Blend by taking the minimum of each pixel.
+        """Blend by taking the minimum of each pixel (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -463,7 +463,7 @@ class Pixels:
             self.px.rgba[i, j] = ti.min(self.px.rgba[i, j], rgba[i, j])
 
     def blend_max(self, px: ti.template()):
-        """Blend by taking the maximum of each pixel.
+        """Blend by taking the maximum of each pixel (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -472,7 +472,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_max(self, rgba: ti.template()):
-        """Blend by taking the maximum of each pixel.
+        """Blend by taking the maximum of each pixel (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -481,7 +481,7 @@ class Pixels:
             self.px.rgba[i, j] = ti.max(self.px.rgba[i, j], rgba[i, j])
 
     def blend_diff(self, px: ti.template()):
-        """Blend by taking the difference of each pixel.
+        """Blend by taking the difference of each pixel (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -490,7 +490,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_diff(self, rgba: ti.template()):
-        """Blend by taking the difference of each pixel.
+        """Blend by taking the difference of each pixel (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -499,7 +499,7 @@ class Pixels:
             self.px.rgba[i, j] = ti.abs(self.px.rgba[i, j] - rgba[i, j])
 
     def blend_diff_inv(self, px: ti.template()):
-        """Blend by taking the inverse difference of each pixel.
+        """Blend by taking the inverse difference of each pixel (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -508,7 +508,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_diff_inv(self, rgba: ti.template()):
-        """Blend by taking the inverse difference of each pixel.
+        """Blend by taking the inverse difference of each pixel (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
@@ -517,7 +517,7 @@ class Pixels:
             self.px.rgba[i, j] = ti.abs(rgba[i, j] - self.px.rgba[i, j])
 
     def blend_mix(self, px: ti.template(), amount: ti.f32):
-        """Blend by mixing pixels.
+        """Blend by mixing pixels (Python scope).
 
         Args:
             px (ti.template): Pixels to blend with.
@@ -527,7 +527,7 @@ class Pixels:
 
     @ti.kernel
     def _blend_mix(self, rgba: ti.template(), amount: ti.f32):
-        """Blend by mixing pixels.
+        """Blend by mixing pixels (Taichi scope).
 
         Args:
             rgba (ti.template): Pixels to blend with.
