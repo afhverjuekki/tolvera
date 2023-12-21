@@ -1,6 +1,13 @@
+"""Force functions for particles.
+
+This module contains functions for applying forces to particles.
+It includes functions for moving, attracting, repelling and gravitating particles.
+It also includes variations of these functions for specific species of particles.
+"""
+
 import taichi as ti
 
-from ..particles import Particle, Particles
+from ..particles import Particle
 
 __all__ = [
     "move",
@@ -15,6 +22,11 @@ __all__ = [
 
 @ti.kernel
 def move(particles: ti.template()):
+    """Move the particles.
+
+    Args:
+        particles (ti.template): Particles.
+    """
     for i in range(particles.field.shape[0]):
         if particles.field[i].active == 0:
             continue
@@ -24,6 +36,14 @@ def move(particles: ti.template()):
 
 @ti.kernel
 def attract(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32):
+    """Attract the particles to a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Attraction position.
+        mass (ti.f32): Attraction mass.
+        radius (ti.f32): Attraction radius.
+    """
     for i in range(particles.field.shape[0]):
         p = particles.field[i]
         if p.active == 0:
@@ -39,6 +59,15 @@ def attract_species(
     radius: ti.f32,
     species: ti.i32,
 ):
+    """Attract the particles of a given species to a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Attraction position.
+        mass (ti.f32): Attraction mass.
+        radius (ti.f32): Attraction radius.
+        species (ti.i32): Species index.
+    """
     for i in range(particles.field.shape[0]):
         p = particles.field[i]
         if p.active == 0:
@@ -52,6 +81,17 @@ def attract_species(
 def _attract(
     p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32
 ) -> ti.math.vec2:
+    """Attract a particle to a position.
+
+    Args:
+        particles (Particle): Individual particle.
+        pos (ti.math.vec2): Attraction position.
+        mass (ti.f32): Attraction mass.
+        radius (ti.f32): Attraction radius.
+
+    Returns:
+        ti.math.vec2: Attraction velocity.
+    """
     target_distance = (pos - p.pos).norm()
     vel = ti.Vector([0.0, 0.0])
     if target_distance < radius:
@@ -62,6 +102,14 @@ def _attract(
 
 @ti.kernel
 def repel(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32):
+    """Repel the particles from a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Repulsion position.
+        mass (ti.f32): Repulsion mass.
+        radius (ti.f32): Repulsion radius.
+    """
     for i in range(particles.field.shape[0]):
         p = particles.field[i]
         if p.active == 0:
@@ -77,6 +125,15 @@ def repel_species(
     radius: ti.f32,
     species: ti.i32,
 ):
+    """Repel the particles of a given species from a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Repulsion position.
+        mass (ti.f32): Repulsion mass.
+        radius (ti.f32): Repulsion radius.
+        species (ti.i32): Species index.
+    """
     for i in range(particles.field.shape[0]):
         p = particles.field[i]
         if p.active == 0:
@@ -90,6 +147,17 @@ def repel_species(
 def _repel(
     p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32
 ) -> ti.math.vec2:
+    """Repel a particle from a position.
+
+    Args:
+        p (Particle): Individual particle.
+        pos (ti.math.vec2): Repulsion position.
+        mass (ti.f32): Repulsion mass.
+        radius (ti.f32): Repulsion radius.
+
+    Returns:
+        ti.math.vec2: Repulsion velocity.
+    """
     target_distance = (pos - p.pos).norm()
     vel = ti.Vector([0.0, 0.0])
     if target_distance < radius:
@@ -100,6 +168,13 @@ def _repel(
 
 @ti.kernel
 def gravitate(particles: ti.template(), G: ti.f32, radius: ti.f32):
+    """Gravitate the particles.
+
+    Args:
+        particles (ti.template): Particles.
+        G (ti.f32): Gravitational constant.
+        radius (ti.f32): Gravitational radius.
+    """
     for i, j in ti.ndrange(particles.field.shape[0], particles.field.shape[0]):
         if i == j:
             continue
@@ -114,6 +189,14 @@ def gravitate(particles: ti.template(), G: ti.f32, radius: ti.f32):
 def gravitate_species(
     particles: ti.template(), G: ti.f32, radius: ti.f32, species: ti.i32
 ):
+    """Gravitate the particles of a given species.
+
+    Args:
+        particles (ti.template): Particles.
+        G (ti.f32): Gravitational constant.
+        radius (ti.f32): Gravitational radius.
+        species (ti.i32): Species index.
+    """
     for i, j in ti.ndrange(particles.field.shape[0], particles.field.shape[0]):
         if i == j:
             continue
@@ -128,6 +211,16 @@ def gravitate_species(
 
 @ti.func
 def gravitation(p1: Particle, p2: Particle, G: ti.f32) -> ti.math.vec2:
+    """Calculate the gravitational force between two particles.
+
+    Args:
+        p1 (Particle): Particle 1.
+        p2 (Particle): Particle 2.
+        G (ti.f32): Gravitational constant.
+
+    Returns:
+        ti.math.vec2: Gravitational force.
+    """
     r = p2.pos - p1.pos
     distance = r.norm() + 1e-5
     force_direction = r.normalized()

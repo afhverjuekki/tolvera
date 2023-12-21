@@ -1,3 +1,13 @@
+"""Particle system.
+
+The Tolvera particle system consists of a Particle class and a Particles class.
+The Particle class is a Taichi dataclass for a single particle, and the Particles
+class is a Taichi data_oriented class containing a Particle field. 
+
+The Particles class also contains methods for processing the particle system, 
+such as updating the particles, and getting and setting particle properties.
+"""
+
 import taichi as ti
 
 from .species import Species
