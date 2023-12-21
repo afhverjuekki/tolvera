@@ -1,3 +1,21 @@
+"""IMLBase and IMLDict classes for Tölvera.
+
+Every Tölvera instance has an IMLDict, which is a dictionary of IML instances.
+The IMLDict is accessible via the 'iml' attribute of a Tölvera instance, and can
+be used to create and access IML instances.
+
+Each IML instance has a type, which is one of the following:
+- `vec2vec`: Vector to vector mapping.
+- `vec2fun`: Vector to function mapping.
+- `vec2osc`: Vector to OSC mapping.
+- `fun2vec`: Function to vector mapping.
+- `fun2fun`: Function to function mapping.
+- `fun2osc`: Function to OSC mapping.
+- `osc2vec`: OSC to vector mapping.
+- `osc2fun`: OSC to function mapping.
+- `osc2osc`: OSC to OSC mapping.
+"""
+
 import inspect
 from typing import Any
 
@@ -48,6 +66,17 @@ RAND_METHODS = [
 
 
 def rand_select(method="rand"):
+    """Select randomisation method.
+    
+    Args:
+        method (str, optional): Randomisation method. Defaults to "rand".
+    
+    Raises:
+        ValueError: Invalid method.
+        
+    Returns:
+        callable: Randomisation method.
+    """
     match method:
         case "rand":
             return rand_n
@@ -74,14 +103,49 @@ def rand_select(method="rand"):
 class IMLDict(dotdict):
     """IML mapping dict
 
-    TODO: remove tolvera dependency?"""
+    Similarly to StateDict, this class inherits from dotdict to enable instantiation
+    via assignment.
+
+    Example:
+        tv = Tolvera(**kwargs)
+
+        tv.iml.flock_p2flock_s = {
+            'type': 'vec2vec', 
+            'size': (tv.s.flock_p.size, tv.s.flock_s.size), 
+            'randomise': True,
+            'config': {'interp': 'Ripple'},
+            'map_kw': {'k': 10, 'ripple_depth': 5, 'ripple': 5}
+        }
+    """
 
     def __init__(self, tolvera) -> None:
+        """Initialise IMLDict
+
+        Args:
+            tolvera (Tolvera): Tölvera instance.
+        """
         self.tv = tolvera
         self.i = {}  # input vectors dict
         self.o = {}  # output vectors dict
 
-    def set(self, name, kwargs: dict) -> None:
+    def set(self, name, kwargs: dict) -> Any:
+        """Set IML instance.
+
+        Args:
+            name (str): Name of IML instance.
+            kwargs (dict): IML instance kwargs.
+
+        Raises:
+            ValueError: Cannot replace 'tv' IML instance.
+            ValueError: Cannot replace 'i' IML instance.
+            ValueError: Cannot replace 'o' IML instance.
+            NotImplementedError: set() with tuple not implemented yet.
+            TypeError: set() requires dict|tuple, not _type_.
+            Exception: Other exceptions.
+
+        Returns:
+            Any: IML instance.
+        """
         try:
             if name == "tv" and type(kwargs) is not dict and type(kwargs) is not tuple:
                 if name in self:
@@ -115,11 +179,28 @@ class IMLDict(dotdict):
             raise type(e)(f"[tolvera._iml.IMLDict] {e}") from e
 
     def __setattr__(self, __name: str, __value: Any) -> None:
+        """Set IML instance.
+
+        Args:
+            __name (str): Name of IML instance.
+            __value (Any): IML instance kwargs.
+        """
         self.set(__name, __value)
 
-    def add(self, name, iml_type, **kwargs):
+    def add(self, name: str, iml_type: str, **kwargs) -> Any:
+        """Add IML instance.
+
+        Args:
+            name (str): Name of IML instance.
+            iml_type (str): IML type.
+
+        Raises:
+            ValueError: Invalid IML_TYPE.
+
+        Returns:
+            Any: IML instance.
+        """
         # TODO: should ^ be kwargs and not **kwargs?
-        # print(f"[tolvera._iml.IMLDict] add({name}, {iml_type}, {kwargs})")
         match iml_type:
             case "vec2vec":
                 ins = IMLVec2Vec(**kwargs)
@@ -148,6 +229,17 @@ class IMLDict(dotdict):
         return ins
 
     def __call__(self, name=None, *args: Any, **kwargs: Any) -> Any:
+        """Call IML instance or all IML instances.
+
+        Args:
+            name (str, optional): Name of IML instance to call. Defaults to None.
+
+        Raises:
+            ValueError: 'name' not in dict.
+
+        Returns:
+            Any: IML output or dict of IML outputs.
+        """
         if name is not None:
             if name in self:
                 # OSC updaters are handled by tv.osc.map (OSCMap)
@@ -176,10 +268,24 @@ class IMLDict(dotdict):
 
 
 class IMLBase(iiIML):
-    """IML mapping base class
+    """IML mapping base class.
+    
+    This class inherits from anguilla.IML and adds some functionality.
+    It is not intended to be used directly, but rather to be inherited from.
+    See IMLVec2Vec, IMLVec2Fun, IMLVec2OSC, IMLFun2Vec, IMLFun2Fun, IMLFun2OSC,
+    IMLOSC2Vec, IMLOSC2OSC, IMLOSC2Fun.
 
-    Args:
-        tolvera: Tolvera instance.
+    The base class is initialised with a size tuple (input, output) and a config dict
+    which is passed to anguilla.IML.
+
+    It provides a randomise() method which adds random pairs to the mapping.
+    It also provides methods to remove pairs (remove_oldest, remove_newest, remove_random).
+    It also provides a lag() method which lags the mapped data.
+    Finally, it provides an update() method which is called by the updater (see .osc.update).
+    """
+    def __init__(self, **kwargs) -> None:
+        """Initialise IMLBase
+    
         kwargs:
             size (tuple, required): (input, output) sizes.
             io (tuple, optional): (input, output) functions.
@@ -197,9 +303,7 @@ class IMLBase(iiIML):
             outfun_kw (dict, optional): kwargs to use in outfun() (type '*2Fun' only).
             lag (bool, optional): Lag mapped data (defaults to False). Incompatible with '*2Fun' types.
             lag_coef (float, optional): Lag coefficient (defaults to 0.5 if `lag` is True).
-    """
-
-    def __init__(self, **kwargs) -> None:
+        """
         assert "size" in kwargs, f"IMLBase requires 'size' kwarg."
         self.size = kwargs["size"]
         self.updater = kwargs.get(
@@ -214,27 +318,40 @@ class IMLBase(iiIML):
         self.map_kw = kwargs.get("map_kw", {})
         self.infun_kw = kwargs.get("infun_kw", {})
         self.outfun_kw = kwargs.get("outfun_kw", {})
-        randomise = kwargs.get("randomise", False)
-        if randomise:
-            self.rand_pairs = kwargs.get("rand_pairs", 32)
-            self.rand_input_weight = kwargs.get("rand_input_weight", None)
-            self.rand_output_weight = kwargs.get("rand_output_weight", None)
-            self.rand_method = kwargs.get("rand_method", "rand")
-            self.rand_kw = kwargs.get("rand_kw", {})
-            self.randomise(
-                self.rand_pairs,
-                self.rand_input_weight,
-                self.rand_output_weight,
-                self.rand_method,
-                **self.rand_kw,
-            )
+        if kwargs.get("randomise", False):
+            self.init_randomise(**kwargs)
         self.lag = kwargs.get("lag", False)
         if self.lag:
-            self.lag_coef = kwargs.get("lag_coef", 0.5)
-            self.lag = Lag(coef=self.lag_coef)
-            print(
-                f"[tolvera._iml.IMLBase] Lagging mapped data with coef {self.lag_coef}."
-            )
+            self.init_lag(**kwargs)
+
+    def init_randomise(self, **kwargs):
+        """Initialise randomise() method with kwargs
+
+        kwargs: see __init__ kwargs.
+        """
+        self.rand_pairs = kwargs.get("rand_pairs", 32)
+        self.rand_input_weight = kwargs.get("rand_input_weight", None)
+        self.rand_output_weight = kwargs.get("rand_output_weight", None)
+        self.rand_method = kwargs.get("rand_method", "rand")
+        self.rand_kw = kwargs.get("rand_kw", {})
+        self.randomise(
+            self.rand_pairs,
+            self.rand_input_weight,
+            self.rand_output_weight,
+            self.rand_method,
+            **self.rand_kw,
+        )
+
+    def init_lag(self, **kwargs):
+        """Initialise lag() method with kwargs
+        
+        kwargs: see __init__ kwargs.
+        """
+        self.lag_coef = kwargs.get("lag_coef", 0.5)
+        self.lag = Lag(coef=self.lag_coef)
+        print(
+            f"[tolvera._iml.IMLBase] Lagging mapped data with coef {self.lag_coef}."
+        )
 
     def randomise(
         self,
@@ -244,18 +361,54 @@ class IMLBase(iiIML):
         method: str = "rand",
         **kwargs,
     ):
+        """Randomise mapping.
+
+        Args:
+            times (int): Number of random pairs to add.
+            input_weight (Any, optional): Weighting for the input vector. Defaults to None.
+            output_weight (Any, optional): Weighting for the output vector. Defaults to None.
+            method (str, optional): Randomisation method. Defaults to "rand".
+        """
         self.rand = rand_select(method)
         while len(self.pairs) < times:
             self.add_random_pair(input_weight, output_weight, **kwargs)
 
     def set_random_method(self, method: str = "rand"):
+        """Set random method.
+
+        Args:
+            method (str, optional): Randomisation method. Defaults to "rand".
+        """
         self.rand = rand_select(method)
 
     def add_random_pair(self, input_weight=None, output_weight=None, **kwargs):
+        """Add random pair to mapping.
+
+        Args:
+            input_weight (Any, optional): Weighting for the input vector. Defaults to None.
+            output_weight (Any, optional): Weighting for the output vector. Defaults to None.
+            **kwargs: see create_random_pair kwargs.
+        """
         indata, outdata = self.create_random_pair(input_weight, output_weight, **kwargs)
         self.add(indata, outdata)
 
     def create_random_pair(self, input_weight=None, output_weight=None, **kwargs):
+        """Create random pair.
+
+        Args:
+            input_weight (Any, optional): Weighting for the input vector. Defaults to None.
+            output_weight (Any, optional): Weighting for the output vector. Defaults to None.
+            **kwargs:
+                rand_method (str, optional): Randomisation method. Defaults to "rand".
+                rand_kw (dict, optional): Random kwargs to pass to rand_method (see utils).
+            
+        Raises:
+            ValueError: Invalid input_weight type.
+            ValueError: Invalid output_weight type.
+
+        Returns:
+            tuple: (input, output) vectors.
+        """
         if self.rand == None and "rand_method" not in kwargs:
             print(f"[tolvera._iml.IMLBase] No 'rand' method set. Using 'rand'.")
             self.set_random_method()
@@ -292,21 +445,49 @@ class IMLBase(iiIML):
         return indata, outdata
 
     def remove_oldest(self, n: int = 1):
+        """Remove oldest pair(s) from mapping.
+
+        Args:
+            n (int, optional): Number of pairs to remove. Defaults to 1.
+        """
         if len(self.pairs) > n - 1:
             [self.remove(min(self.pairs.keys())) for _ in range(n)]
 
     def remove_newest(self, n: int = 1):
+        """Remove newest pair(s) from mapping.
+
+        Args:
+            n (int, optional): Number of pairs to remove. Defaults to 1.
+        """
         if len(self.pairs) > n - 1:
             [self.remove(max(self.pairs.keys())) for _ in range(n)]
 
     def remove_random(self, n: int = 1):
+        """Remove random pair(s) from mapping.
+
+        Args:
+            n (int, optional): Number of pairs to remove. Defaults to 1.
+        """
         if len(self.pairs) > n - 1:
             [self.remove(np.random.choice(list(self.pairs.keys()))) for _ in range(n)]
 
     def lag_mapped_data(self, lag_coef: float = 0.5):
+        """Lag mapped data.
+
+        Args:
+            lag_coef (float, optional): Lag coefficient. Defaults to 0.5.
+        """
         self.data.mapped = self.lag(self.data.mapped, lag_coef)
 
-    def update(self, invec):
+    def update(self, invec: list|torch.Tensor|np.ndarray) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Args:
+            invec (list|torch.Tensor|np.ndarray): Input vector.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
         if len(self.pairs) == 0:
             return None
         self.data.mapped = self.map(invec, **self.map_kw)
@@ -315,11 +496,27 @@ class IMLBase(iiIML):
         return self.data.mapped
 
     def update_rate(self, rate: int = None):
+        """Update rate getter/setter.
+
+        Args:
+            rate (int, optional): Update rate. Defaults to None.
+
+        Returns:
+            int: Update rate.
+        """
         if rate is not None:
             self.updater.count = rate
         return self.updater.count
 
     def __call__(self, *args) -> Any:
+        """Call updater with args.
+
+        Args:
+            *args: Updater args.
+
+        Returns:
+            Any: Mapped data.
+        """
         return self.updater(*args)
 
 
