@@ -17,6 +17,7 @@ opencv-python = "^4.8.1.78"
 torch = "^2.1.1"
 iipyper = "^0.1.0b1"
 anguilla-iml = "^0.1.0b4"
+sardine = "^0.0.0b3"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
