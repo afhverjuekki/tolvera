@@ -183,7 +183,7 @@ class IMLBase(iiIML):
         kwargs:
             size (tuple, required): (input, output) sizes.
             io (tuple, optional): (input, output) functions.
-            config (dict, optional): {feature_size: size[0], emb:Identity, interp:Smooth, index:IndexBrute, k:10, verbose:False}.
+            config (dict, optional): {embed_input, embed_output, interpolate, index, verbose}.
             updater (cls, optional): See iipyper.osc.update (Updater, OSCUpdater, ...).
             update_rate (int, optional): Updater's update rate (defaults to 1).
             randomise (bool, optional): Randomise mapping on init (defaults to False).
@@ -206,9 +206,8 @@ class IMLBase(iiIML):
             "updater", Updater(self.update, kwargs.get("update_rate", 1))
         )
         self.config = kwargs.get("config", {})
-        self.config["feature_size"] = self.size[0]
         if isinstance(self.size[0], tuple):
-            self.config["emb"] = "ProjectAndSort"
+            self.config["embed_input"] = "ProjectAndSort"
         print(f"[tolvera._iml.IMLBase] Initialising IML with config: {self.config}")
         super().__init__(**self.config)
         self.data = dotdict()
@@ -294,7 +293,7 @@ class IMLBase(iiIML):
 
     def remove_oldest(self, n: int = 1):
         if len(self.pairs) > n - 1:
-            [self.remove(max(self.pairs.keys())) for _ in range(n)]
+            [self.remove(min(self.pairs.keys())) for _ in range(n)]
 
     def remove_newest(self, n: int = 1):
         if len(self.pairs) > n - 1:
