@@ -451,7 +451,7 @@ class State:
         return self.nddict.data[attr].size
 
     @ti.func
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key):
         """Return the Taichi field attribute.
         
         Args:
