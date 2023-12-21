@@ -1,3 +1,8 @@
+"""Sketchbook module for listing and running sketches from the command line.
+
+WIP.
+"""
+
 import datetime
 import importlib.util
 import os

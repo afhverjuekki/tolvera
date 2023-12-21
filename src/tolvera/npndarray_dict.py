@@ -1,3 +1,8 @@
+"""Module for working with dictionary of NumPy ndarrays.
+
+Primaril used by State.
+"""
+
 from collections import defaultdict
 from typing import Any, Callable, Union
 
@@ -148,15 +153,15 @@ class NpNdarrayDict:
         shape (Tuple[int, int]): The shape of the ndarrays, which is consistent across all attributes.
 
     Example:
-        >>> state = NpNdarrayDict({
-                'i':  (np.int32, 2, 10),
-                'f':  (np.float32, 0., 1.),
-                'v2': (np_vec2, 0., 1.),
-                'v3': (np_vec3, 0., 1.),
-                'v4': (np_vec4, 0., 1.),
-            }, (2,2))
-        >>> state.set_value('i', (0, 0), 5)
-        >>> print(state.get_value('i', (0, 0)))
+        state = NpNdarrayDict({
+            'i':  (np.int32, 2, 10),
+            'f':  (np.float32, 0., 1.),
+            'v2': (np_vec2, 0., 1.),
+            'v3': (np_vec3, 0., 1.),
+            'v4': (np_vec4, 0., 1.),
+        }, (2,2))
+        state.set_value('i', (0, 0), 5)
+        print(state.get_value('i', (0, 0)))
         5
     """
 
