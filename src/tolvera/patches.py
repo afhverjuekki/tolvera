@@ -1,7 +1,7 @@
-"""
-Workaround for:
+"""Patches for third-party libraries.
 
-'dill.source.findsource fails when in asyncio REPL' https://github.com/uqfoundation/dill/issues/627
+Current patches:
+- 'dill.source.findsource fails when in asyncio REPL' https://github.com/uqfoundation/dill/issues/627
 """
 
 import linecache

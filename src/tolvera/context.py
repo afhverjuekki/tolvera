@@ -1,3 +1,5 @@
+"""Tölvera context for sharing between multiple Tölvera instances."""
+
 from sys import exit
 
 from iipyper.state import _lock
@@ -19,16 +21,23 @@ class TolveraContext:
     """
 
     def __init__(self, **kwargs) -> None:
+        """Initialise Tölvera context with given keyword arguments."""
         self.kwargs = kwargs
         self.init(**kwargs)
 
     def init(self, **kwargs):
         """
-        Initialize wrapped external packages with given keyword arguments.
-        This only happens once when Tölvera is first initialized.
+        Initialise wrapped external packages with given keyword arguments.
+        This only happens once when Tölvera is first initialised.
 
         Args:
-            **kwargs: Keyword arguments for component initialization.
+            **kwargs: Keyword arguments for component initialisation.
+                x (int): Width of canvas.
+                y (int): Height of canvas.
+                osc (bool): Enable OSC.
+                iml (bool): Enable IML.
+                cv (bool): Enable CV.
+                see also kwargs for Taichi, OSC, IMLDict, and CV.
         """
         self.name = "Tölvera Context"
         self.name_clean = clean_name(self.name)
@@ -50,7 +59,7 @@ class TolveraContext:
             self.cv = CV(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
-        print(f"[{self.name}] Context initialization complete.")
+        print(f"[{self.name}] Context initialisation complete.")
 
     def run(self, f=None, **kwargs):
         """
@@ -116,6 +125,7 @@ class TolveraContext:
         print(f"\n[{self.name}] Adding cleanup function {f.__name__}...")
 
         def decorator(f):
+            """Decorator that appends function to cleanup functions."""
             self._cleanup_fns.append(f)
             return f
 

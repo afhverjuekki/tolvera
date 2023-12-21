@@ -1,3 +1,5 @@
+"""Utility functions for Tolvera."""
+
 import base64
 import os
 import time
@@ -175,9 +177,11 @@ def ti_deserialize(field, json_str):
 def time_function(func, *args, **kwargs):
     """Time how long it takes to run a function and print the result"""
     start = time.time()
-    func(*args, **kwargs)
+    ret = func(*args, **kwargs)
     end = time.time()
     print(f"[Tolvera.utils] {func.__name__}() ran in {end-start:.4f}s")
+    if ret is not None:
+        return (ret, end - start)
     return end - start
 
 
@@ -233,7 +237,6 @@ def validate_json_path(path: str) -> bool:
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
-
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__

@@ -1,4 +1,5 @@
-import fire
+"""Tölvera: a library for exploring musical performance with artificial life and self-organising systems."""
+
 
 from .context import TolveraContext
 from .particles import *
@@ -18,10 +19,10 @@ class Tolvera:
 
     def __init__(self, **kwargs):
         """
-        Initialize and setup Tölvera with given keyword arguments.
+        Initialise and setup Tölvera with given keyword arguments.
 
         Args:
-            **kwargs: Keyword arguments for setup and initialization.
+            **kwargs: Keyword arguments for setup and initialisation.
         """
         self.kwargs = kwargs
         self.name = kwargs.get("name", "Tölvera")
@@ -31,13 +32,23 @@ class Tolvera:
         else:
             self.share_context(kwargs["ctx"])
         self.setup(**kwargs)
-        print(f"[{self.name}] Initialization and setup complete.")
+        print(f"[{self.name}] Initialisation and setup complete.")
 
     def init_context(self, **kwargs):
+        """Initiliase TölveraContext with given keyword arguments.
+
+        Args:
+            **kwargs: Keyword arguments for TölveraContext.
+        """
         context = TolveraContext(**kwargs)
         self.share_context(context)
 
     def share_context(self, context):
+        """Share TölveraContext with another Tölvera instance.
+
+        Args:
+            context: TölveraContext to share.
+        """
         if len(context.get_names()) == 0:
             print(f"[{self.name}] Sharing context '{context.name}'.")
         else:
@@ -59,10 +70,15 @@ class Tolvera:
     def setup(self, **kwargs):
         """
         Setup Tölvera with given keyword arguments.
-        This can be called multiple throughout the lifetime of Tölvera.
+        This can be called multiple throughout the lifetime of a Tölvera instance.
 
         Args:
             **kwargs: Keyword arguments for setup.
+                speed (float): Global timebase speed.
+                particles (int): Number of particles.
+                species (int): Number of species.
+                substep (int): Number of substeps per frame.
+                see also kwargs for Pixels, Species, Particles, and Vera.
         """
         self._speed = kwargs.get("speed", 1)  # global timebase
         self.particles = kwargs.get("particles", 1024)
@@ -71,7 +87,6 @@ class Tolvera:
         self.sn = self.species
         self.p_per_s = self.particles // self.species
         self.substep = kwargs.get("substep", 1)
-        self.evaporate = kwargs.get("evaporate", 0.95)
         self.s = StateDict(self)
         self.px = Pixels(self, **kwargs)
         self._species = Species(self, **kwargs)
@@ -84,7 +99,7 @@ class Tolvera:
 
     def randomise(self):
         """
-        Randomize particles, species, and Vera.
+        Randomise particles, species, and Vera.
         """
         self.p.randomise()
         self.s.species.randomise()
@@ -104,6 +119,7 @@ class Tolvera:
         self.setup()
 
     def speed(self, speed: float = None):
+        """Set or get global timebase speed."""
         if speed is not None:
             self._speed = speed
             self.p.speed(speed)
@@ -111,7 +127,7 @@ class Tolvera:
 
     def add_to_osc_map(self):
         """
-        Add top-level Tölvera functions to OSC map.
+        Add top-level Tölvera functions to OSCMap.
         """
         setter_name = f"{self.name_clean}_set"
         getter_name = f"{self.name_clean}_get"
@@ -123,16 +139,5 @@ class Tolvera:
 
         @self.osc.map.receive_args(speed=(1, 0, 100), count=1)
         def tolvera_set_speed(speed: float):
+            """Set global timebase speed."""
             self.speed(speed)
-
-
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
-
-    @tv.render
-    def _():
-        tv.p()
-
-
-if __name__ == "__main__":
-    fire.Fire(main)
