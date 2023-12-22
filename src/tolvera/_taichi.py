@@ -22,6 +22,7 @@ class Taichi:
                 fps (int): FPS limit. Defaults to 120.
                 seed (int): Random seed. Defaults to time.time().
                 headless (bool): Run headless. Defaults to False.
+                name (str): Window name. Defaults to "Tölvera".
         """
         self.ctx = context
         self.kwargs = kwargs
@@ -30,6 +31,7 @@ class Taichi:
         self.fps = kwargs.get("fps", 120)
         self.seed = kwargs.get("seed", int(time.time()))
         self.headless = kwargs.get("headless", False)
+        self.name = kwargs.get("name", "Tölvera")
         self.init_ti()
         self.init_ui()
         print(f"[Tölvera.Taichi] Taichi initialised with: {vars(self)}")
@@ -55,7 +57,7 @@ class Taichi:
     def init_ui(self):
         """Initialise Taichi UI window and canvas."""
         self.window = ti.ui.Window(
-            self.ctx.name,
+            self.name,
             (self.ctx.x, self.ctx.y),
             fps_limit=self.fps,
             show_window=not self.headless,
