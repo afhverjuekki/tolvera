@@ -1,4 +1,29 @@
-"""Pixels module."""
+"""Pixels module.
+
+Example:
+    Draw a red rectangle in the centre of the screen.
+    ```py
+    import taichi as ti
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv = Tolvera(**kwargs)
+
+        @ti.kernel
+        def draw():
+            w = 100
+            tv.px.rect(tv.x/2-w/2, tv.y/2-w/2, w, w, ti.Vector([1., 0., 0., 1.]))
+
+        @tv.render
+        def _():
+            tv.p()
+            draw()
+            return tv.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+"""
 
 import taichi as ti
 from typing import Any
@@ -255,7 +280,7 @@ class Pixels:
         y_min, y_max = ti.cast(y.min(), ti.i32), ti.cast(y.max(), ti.i32)
         l = len(x)
         for i, j in ti.ndrange(x_max - x_min, y_max - y_min):
-            p = [x_min + i, y_min + j]
+            p = ti.Vector([x_min + i, y_min + j])
             if self._is_inside(p, x, y, l) != 0:
                 # TODO: abstract out, weight?
                 """

@@ -1,19 +1,54 @@
-"""IMLBase and IMLDict classes for Tölvera.
+"""
+IML stands for Interactive Machine Learning. Tölvera wraps the 
+[anguilla](https://intelligent-instruments-lab.github.io/anguilla/) package
+to provide convenient ways for quickly creating mappings between vectors, functions
+and OSC routes. 
 
 Every Tölvera instance has an IMLDict, which is a dictionary of IML instances.
-The IMLDict is accessible via the 'iml' attribute of a Tölvera instance, and can
+The IMLDict is accessible via the `iml` attribute of a Tölvera instance, and can
 be used to create and access IML instances.
 
-Each IML instance has a type, which is one of the following:
-- `vec2vec`: Vector to vector mapping.
-- `vec2fun`: Vector to function mapping.
-- `vec2osc`: Vector to OSC mapping.
-- `fun2vec`: Function to vector mapping.
-- `fun2fun`: Function to function mapping.
-- `fun2osc`: Function to OSC mapping.
-- `osc2vec`: OSC to vector mapping.
-- `osc2fun`: OSC to function mapping.
-- `osc2osc`: OSC to OSC mapping.
+In the below example, we create a mapping based on states created by `tv.v.flock`,
+where the per-particle state `flock_p` is mapped to the species rule matrix `flock_s`.
+Since this is a `fun2fun` mapping (see IML Types below), we provide input and output 
+functions, and Tölvera updates the mapping automatically every `render()` call.
+
+Example:
+    ```py
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv = Tolvera(**kwargs)
+
+        tv.iml.flock_p2flock_s = {
+            'type': 'fun2fun', 
+            'size': (tv.s.flock_p.size, tv.s.flock_s.size), 
+            'io': (tv.s.flock_p.to_vec, tv.s.flock_s.from_vec),
+            'randomise': True,
+        }
+        
+        @tv.render
+        def _():
+            tv.px.diffuse(0.99)
+            tv.p()
+            tv.v.flock(tv.p)
+            tv.px.particles(tv.p, tv.s.species, 'circle')
+            return tv.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+
+IML Types:
+    - `vec2vec`: Vector to vector mapping.
+    - `vec2fun`: Vector to function mapping.
+    - `vec2osc`: Vector to OSC mapping.
+    - `fun2vec`: Function to vector mapping.
+    - `fun2fun`: Function to function mapping.
+    - `fun2osc`: Function to OSC mapping.
+    - `osc2vec`: OSC to vector mapping.
+    - `osc2fun`: OSC to function mapping.
+    - `osc2osc`: OSC to OSC mapping.
 """
 
 import inspect
@@ -103,19 +138,8 @@ def rand_select(method="rand"):
 class IMLDict(dotdict):
     """IML mapping dict
 
-    Similarly to StateDict, this class inherits from dotdict to enable instantiation
+    Similarly to `StateDict`, this class inherits from `dotdict` to enable instantiation
     via assignment.
-
-    Example:
-        tv = Tolvera(**kwargs)
-
-        tv.iml.flock_p2flock_s = {
-            'type': 'vec2vec', 
-            'size': (tv.s.flock_p.size, tv.s.flock_s.size), 
-            'randomise': True,
-            'config': {'interp': 'Ripple'},
-            'map_kw': {'k': 10, 'ripple_depth': 5, 'ripple': 5}
-        }
     """
 
     def __init__(self, tolvera) -> None:
