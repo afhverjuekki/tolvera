@@ -49,7 +49,7 @@ from sys import exit
 
 from iipyper.state import _lock
 
-from ._taichi import Taichi
+from .taichi_ import Taichi
 from .cv import CV
 from .iml import IMLDict
 from .osc.osc import OSC
