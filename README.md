@@ -42,7 +42,7 @@ Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be in
 pip install tolvera
 ```
 
-## Development
+## Develop
 
 Fork/clone this repository and install the package in editable mode:
 
@@ -52,7 +52,7 @@ cd tolvera
 pip install -e tolvera
 ```
 
-## Contributing
+## Contribute
 
 We welcome [Pull Requests](https://github.com/Intelligent-Instruments-Lab/tolvera/pulls) across all areas of the project:
 
