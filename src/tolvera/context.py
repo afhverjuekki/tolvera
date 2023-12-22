@@ -1,4 +1,49 @@
-"""Tölvera context for sharing between multiple Tölvera instances."""
+"""
+`TolveraContext` is a shared context or environment for `Tolvera` instances.
+It is created automatically when a `Tolvera` instance is created, if one 
+does not already exist. It manages the integration of packages for graphics, 
+computer vision, communications protocols, and more. If multiple `Tolvera` 
+instances are created, they must share the same `TolveraContext`.
+
+`TolveraContext` can be created manually, and shared with multiple `Tolvera`
+instances. Note that only one `render` function can be used at a time.
+
+Example:
+    ```py
+    from tolvera import TolveraContext, Tolvera, run
+
+    def main(**kwargs):
+        ctx = TolveraContext(**kwargs)
+
+        tv1 = Tolvera(ctx=ctx, **kwargs)
+        tv2 = Tolvera(ctx=ctx, **kwargs)
+
+        @tv1.render
+        def _():
+            return tv2.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+
+`TolveraContext` can also be created automatically, and still shared.
+    
+Example:
+    ```py
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv1 = Tolvera(**kwargs)
+        tv2 = Tolvera(ctx=tv1.ctx, **kwargs)
+
+        @tv1.render
+        def _():
+            return tv2.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+"""
 
 from sys import exit
 
@@ -17,7 +62,22 @@ class TolveraContext:
     """
     Context for sharing between multiple Tölvera instances.
     Context includes Taichi, OSC, IML and CV.
-    All Tölvera instances share the same context and are added to a dict.
+    All Tölvera instances share the same context and are managed as a dict.
+
+    Attributes:
+        kwargs (dict): Keyword arguments for context.
+        name (str): Name of context.
+        name_clean (str): 'Cleaned' name of context.
+        i (int): Frame counter.
+        x (int): Width of canvas.
+        y (int): Height of canvas.
+        ti (Taichi): Taichi instance.
+        canvas (Pixels): Pixels instance.
+        osc (OSC): OSC instance.
+        iml (IML): IML instance.
+        cv (CV): CV instance.
+        _cleanup_fns (list): List of cleanup functions.
+        tolveras (dict): Dict of Tölvera instances.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -31,13 +91,12 @@ class TolveraContext:
         This only happens once when Tölvera is first initialised.
 
         Args:
-            **kwargs: Keyword arguments for component initialisation.
-                x (int): Width of canvas.
-                y (int): Height of canvas.
-                osc (bool): Enable OSC.
-                iml (bool): Enable IML.
-                cv (bool): Enable CV.
-                see also kwargs for Taichi, OSC, IMLDict, and CV.
+            x (int): Width of canvas. Default: 1920.
+            y (int): Height of canvas. Default: 1080.
+            osc (bool): Enable OSC. Default: False.
+            iml (bool): Enable IML. Default: False.
+            cv (bool): Enable CV. Default: False.
+            see also kwargs for Taichi, OSC, IMLDict, and CV.
         """
         self.name = "Tölvera Context"
         self.name_clean = clean_name(self.name)

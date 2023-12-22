@@ -1,5 +1,56 @@
-"""Tölvera: a library for exploring musical performance with artificial life and self-organising systems."""
+"""Tölvera is a library for exploring musical performance with artificial life and self-organising systems.
 
+This example demonstrates the basic usage of Tölvera.
+It will display a window with a black background.
+When Tolvera is run, messages will be printed to the console.
+These messages inform the user of the status of Tolvera,
+during initialisation, setup, and running.
+
+Example:
+    ```py
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv = Tolvera(**kwargs)
+
+        @tv.render
+        def _():
+            return tv.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+
+Here's an annotated version of the above example:
+
+Example:
+    ```py
+    # First, we import Tolvera and run() from tolvera.
+    from tolvera import Tolvera, run
+
+    # Then, we define a main function which takes in keyword arguments 
+    # (kwargs) from the command line.
+    def main(**kwargs):
+        # Inside the main function, we initialise a Tolvera instance 
+        # with the given keyword arguments.
+        tv = Tolvera(**kwargs)
+
+        # We use the render() decorator to render the pixels.
+        # This function can be named anything. 
+        # It will run in a loop until the user exits the program.
+        @tv.render
+        def _():
+            # render() must return Pixels. Often, these pixels will be 
+            # the pixels of the Tolvera instance, accessed with tv.px.
+            return tv.px
+
+    # Finally, we call run() with the main function as the argument.
+    if __name__ == '__main__':
+        run(main)
+    ```
+"""
+
+from fire import Fire as run
 
 from .context import TolveraContext
 from .particles import *
@@ -9,12 +60,21 @@ from .state import StateDict
 from .utils import *
 from .vera import Vera
 
-
 class Tolvera:
-    """
-    Tölvera class which contains all Tölvera components;
-    Particles, Species, Vera, and Pixels.
-    Multiple Tölvera instances share the same TölveraContext.
+    """Tolvera main class.
+
+    Attributes:
+        `name` (str): Name of Tölvera instance. 
+        `ctx` (TolveraContext): Shared TolveraContext.
+        `speed` (float): Global timebase speed.
+        `pn` (int): Number of particles.
+        `sn` (int): Number of species.
+        `p_per_s` (int): Number of particles per species.
+        `substep` (int): Number of substeps per frame.
+        `iml`: Dict of IML instances via anguilla.
+        `cv`: computer vision integration via OpenCV.
+        `osc`: OSC via iipyper.
+        `ti`: Taichi (graphics backend).
     """
 
     def __init__(self, **kwargs):
@@ -22,7 +82,9 @@ class Tolvera:
         Initialise and setup Tölvera with given keyword arguments.
 
         Args:
-            **kwargs: Keyword arguments for setup and initialisation.
+            name (str): Name of Tölvera instance. Defaults to "Tölvera".
+            ctx (TolveraContext): TolveraContext to share. Defaults to None.
+            see also kwargs for Tolvera.setup().
         """
         self.kwargs = kwargs
         self.name = kwargs.get("name", "Tölvera")
@@ -74,11 +136,11 @@ class Tolvera:
 
         Args:
             **kwargs: Keyword arguments for setup.
-                speed (float): Global timebase speed.
-                particles (int): Number of particles.
-                species (int): Number of species.
-                substep (int): Number of substeps per frame.
-                see also kwargs for Pixels, Species, Particles, and Vera.
+                speed (float): Global timebase speed. Defaults to 1.
+                particles (int): Number of particles. Defaults to 1024.
+                species (int): Number of species. Defaults to 4.
+                substep (int): Number of substeps per frame. Defaults to 1.
+            See also kwargs for Pixels, Species, Particles, and Vera.
         """
         self._speed = kwargs.get("speed", 1)  # global timebase
         self.particles = kwargs.get("particles", 1024)
