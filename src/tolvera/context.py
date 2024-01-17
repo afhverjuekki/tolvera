@@ -5,10 +5,10 @@ does not already exist. It manages the integration of packages for graphics,
 computer vision, communications protocols, and more. If multiple `Tolvera` 
 instances are created, they must share the same `TolveraContext`.
 
-`TolveraContext` can be created manually, and shared with multiple `Tolvera`
-instances. Note that only one `render` function can be used at a time.
 
 Example:
+    `TolveraContext` can be created manually, and shared with multiple `Tolvera`
+    instances. Note that only one `render` function can be used at a time.
     ```py
     from tolvera import TolveraContext, Tolvera, run
 
@@ -26,9 +26,8 @@ Example:
         run(main)
     ```
 
-`TolveraContext` can also be created automatically, and still shared.
-    
 Example:
+    `TolveraContext` can also be created automatically, and still shared.
     ```py
     from tolvera import Tolvera, run
 

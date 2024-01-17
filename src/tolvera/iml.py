@@ -8,12 +8,12 @@ Every Tölvera instance has an IMLDict, which is a dictionary of IML instances.
 The IMLDict is accessible via the `iml` attribute of a Tölvera instance, and can
 be used to create and access IML instances.
 
-In the below example, we create a mapping based on states created by `tv.v.flock`,
-where the per-particle state `flock_p` is mapped to the species rule matrix `flock_s`.
-Since this is a `fun2fun` mapping (see IML Types below), we provide input and output 
-functions, and Tölvera updates the mapping automatically every `render()` call.
 
 Example:
+    Here we create a mapping based on states created by `tv.v.flock`,
+    where the per-particle state `flock_p` is mapped to the species rule matrix `flock_s`.
+    Since this is a `fun2fun` mapping (see IML Types below), we provide input and output 
+    functions, and Tölvera updates the mapping automatically every `render()` call.
     ```py
     from tolvera import Tolvera, run
 
@@ -292,20 +292,18 @@ class IMLDict(dotdict):
 
 
 class IMLBase(iiIML):
-    """IML mapping base class.
-    
-    This class inherits from anguilla.IML and adds some functionality.
-    It is not intended to be used directly, but rather to be inherited from.
-    See IMLVec2Vec, IMLVec2Fun, IMLVec2OSC, IMLFun2Vec, IMLFun2Fun, IMLFun2OSC,
-    IMLOSC2Vec, IMLOSC2OSC, IMLOSC2Fun.
+    """
+    This class inherits from [anguilla](https://intelligent-instruments-lab.github.io/anguilla) 
+    and adds some functionality. It is not intended to be used directly, but rather 
+    to be inherited from.
 
     The base class is initialised with a size tuple (input, output) and a config dict
-    which is passed to anguilla.IML.
+    which is passed to `anguilla.IML`.
 
-    It provides a randomise() method which adds random pairs to the mapping.
-    It also provides methods to remove pairs (remove_oldest, remove_newest, remove_random).
-    It also provides a lag() method which lags the mapped data.
-    Finally, it provides an update() method which is called by the updater (see .osc.update).
+    It provides a `randomise` method which adds random pairs to the mapping.
+    It also provides methods to remove pairs (`remove_oldest`, `remove_newest`, `remove_random`).
+    It also provides a `lag` method which lags the mapped data.
+    Finally, it provides an `update` method which is called by the `updater` (see `.osc.update`).
     """
     def __init__(self, **kwargs) -> None:
         """Initialise IMLBase

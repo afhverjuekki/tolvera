@@ -1,11 +1,7 @@
 """
-This example demonstrates the basic usage of Tölvera.
-It will display a window with a black background.
-When Tolvera is run, messages will be printed to the console.
-These messages inform the user of the status of Tolvera,
-during initialisation, setup, and running.
-
 Example:
+    This example demonstrates the basic usage of Tölvera.
+    It will display a window with a black background.
     ```py
     from tolvera import Tolvera, run
 
@@ -20,9 +16,8 @@ Example:
         run(main)
     ```
 
-Here's an annotated version of the above example:
-
 Example:
+    Here's an annotated version of the above example:
     ```py
     # First, we import Tolvera and run() from tolvera.
     from tolvera import Tolvera, run
@@ -47,6 +42,10 @@ Example:
     if __name__ == '__main__':
         run(main)
     ```
+
+When Tolvera is run, messages will be printed to the console.
+These messages inform the user of the status of Tolvera,
+during initialisation, setup, and running.
 """
 
 from fire import Fire as run
