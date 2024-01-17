@@ -4,6 +4,7 @@ from . import forces
 from .flock import Flock
 from .reaction_diffusion import ReactionDiffusion
 from .slime import Slime
+from .particle_life import ParticleLife
 
 
 class Vera:
@@ -21,6 +22,7 @@ class Vera:
         self.flock = Flock(tolvera, **kwargs)
         self.slime = Slime(tolvera, **kwargs)
         self.rd = ReactionDiffusion(tolvera, **kwargs)
+        self.plife = ParticleLife(tolvera, **kwargs)
 
     def add_forces_to_self(self):
         """Add all forces to the Vera instance."""

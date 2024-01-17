@@ -118,7 +118,7 @@ class Flock:
                 cohere = (cohere / nearby - p1.pos) * p1.active * species.cohere
                 vel = (separate + align + cohere).normalized()
                 particles[i].vel += vel * weight
-                particles[i].pos += particles[i].vel * p1.speed * p1.active
+                particles[i].pos += particles[i].vel * p1.speed * p1.active * weight
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(
                 separate, align, cohere, nearby
             )
@@ -127,7 +127,7 @@ class Flock:
         """Call the Flock behaviour.
 
         Args:
-            particles (ti.template()): A template for the particles.
+            particles (Particles): Particles to step.
             weight (ti.f32, optional): The weight of the Flock behaviour. Defaults to 1.0.
         """
         self.step(particles.field, weight)

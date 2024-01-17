@@ -31,7 +31,7 @@ class Species:
                 "MIN_SIZE": (ti.f32, 2.0),
                 "MAX_SIZE": (ti.f32, 5.0),
                 "MIN_SPEED": (ti.f32, 0.2),
-                "MAX_SPEED": (ti.f32, 3.0),
+                "MAX_SPEED": (ti.f32, 2.0),
                 "MAX_MASS": (ti.f32, 1.0),
             }
         )
