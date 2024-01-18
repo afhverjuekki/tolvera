@@ -5,7 +5,7 @@ from .flock import Flock
 from .reaction_diffusion import ReactionDiffusion
 from .slime import Slime
 from .particle_life import ParticleLife
-
+from .swarmalators import Swarmalators
 
 class Vera:
     """The Vera class provides a wrapper for all available forces and behaviours,
@@ -23,6 +23,7 @@ class Vera:
         self.slime = Slime(tolvera, **kwargs)
         self.rd = ReactionDiffusion(tolvera, **kwargs)
         self.plife = ParticleLife(tolvera, **kwargs)
+        self.swarm = Swarmalators(tolvera, **kwargs)
 
     def add_forces_to_self(self):
         """Add all forces to the Vera instance."""
