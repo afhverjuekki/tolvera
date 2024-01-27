@@ -8,6 +8,7 @@ Every Tölvera instance has an IMLDict, which is a dictionary of IML instances.
 The IMLDict is accessible via the `iml` attribute of a Tölvera instance, and can
 be used to create and access IML instances.
 
+There are 9 IML types, which are listed below.
 
 Example:
     Here we create a mapping based on states created by `tv.v.flock`,
@@ -30,7 +31,6 @@ Example:
         @tv.render
         def _():
             tv.px.diffuse(0.99)
-            tv.p()
             tv.v.flock(tv.p)
             tv.px.particles(tv.p, tv.s.species, 'circle')
             return tv.px
@@ -58,7 +58,9 @@ import numpy as np
 import torch
 from anguilla import IML as iiIML
 
-from .osc.update import Updater
+from iipyper.osc import OSC as iiOSC
+from .osc.oscmap import OSCMap
+from .osc.update import Updater, OSCSendUpdater, OSCSend
 from .utils import *
 
 __all__ = [
@@ -239,11 +241,11 @@ class IMLDict(dotdict):
             case "fun2osc":
                 ins = IMLFun2OSC(self.tv.osc.map, **kwargs)
             case "osc2vec":
-                ins = IMLOSC2Vec(self.tv.osc.map, **kwargs)
+                ins = IMLOSC2Vec(self.tv.osc.map, self.o, name, **kwargs)
             case "osc2fun":
                 ins = IMLOSC2Fun(self.tv.osc.map, **kwargs)
             case "osc2osc":
-                ins = IMLOSC2OSC(self.tv.osc.map, **kwargs)
+                ins = IMLOSC2OSC(self.tv.osc.map, self.tv.osc, **kwargs)
             case _:
                 raise ValueError(
                     f"[tolvera._iml.IMLDict] Invalid IML_TYPE '{iml_type}'. Valid IML_TYPES: {IML_TYPES}."
@@ -278,13 +280,19 @@ class IMLDict(dotdict):
                 if iml == "tv" or iml == "i" or iml == "o":
                     continue
                 cls_name = type(self[iml]).__name__
-                if "OSC" in cls_name:
+                if "Vec2OSC" in cls_name:
+                    self[iml].invec = self.i[iml]
+                elif "OSC" in cls_name:
+                    # Fun2OSC, OSC2Fun, OSC2OSC and OSC2Vec 
+                    # are handled by tv.osc.map (OSCMap)
                     continue
-                if "Vec2" in cls_name:
+                elif "Vec2" in cls_name:
+                    # Vec2Vec, Vec2Fun
                     if iml in self.i:
                         invec = self.i[iml]
                         outvecs[iml] = self[iml](invec, *args, **kwargs)
                 else:
+                    # Fun2Fun, Fun2Vec
                     outvecs[iml] = self[iml](*args, **kwargs)
             self.i.clear()
             self.o.update(outvecs)
@@ -312,7 +320,7 @@ class IMLBase(iiIML):
             size (tuple, required): (input, output) sizes.
             io (tuple, optional): (input, output) functions.
             config (dict, optional): {embed_input, embed_output, interpolate, index, verbose}.
-            updater (cls, optional): See iipyper.osc.update (Updater, OSCUpdater, ...).
+            updater (cls, optional): See iipyper.osc.update (Updater, OSCSendUpdater, ...).
             update_rate (int, optional): Updater's update rate (defaults to 1).
             randomise (bool, optional): Randomise mapping on init (defaults to False).
             rand_pairs (int, optional): Number of random pairs to add (defaults to 32).
@@ -543,7 +551,25 @@ class IMLBase(iiIML):
 
 
 class IMLVec2Vec(IMLBase):
-    """IML vector to vector mapping
+    """IML vector to vector mapping.
+
+    Input vector is accessed via `tv.iml.i['name']`.
+    Output vector is accessed via `tv.iml.o['name']`.
+
+    Example:
+        ```py
+        tv.iml.flock_p2flock_s = {
+            'type': 'vec2vec', 
+            'size': (tv.s.flock_p.size, tv.s.flock_s.size)
+        }
+
+        def update():
+            invec = tv.s.flock_p.to_vec()
+            tv.iml.i = {'flock_p2flock_s': invec}
+            flock_s_outvec = tv.iml.o['flock_p2flock_s']
+            if flock_s_outvec is not None:
+                tv.s.flock_s.from_vec(flock_s_outvec)
+        ```
 
     Args:
         kwargs:
@@ -551,90 +577,151 @@ class IMLVec2Vec(IMLBase):
     """
 
     def __init__(self, **kwargs) -> None:
+        """Initialise IMLVec2Vec"""
         super().__init__(**kwargs)
 
 
 class IMLVec2Fun(IMLBase):
     """IML vector to function mapping
 
-    Args:
-        kwargs:
-            io (tuple, required): (None, callable) output function.
-            see IMLBase kwargs.
-    """
+    Example:
+        ```py
+        def update(outvec):
+            print('outvec', outvec)
 
+        tv.iml.flock_p2fun = {
+            'type': 'vec2fun', 
+            'size': (tv.s.flock_p.size, 8), 
+            'io': (None, update),
+        }
+        ```
+    """
     def __init__(self, **kwargs) -> None:
-        assert "io" in kwargs, f"IMLVec2Fun requires 'io' kwarg."
+        """Initialise IMLVec2Fun
+        
+        Args:
+            kwargs:
+                io (tuple, required): (None, callable) output function.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLVec2Fun requires 'io=(None, callable)' kwarg."
         assert (
             kwargs["io"][0] is None
-        ), f"IMLVec2Fun requires 'io' kwarg to be (None, outfun)."
+        ), f"IMLVec2Fun 'io[0]' not None, got {type(kwargs['io'][0])}."
         assert callable(
             kwargs["io"][1]
-        ), f"IMLVec2Fun requires 'io' kwarg to be (None, outfun)."
+        ), f"IMLVec2Fun 'io[1]' not callable, got {type(kwargs['io'][1])}."
         self.outfun = kwargs["io"][1]
         super().__init__(**kwargs)
 
-    def update(self, invec):
+    def update(self, invec: list|torch.Tensor|np.ndarray) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Args:
+            invec (list | torch.Tensor | np.ndarray): Input vector.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
         mapped = self.map(invec, **self.map_kw)
         self.data.mapped = self.outfun(mapped, **self.outfun_kw)
         return self.data.mapped
 
 
 class IMLVec2OSC(IMLBase):
-    """IML vector to OSC mapping
+    """IML vector to OSC mapping.
 
-    Args:
-        osc_map (OSCMap, required): OSCMap instance.
-        kwargs:
-            io (tuple, required): (None, str) output OSC route.
-            see IMLBase kwargs.
+    Example:
+        Sends the output vector to '/tolvera/flock'.
+
+        ```py
+        tv.iml.flock_p2osc = {
+            'type': 'vec2osc', 
+            'size': (tv.s.flock_p.size, 8), 
+            'io': (None, 'tolvera_flock'),
+        }
+        ```
     """
+    def __init__(self, osc_map: OSCMap, **kwargs) -> None:
+        """Initialise IMLVec2OSC
 
-    def __init__(self, osc_map, **kwargs) -> None:
-        self.osc_map = osc_map
+        Args:
+            osc_map (OSCMap, required): OSCMap instance.
+            kwargs:
+                io (tuple, required): (None, str) output OSC route.
+                see IMLBase kwargs.
         """
-        self.osc_map.add_somethingsomething(self.update)
-        kwargs['updater'] = OSCUpdater from self.osc_map
-        does OSCUpdater have args, kwargs?
-        """
-        assert "io" in kwargs, f"IMLVec2OSC requires 'io' kwarg."
+        assert "io" in kwargs, f"IMLVec2OSC requires 'io=(None, str)' kwarg."
         assert (
             kwargs["io"][0] is None
-        ), f"IMLVec2OSC requires 'io' kwarg to be (None, osc_route)."
+        ), f"IMLVec2OSC 'io[0]' is not None, got {type(kwargs['io'][0])}."
         assert (
             type(kwargs["io"][1]) is str
-        ), f"IMLVec2OSC requires 'io' kwarg to be (None, osc_route)."
-        self.route = kwargs["io"][1]
+        ), f"IMLVec2OSC 'io[1]' is not str, got {type(kwargs['io'][1])}."
+        self.osc_map = osc_map
+        self.out_osc_route = kwargs["io"][1]
+        self.osc_map.send_list_inline(self.out_osc_route, self.update, kwargs["size"][1], count=kwargs.get("update_rate", 10))
+        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]['updater']
         super().__init__(**kwargs)
 
-    def update(self, invec):
-        raise NotImplementedError(
-            f"[tolvera._iml.IMLVec2OSC] update() not implemented."
-        )
+    def update(self) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
+        if len(self.pairs) == 0:
+            return None
+        if self.invec is not None:
+            self.data.mapped = self.map(self.invec, **self.map_kw)
+            if hasattr(self, "lag") and type(self.lag) is Lag:
+                self.lag_mapped_data()
+            return self.data.mapped.tolist()
+        else:
+            return None
 
 
 class IMLFun2Vec(IMLBase):
-    """IML function to vector mapping
+    """IML function to vector mapping.
 
-    Args:
-        kwargs:
-            io (tuple, required): (callable, None) input function.
-            see IMLBase kwargs.
+    Output vector is accessed via `tv.iml.o['name']`.
+
+    Example:
+        ```py
+        tv.iml.flock_p2vec = {
+            'type': 'fun2vec', 
+            'size': (tv.s.flock_p.size, 8), 
+            'io': (tv.s.flock_p.to_vec, None),
+        }
+        # ...
+        flock_s_outvec = tv.iml.o['flock_p2flock_s']
+        ```
     """
-
     def __init__(self, **kwargs) -> None:
-        assert "io" in kwargs, f"IMLFun2Vec requires 'io' kwarg."
+        """Initialise IMLFun2Vec
+
+        Args:
+            kwargs:
+                io (tuple, required): (callable, None) input function.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLFun2Vec requires 'io=(callable, None)' kwarg."
         assert callable(
             kwargs["io"][0]
-        ), f"IMLFun2Vec requires 'io' kwarg to be (infun, None)."
+        ), f"IMLFun2Vec 'io[0]' not callable, got {type(kwargs['io'][0])}."
         assert (
             kwargs["io"][1] is None
-        ), f"IMLFun2Vec requires 'io' kwarg to be (infun, None)."
+        ), f"IMLFun2Vec 'io[1]' not None, got {type(kwargs['io'][1])}."
         self.infun = kwargs["io"][0]
         self.infun_params = inspect.signature(self.infun).parameters
         super().__init__(**kwargs)
 
-    def update(self):
+    def update(self) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
         if len(self.infun_params) > 0:
             invec = self.infun(**self.infun_kw)
         else:
@@ -644,29 +731,50 @@ class IMLFun2Vec(IMLBase):
 
 
 class IMLFun2Fun(IMLBase):
-    """IML function to function mapping
+    """IML function to function mapping.
 
-    Args:
-        kwargs:
-            io (tuple, required): (callable, callable) input and output functions.
-            see IMLBase kwargs.
+    Example:
+        ```py
+        def infun():
+            return [0,0,0,0]
+
+        def outfun(vector):
+            print('outvec', vector)
+
+        tv.iml.test2test = {
+            'type': 'fun2fun', 
+            'size': (4, 8), 
+            'io': (infun, outfun),
+        }
+        ```
     """
-
     def __init__(self, **kwargs) -> None:
-        assert "io" in kwargs, f"IMLFun2Fun requires 'io' kwarg."
+        """Initialise IMLFun2Fun
+
+        Args:
+            kwargs:
+                io (tuple, required): (callable, callable) input and output functions.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLFun2Fun requires 'io=(callable, callable)' kwarg."
         assert callable(
             kwargs["io"][0]
-        ), f"IMLFun2Fun requires 'io' kwarg to be (infun, outfun)."
+        ), f"IMLFun2Fun 'io[0]' not callable, got {type(kwargs['io'][0])}."
         assert callable(
             kwargs["io"][1]
-        ), f"IMLFun2Fun requires 'io' kwarg to be (infun, outfun)."
+        ), f"IMLFun2Fun 'io[1]' not callable, got {type(kwargs['io'][1])}."
         self.infun = kwargs["io"][0]
         self.infun_params = inspect.signature(self.infun).parameters
         self.outfun = kwargs["io"][1]
         self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
 
-    def update(self):
+    def update(self) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
         if len(self.infun_params) > 0:
             invec = self.infun(**self.infun_kw)
         else:
@@ -679,77 +787,217 @@ class IMLFun2Fun(IMLBase):
 class IMLFun2OSC(IMLBase):
     """IML function to OSC mapping
 
-    Args:
-        osc_map (OSCMap, required): OSCMap instance.
-        kwargs:
-            see IMLBase kwargs.
-    """
+    Example:
+        This will send the output vector to '/out/vec'.
 
-    def __init__(self, osc_map, **kwargs) -> None:
+        ```py
+        def infun():
+            return [0,0,0,0]
+
+        tv.iml.test2osc = {
+            'type': 'fun2osc', 
+            'size': (4, 8), 
+            'io': (infun, 'out_vec'),
+        }
+        ```
+    """
+    def __init__(self, osc_map: OSCMap, **kwargs) -> None:
+        """Initialise IMLFun2OSC
+
+        Args:
+            osc_map (OSCMap, required): OSCMap instance.
+            kwargs:
+                io (tuple, required): (callable, str) input function and output OSC route.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLFun2Vec requires 'io=(callable, str)' kwarg."
+        assert callable(
+            kwargs["io"][0]
+        ), f"IMLFun2Vec 'io[0]' not callable, got {type(kwargs['io'][0])}."
+        assert (
+            isinstance(kwargs["io"][1], str)
+        ), f"IMLFun2Vec 'io[1]' not str, got {type(kwargs['io'][1])}."
+        self.infun = kwargs["io"][0]
+        self.infun_params = inspect.signature(self.infun).parameters
         self.osc_map = osc_map
+        self.out_osc_route = kwargs["io"][1]
+        self.osc_map.send_list_inline(self.out_osc_route, self.update, kwargs["size"][1], count=kwargs.get("update_rate", 10))
+        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]['updater']
         super().__init__(**kwargs)
 
-    def update(self, invec):
-        raise NotImplementedError(
-            f"[tolvera._iml.IMLFun2OSC] update() not implemented."
-        )
+    def update(self) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
+        if len(self.infun_params) > 0:
+            invec = self.infun(**self.infun_kw)
+        else:
+            invec = self.infun()
+        self.data.mapped = self.map(invec, **self.map_kw)
+        return self.data.mapped.tolist()
 
 
 class IMLOSC2Vec(IMLBase):
     """IML OSC to vector mapping
 
-    Args:
-        osc_map (OSCMap, required): OSCMap instance.
-        kwargs:
-            see IMLBase kwargs.
-    """
+    Example:
+        This will map the OSC input to the output vector and store it in `tv.iml.o['name']`.
 
-    def __init__(self, osc_map, **kwargs) -> None:
+        ```py
+        tv.iml.test2vec = {
+            'type': 'osc2vec', 
+            'size': (4, 8), 
+            'io': ('in_vec', None),
+        }
+        # ...
+        flock_s_outvec = tv.iml.o['flock_p2flock_s']
+        ```
+    """
+    def __init__(self, osc_map, outvecs: dict, name: str, **kwargs) -> None:
+        """Initialise IMLOSC2Vec
+
+        Args:
+            osc_map (OSCMap, required): OSCMap instance.
+            outvecs (dict): Output vectors dict.
+            name (str): Name of output vector.
+            kwargs:
+                io (tuple, required): (str, None) input OSC route.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLOSC2Vec requires 'io=(str, None)' kwarg."
+        assert (
+            type(kwargs["io"][0]) is str
+        ), f"IMLOSC2Vec 'io[0]' not str, got {type(kwargs['io'][0])}."
+        assert (
+            kwargs["io"][1] is None
+        ), f"IMLOSC2Vec 'io[1]' is not None, got {type(kwargs['io'][1])}."
+        self.name = kwargs.get("name", None)
         self.osc_map = osc_map
+        self.osc_in_route = kwargs["io"][0]
+        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
+        self.outvecs = outvecs
+        self.name = name
         super().__init__(**kwargs)
 
-    def update(self, invec):
-        raise NotImplementedError(
-            f"[tolvera._iml.IMLOSC2Vec] update() not implemented."
-        )
+    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Args:
+            vector (list[float]): Input vector.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
+        self.data.mapped = self.map(vector, **self.map_kw)
+        if self.name is not None:
+            self.outvecs[self.name] = self.data.mapped
+        return self.data.mapped
 
 
 class IMLOSC2Fun(IMLBase):
     """IML OSC to function mapping
 
-    Args:
-        osc_map (OSCMap, required): OSCMap instance.
-        kwargs:
-            see IMLBase kwargs.
-    """
+    Example:
+        ```py
+        def outfun(vector):
+            print('outvec', vector)
 
+        tv.iml.test2fun = {
+            'type': 'osc2fun', 
+            'size': (4, 8), 
+            'io': ('in_vec', outfun),
+        }
+        ```
+    """
     def __init__(self, osc_map, **kwargs) -> None:
+        """Initialise IMLOSC2Fun
+
+        Args:
+            osc_map (OSCMap, required): OSCMap instance.
+            kwargs:
+                io (tuple, required): (str, callable) input OSC route and output function.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLOSC2Fun requires 'io=(str, callable)' kwarg."
+        assert (
+            type(kwargs["io"][0]) is str
+        ), f"IMLOSC2Fun 'io[0]' not str, got {type(kwargs['io'][0])}."
+        assert callable(
+            kwargs["io"][1]
+        ), f"IMLOSC2Fun 'io[1]' is not callable, got {type(kwargs['io'][1])}."
         self.osc_map = osc_map
+        self.osc_in_route = kwargs["io"][0]
+        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
+        self.outfun = kwargs["io"][1]
+        self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
 
-    def update(self, invec):
-        raise NotImplementedError(
-            f"[tolvera._iml.IMLOSC2Fun] update() not implemented."
-        )
+    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Args:
+            vector (list[float]): Input vector.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
+        """
+        mapped = self.map(vector, **self.map_kw)
+        self.data.mapped = self.outfun(mapped, **self.outfun_kw)
+        return self.data.mapped
 
 
 class IMLOSC2OSC(IMLBase):
     """IML OSC to OSC mapping
 
-    Args:
-        osc_map (OSCMap, required): OSCMap instance.
-        kwargs:
-            see IMLBase kwargs.
-    """
+    Example:
+        '/in/vec' is mapped and the output sent to '/out/vec'.
 
-    def __init__(self, osc_map, **kwargs) -> None:
+        ```py
+        tv.iml.test2fun = {
+            'type': 'osc2osc', 
+            'size': (4, 8), 
+            'io': ('in_vec', 'out_vec'),
+        }
+        ```
+    """
+    def __init__(self, osc_map: OSCMap, osc: iiOSC, **kwargs) -> None:
+        """Initialise IMLOSC2OSC
+
+        Args:
+            osc_map (OSCMap, required): OSCMap instance.
+            osc (OSC): iipyper OSC instance.
+            kwargs:
+                io (tuple, required): (str, str) input and output OSC routes.
+                see IMLBase kwargs.
+        """
+        assert "io" in kwargs, f"IMLOSC2OSC requires 'io=(str, str)' kwarg."
+        assert (
+            type(kwargs["io"][0]) is str
+        ), f"IMLOSC2OSC 'io[0]' not str, got {type(kwargs['io'][0])}."
+        assert (
+            type(kwargs["io"][1]) is str
+        ), f"IMLOSC2OSC 'io[1]' is not str, got {type(kwargs['io'][1])}."
+        self.osc = osc
         self.osc_map = osc_map
+        self.osc_in_route = kwargs["io"][0]
+        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
+        self.out_osc_route = kwargs["io"][1]
         super().__init__(**kwargs)
 
-    def update(self, invec):
+    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+        """Update mapped data.
+
+        Args:
+            vector (list[float]): Input vector.
+
+        Returns:
+            list|torch.Tensor|np.ndarray: Mapped data.
         """
-        see iml.app.server.map?
-        """
-        raise NotImplementedError(
-            f"[tolvera._iml.IMLOSC2OSC] update() not implemented."
-        )
+        self.data.mapped = self.map(vector, **self.map_kw)
+        self.osc.host.send(self.out_osc_route, *self.data.mapped.tolist())
+        return self.data.mapped
