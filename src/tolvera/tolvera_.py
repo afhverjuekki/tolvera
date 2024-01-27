@@ -143,6 +143,8 @@ class Tolvera:
         self._speed = kwargs.get("speed", 1)  # global timebase
         self.particles = kwargs.get("particles", 1024)
         self.species = kwargs.get("species", 4)
+        if self.particles < self.species:
+            self.species = self.particles
         self.pn = self.particles
         self.sn = self.species
         self.p_per_s = self.particles // self.species
@@ -151,6 +153,7 @@ class Tolvera:
         self.px = Pixels(self, **kwargs)
         self._species = Species(self, **kwargs)
         self.p = Particles(self, **kwargs)
+        self.speed(self._speed)
         self.v = Vera(self, **kwargs)
         if self.osc is not False:
             self.add_to_osc_map()
