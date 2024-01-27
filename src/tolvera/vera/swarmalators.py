@@ -48,8 +48,8 @@ class Swarmalators:
                 'omega': (ti.f32, .01, 1.), # frequency variation
                 'speed': (ti.f32, .01, 2.), # normal speed
             }, 
-            'shape': 6,
-            'randomise': True
+            'shape': 7,
+            'randomise': False
         }
 
         self.phasemod = ti.field(ti.f32, shape=())
@@ -76,6 +76,8 @@ class Swarmalators:
         self.tv.s.swarm_s[4] = self.tv.s.swarm_s.struct(J=0.1, K=1., noise=0., omega=0.8, speed=2.)
         # "Fractions"
         self.tv.s.swarm_s[5] = self.tv.s.swarm_s.struct(J=1., K=-0.12, noise=0., omega=0., speed=2.)
+        # ???
+        self.tv.s.swarm_s[6] = self.tv.s.swarm_s.struct(J=0., K=0., noise=0., omega=0., speed=2.)
 
     @ti.func
     def reset(self):
@@ -116,7 +118,7 @@ class Swarmalators:
             self.tv.s.swarm_p[i] = p
 
     @ti.kernel
-    def step(self, particles: ti.template(), preset: ti.i32):
+    def step(self, particles: ti.template(), preset: ti.i32, weight: ti.f32):
 
         pn = self.tv.pn
         s = self.tv.s.swarm_s[preset]
@@ -147,7 +149,9 @@ class Swarmalators:
 
             p1.color = p1.theta/2/ti.math.pi
             self.tv.s.swarm_p[i] = p1
-            particles[i].pos = ti.Vector([self.X(p1.x), self.Y(p1.y)])
+            pos = ti.Vector([self.X(p1.x), self.Y(p1.y)])
+            d = pos - particles[i].pos
+            particles[i].pos += d * weight
 
     @ti.func
     def dist_euclid(self, p1, p2):
@@ -161,5 +165,5 @@ class Swarmalators:
     def Y(self, y):
         return (y + self.CONSTS.L) / self.CONSTS.two_L * self.tv.y / 2 + self.tv.y/4
 
-    def __call__(self, particles, preset: ti.i32=0):
-        self.step(particles.field, preset)
+    def __call__(self, particles, preset: ti.i32=0, weight: ti.f32=1.):
+        self.step(particles.field, preset, weight)
