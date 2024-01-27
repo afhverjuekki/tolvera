@@ -3,7 +3,6 @@
 import taichi as ti
 
 from ..pixels import Pixels
-from ..state import State
 from ..utils import CONSTS
 
 
