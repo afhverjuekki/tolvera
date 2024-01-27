@@ -135,6 +135,7 @@ class TolveraContext:
             print(f"[{self.name}] Running with no render function...")
         while self.ti.window.running:
             with _lock:
+                [t.p() for t in self.tolveras.values()]
                 if f is not None:
                     self.canvas = f(**kwargs)
                 if self.osc is not False:
