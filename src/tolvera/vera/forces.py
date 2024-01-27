@@ -17,6 +17,7 @@ __all__ = [
     "repel_species",
     "gravitate",
     "gravitate_species",
+    "noise",
 ]
 
 
@@ -31,7 +32,7 @@ def move(particles: ti.template()):
         if particles.field[i].active == 0:
             continue
         p1 = particles.field[i]
-        particles.field[i].pos += particles.field[i].vel * p1.speed * p1.active
+        particles.field[i].pos += p1.vel * p1.speed * p1.active
 
 
 @ti.kernel
@@ -227,3 +228,19 @@ def gravitation(p1: Particle, p2: Particle, G: ti.f32) -> ti.math.vec2:
     force_magnitude = G * p1.mass * p2.mass / (distance**2)
     force = force_direction * force_magnitude
     return force / p1.mass
+
+
+@ti.kernel
+def noise(particles: ti.template(), weight: ti.f32):
+    """Add noise to the particles.
+
+    Args:
+        particles (ti.template): Particles.
+        weight (ti.f32): Noise weight.
+    """
+    for i in range(particles.field.shape[0]):
+        p = particles.field[i]
+        if p.active == 0:
+            continue
+        particles.field[i].vel += (ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * weight)
+        particles.field[i].pos += p.vel * p.speed * p.active
