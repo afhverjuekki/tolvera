@@ -133,7 +133,7 @@ class OSCSend:
     Non rate-limited OSC send
     """
 
-    def __init__(self, osc, address: str, f, count=30, client=None):
+    def __init__(self, osc, address: str, f, client=None):
         self.osc = osc
         self.address = address
         self.f = f
