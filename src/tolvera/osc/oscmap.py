@@ -165,14 +165,15 @@ class OSCMap:
         def decorator(func):
             def wrapper(*args):
                 self.add_send_list(func, kwargs)
-                return func()
+                # TODO: This was originally here to sync defaults with client
+                # but it causes init order isses in IMLFun2OSC.update
+                # return func()
 
             default_arg = [
                 kwargs[a][0]
                 for a in kwargs
                 if a != "count" and a != "send_mode" and a != "length" and a != "name"
             ]
-            default_arg = default_arg  # *kwargs['length']
             wrapper(default_arg)
             return wrapper
 
@@ -185,7 +186,11 @@ class OSCMap:
 
     def add_send_list_to_osc_map(self, func, kwargs):
         f = self.map_func_to_dict(func, kwargs)
-        hint = f["hints"]["return"]
+        # TODO: Hack for send_list_inline which doesn't have a return type hint
+        if "return" in f["hints"]:
+            hint = f["hints"]["return"]
+        else:
+            hint = list[float]
         assert hint == list[float], "send_list can only send list[float], found " + str(
             hint
         )
@@ -214,6 +219,10 @@ class OSCMap:
     def add_send_list_to_patcher(self, func):
         f = self.dict["send"][func.__name__]
         self.patcher.send_list_func(f)
+
+    def send_list_inline(self, name: str, sender_func, length: int, send_mode="broadcast", count=1, **kwargs):
+        kwargs = {**kwargs, **{"name": name, "length": length, "send_mode": send_mode, "count": count}}
+        self.send_list(**kwargs)(sender_func)
 
     """
     send kwargs
@@ -270,7 +279,9 @@ class OSCMap:
         def decorator(func):
             def wrapper(*args):
                 self.add_receive_list(func, kwargs)
-                return func(*args)
+                # TODO: This was originally here to sync defaults with client
+                # but it causes init order isses in IMLOSC2Vec.init
+                # return func(*args)
 
             # TODO: This probably shouldn't be here...
             randomised_list = self.randomise_list(
@@ -297,6 +308,7 @@ class OSCMap:
         assert (
             len(f["params"]) == 1
         ), "receive_list can only receive one param (list[float])"
+        print(f)
         hint = f["hints"][list(f["params"].keys())[0]]
         assert (
             hint == list[float]
@@ -314,6 +326,10 @@ class OSCMap:
     def add_receive_list_to_patcher(self, func):
         f = self.dict["receive"][func["name"]]
         self.patcher.receive_list_func(f)
+
+    def receive_list_inline(self, name: str, receiver_func, length: int, count=1, **kwargs):
+        kwargs = {**kwargs, **{"name": name, "length": length, "count": count, "vector": (0, 0, 1)}}
+        self.receive_list(**kwargs)(receiver_func)
 
     def receive_list_with_idx(
         self, name: str, receiver, idx_len: int, vec_len: int, attr=None
