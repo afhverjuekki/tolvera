@@ -451,12 +451,13 @@ class State:
         return self.nddict.data[attr].size
 
     @ti.func
-    def __getitem__(self, key):
+    def __getitem__(self, index: ti.i32):
         """Return the Taichi field attribute.
         
         Args:
-            key (str): Attribute name."""
-        return self.field[key]
+            index (ti.i32): Attribute index.
+        """
+        return self.field[index]
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         """Return the Taichi field."""
