@@ -5,7 +5,7 @@ The StateDict is accessible via the 's' attribute of a Tölvera instance, and ca
 be used to create and access states.
 
 Each State instance has a Taichi struct field and a corresponding NpNdarrayDict,
-which handles OSC and IML accessors and endpoints.
+which handles OSC accessors and endpoints.
 """
 
 from typing import Any
@@ -38,7 +38,6 @@ class StateDict(dotdict):
                 "vel": (ti.math.vec2, -1.0, 1.0),
             }, 
             "shape": (tv.pn, 1), 
-            "iml": "get", 
             "osc": "get", 
             "randomise": True
         }
@@ -153,7 +152,7 @@ class State:
     can be used in Python scope, and the two are kept in sync by the from_nddict()
     and to_nddict() methods.
 
-    The State class also handles IML and OSC accessors for the state, which use the
+    The State class also handles OSC accessors for the state, which use the
     NpNdarrayDict to get and set data. A Tölvera instance is therefore required
     to initialise a State instance.
 
@@ -165,19 +164,19 @@ class State:
     provides methods for accessing the data in the state in n-dimensional slices.
 
     Example:
-        state = State(
-            tolvera,
-            name="state",
-            state={
-                "pos": (ti.f32, -1.0, 1.0),
-                "vel": (ti.f32, -1.0, 1.0),
-                "acc": (ti.f32, -1.0, 1.0),
+        ```py
+        tv.s.flock_p = {
+            "state": {
+                "separate": (ti.math.vec2, 0.0, 1.0),
+                "align": (ti.math.vec2, 0.0, 1.0),
+                "cohere": (ti.math.vec2, 0.0, 1.0),
+                "nearby": (ti.i32, 0, self.tv.p.n - 1),
             },
-            shape=10,
-            iml="get",
-            osc="get",
-            randomise=True,
-        )
+            "shape": self.tv.pn, # particle count
+            "osc": ("get"),
+            "randomise": False,
+        }
+        ```
     """
     def __init__(
         self,
@@ -185,7 +184,6 @@ class State:
         name: str,
         state: dict[str, tuple[DataType, Any, Any]],
         shape: int | tuple[int] = None,
-        iml: str | tuple = None,  # 'get' | ('get', 'set')
         osc: str | tuple = None,  # 'get' | ('get', 'set')
         randomise: bool = True,
         methods: dict[str, Any] = None,
@@ -197,7 +195,6 @@ class State:
             name (str): Name of this state.
             state (dict[str, tuple[DataType, Any, Any]]): Dict of state attributes.
             shape (int | tuple[int], optional): Shape of the state. Defaults to 1.
-            iml (str | tuple, optional): Flag for IML via Anguilla. Defaults to False.
             methods (dict[str, Any], optional): Flag for OSC via iipyper. Defaults to False.
         """
         self.tv = tolvera
@@ -205,7 +202,7 @@ class State:
         self.name = name
         shape = 1 if shape is None else shape
         self.setup_data(state, shape, randomise, methods)
-        self.setup_accessors(iml, osc)
+        self.setup_accessors(osc)
 
     def setup_data(
         self,
@@ -272,59 +269,26 @@ class State:
         self.nddict.randomise()
         self.from_nddict()
 
-    def setup_accessors(self, iml: tuple = None, osc: tuple = None):
-        """Setup IML and OSC accessors for this state."""
+    def setup_accessors(self, osc: tuple = None):
+        """Setup OSC accessors for this state."""
         self.setter_name = f"{self.tv.name_clean}_set_{self.name}"
         self.getter_name = f"{self.tv.name_clean}_get_{self.name}"
-        self.handle_accessor_flags(iml, osc)
-        if self.tv.iml is not False and self.iml:
-            self.setup_iml_mapping()
+        self.handle_accessor_flags(osc)
         if self.tv.osc is not False and self.osc:
             self.setup_osc_mapping()
 
-    def handle_accessor_flags(self, iml, osc):
-        self.iml, self.iml_get, self.iml_set = self.handle_get_set(iml)
-        self.osc, self.osc_get, self.osc_set = self.handle_get_set(osc)
-
-    def handle_get_set(self, flag):
-        enabled = flag is not None
-        if isinstance(flag, str):
-            flag = (flag,)
-        get = "get" in flag if enabled else False
-        set = "set" in flag if enabled else False
-        return enabled, get, set
-
-    def setup_iml_mapping(self):
-        self.iml = self.tv.iml
-        # if self.iml_set:
-        #     self.add_iml_setters()
-        # if self.iml_get:
-        #     self.add_iml_getters()
-
-    def add_iml_setters(self):
-        name = self.setter_name
-        """
-        self.iml[name] = IMLOSCToFunc(self.tv)
-        """
-        self.iml.add_instance(name + "")
-
-    def add_iml_getters(self):
-        name = self.getter_name
-        """
-        self.iml[name] = IMLFuncToOSC(self.tv)
-        """
-        self.iml.add_instance(name + "")
+    def handle_accessor_flags(self, osc):
+        self.osc = osc is not None
+        if isinstance(osc, str): osc = (osc,)
+        self.osc_get = "get" in osc if self.osc else False
+        self.osc_set = "set" in osc if self.osc else False
 
     def setup_osc_mapping(self):
         self.osc = self.tv.osc
         if self.osc_set:
             self.add_osc_setters()
-        #     if self.iml_set:
-        #         self.add_iml_osc_setters()
         # if self.osc_get:
         #     self.add_osc_getters()
-        #     if self.iml_get:
-        #         self.add_iml_osc_getters()
 
     def add_osc_setters(self):
         name = self.setter_name
@@ -349,12 +313,6 @@ class State:
     def add_osc_streams(self, name):
         # add send in broadcast mode
         raise NotImplementedError("add_osc_streams not implemented")
-
-    def add_iml_osc_setters(self):
-        name = self.setter_name
-
-    def add_iml_osc_getters(self):
-        name = self.getter_name
 
     def serialize(self) -> str:
         return ti_serialize(self.field)
