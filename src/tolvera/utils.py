@@ -290,6 +290,20 @@ class Lag:
         else:
             raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
 
+@ti.data_oriented
+class LagVec2:
+    def __init__(self, coef: ti.f32 = 0.5):
+        self.coef = ti.field(ti.f32, shape=())
+        self.coef[None] = coef
+        self.val = ti.field(ti.f32, shape=2)
+        self.val_prev = ti.field(ti.f32, shape=2)
+
+    @ti.kernel
+    def _update_val(self, new: ti.math.vec2) -> ti.math.vec2:
+        return ti.math.vec2([self.val_prev + ((new - self.val_prev) * self.coef[None])])
+
+    def __call__(self, new: ti.math.vec2):
+        self.val_prev = self._update_val(new)
 
 def create_and_validate_slice(
     arg: Union[int, tuple[int, ...], slice], target_array: np.ndarray
