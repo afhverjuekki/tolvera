@@ -184,7 +184,7 @@ class State:
         name: str,
         state: dict[str, tuple[DataType, Any, Any]],
         shape: int | tuple[int] = None,
-        osc: str | tuple = None,  # 'get' | ('get', 'set')
+        osc: str | tuple = None,  # ('get', 'set', 'stream')
         randomise: bool = True,
         methods: dict[str, Any] = None,
     ):
@@ -202,7 +202,7 @@ class State:
         self.name = name
         shape = 1 if shape is None else shape
         self.setup_data(state, shape, randomise, methods)
-        self.setup_accessors(osc)
+        self.setup_osc(osc)
 
     def setup_data(
         self,
@@ -269,26 +269,26 @@ class State:
         self.nddict.randomise()
         self.from_nddict()
 
-    def setup_accessors(self, osc: tuple = None):
-        """Setup OSC accessors for this state."""
+    def setup_osc(self, osc: tuple|str = None):
+        """Setup OSC for this state.
+
+        Args:
+            osc (tuple | str, optional): ("get", "set", "stream"). Defaults to None.
+        """
+        self.osc = osc is not None
+        if not self.osc: return
+        if isinstance(osc, str): osc = (osc,)
+        self.osc_set = "set" in osc if self.osc else False
+        self.osc_get = "get" in osc if self.osc else False
+        self.osc_stream = "stream" in osc if self.osc else False
         self.setter_name = f"{self.tv.name_clean}_set_{self.name}"
         self.getter_name = f"{self.tv.name_clean}_get_{self.name}"
-        self.handle_accessor_flags(osc)
+        self.stream_name = f"{self.tv.name_clean}_stream_{self.name}"
         if self.tv.osc is not False and self.osc:
-            self.setup_osc_mapping()
-
-    def handle_accessor_flags(self, osc):
-        self.osc = osc is not None
-        if isinstance(osc, str): osc = (osc,)
-        self.osc_get = "get" in osc if self.osc else False
-        self.osc_set = "set" in osc if self.osc else False
-
-    def setup_osc_mapping(self):
-        self.osc = self.tv.osc
-        if self.osc_set:
-            self.add_osc_setters()
-        # if self.osc_get:
-        #     self.add_osc_getters()
+            self.osc = self.tv.osc
+            if self.osc_set: self.add_osc_setters()
+            # if self.osc_get: self.add_osc_getters()
+            # if self.osc_stream: self.add_osc_streams()
 
     def add_osc_setters(self):
         name = self.setter_name
@@ -301,18 +301,18 @@ class State:
             kwargs = {"i": ranges, "j": ranges, "attr": (k, k, k)}
             self.osc.map.receive_args_inline(f"{name}", self.osc_getter, **kwargs)
 
-    def osc_getter(self, i: int, j: int, attribute: str):
-        ret = self.get((i, j), attribute)
-        if ret is not None:
-            route = self.osc.map.pascal_to_path(self.getter_name)  # +'/'+attribute
-            self.osc.host.return_to_sender_by_name(
-                (route, attribute, ret), self.osc.client_name
-            )
-        return ret
+    # def osc_getter(self, i: int, j: int, attribute: str):
+    #     ret = self.get((i, j), attribute)
+    #     if ret is not None:
+    #         route = self.osc.map.pascal_to_path(self.getter_name)  # +'/'+attribute
+    #         self.osc.host.return_to_sender_by_name(
+    #             (route, attribute, ret), self.osc.client_name
+    #         )
+    #     return ret
 
-    def add_osc_streams(self, name):
-        # add send in broadcast mode
-        raise NotImplementedError("add_osc_streams not implemented")
+    # def add_osc_streams(self):
+    #     # add send in broadcast mode
+    #     raise NotImplementedError("add_osc_streams not implemented")
 
     def serialize(self) -> str:
         return ti_serialize(self.field)
@@ -355,6 +355,20 @@ class State:
             self.nddict.set_data(data)
         except Exception as e:
             raise Exception(f"[tolvera.state.to_nddict] {e}") from e
+    
+    def set_from_nddict(self, data: dict):
+        """Copy data from NumPy array dict to Taichi field.
+
+        Args:
+            data (dict): NumPy array dict to copy.
+
+        Raises:
+            Exception: If data cannot be copied.
+        """
+        try:
+            self.field.from_numpy(data)
+        except Exception as e:
+            raise Exception(f"[tolvera.state.from_numpy] {e}") from e
 
     """
     npndarray_dict wrappers
@@ -407,6 +421,14 @@ class State:
     def attr_size(self, attr: str) -> int:
         """Return the size of the attribute."""
         return self.nddict.data[attr].size
+    
+    """
+    misc
+    """
+
+    def fill(self, value: ti.f32):
+        """Fill the Taichi field with a value."""
+        self.field.fill(value)
 
     @ti.func
     def __getitem__(self, index: ti.i32):
