@@ -50,12 +50,13 @@ from iipyper.state import _lock
 
 from .taichi_ import Taichi
 from .cv import CV
+from .mp import MPHands
 from .iml import IMLDict
 from .osc.osc import OSC
 from .patches import *
 from .pixels import *
 from .utils import *
-
+from .state import StateDict
 
 class TolveraContext:
     """
@@ -106,6 +107,7 @@ class TolveraContext:
         self.ti = Taichi(self, **kwargs)
         self.show = self.ti.show
         self.canvas = Pixels(self, **kwargs)
+        self.s = StateDict(self)
         self.osc = kwargs.get("osc", False)
         self.iml = kwargs.get("iml", False)
         self.cv = kwargs.get("cv", False)
@@ -115,6 +117,7 @@ class TolveraContext:
             self.iml = IMLDict(self)
         if self.cv:
             self.cv = CV(self, **kwargs)
+            self.hands = MPHands(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
         print(f"[{self.name}] Context initialisation complete.")

@@ -54,7 +54,6 @@ from .context import TolveraContext
 from .particles import *
 from .patches import *
 from .pixels import *
-from .state import StateDict
 from .utils import *
 from .vera import Vera
 
@@ -122,10 +121,12 @@ class Tolvera:
         self.show = context.show
         self.canvas = context.canvas
         self.osc = context.osc
+        self.s = context.s
         self.iml = context.iml
         self.render = context.render
         self.cleanup = context.cleanup
         self.cv = context.cv
+        self.hands = context.hands
 
     def setup(self, **kwargs):
         """
@@ -149,7 +150,6 @@ class Tolvera:
         self.sn = self.species
         self.p_per_s = self.particles // self.species
         self.substep = kwargs.get("substep", 1)
-        self.s = StateDict(self)
         self.px = Pixels(self, **kwargs)
         self._species = Species(self, **kwargs)
         self.p = Particles(self, **kwargs)
@@ -157,6 +157,8 @@ class Tolvera:
         self.v = Vera(self, **kwargs)
         if self.osc is not False:
             self.add_to_osc_map()
+        if self.cv is not False:
+            self.hands.px = self.px
         self.ctx.add(self)
         print(f"[{self.name}] Setup complete.")
 
