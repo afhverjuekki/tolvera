@@ -12,7 +12,10 @@ from ..particles import Particle
 __all__ = [
     "move",
     "attract",
+    "_attract",
     "attract_species",
+    "_attract_species",
+    "attract_particle",
     "repel",
     "repel_species",
     "gravitate",
@@ -49,7 +52,23 @@ def attract(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: t
         p = particles.field[i]
         if p.active == 0:
             continue
-        particles.field[i].vel += _attract(p, pos, mass, radius)
+        particles.field[i].vel += attract_particle(p, pos, mass, radius)
+
+@ti.func
+def _attract(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32):
+    """Attract the particles to a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Attraction position.
+        mass (ti.f32): Attraction mass.
+        radius (ti.f32): Attraction radius.
+    """
+    for i in range(particles.field.shape[0]):
+        p = particles.field[i]
+        if p.active == 0:
+            continue
+        particles.field[i].vel += attract_particle(p, pos, mass, radius)
 
 
 @ti.kernel
@@ -75,11 +94,35 @@ def attract_species(
             continue
         if p.species != species:
             continue
-        particles.field[i].vel += _attract(p, pos, mass, radius)
-
+        particles.field[i].vel += attract_particle(p, pos, mass, radius)
 
 @ti.func
-def _attract(
+def _attract_species(
+    particles: ti.template(),
+    pos: ti.math.vec2,
+    mass: ti.f32,
+    radius: ti.f32,
+    species: ti.i32,
+):
+    """Attract the particles of a given species to a position.
+
+    Args:
+        particles (ti.template): Particles.
+        pos (ti.math.vec2): Attraction position.
+        mass (ti.f32): Attraction mass.
+        radius (ti.f32): Attraction radius.
+        species (ti.i32): Species index.
+    """
+    for i in range(particles.field.shape[0]):
+        p = particles.field[i]
+        if p.active == 0:
+            continue
+        if p.species != species:
+            continue
+        particles.field[i].vel += attract_particle(p, pos, mass, radius)
+
+@ti.func
+def attract_particle(
     p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32
 ) -> ti.math.vec2:
     """Attract a particle to a position.
@@ -115,7 +158,7 @@ def repel(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.
         p = particles.field[i]
         if p.active == 0:
             continue
-        particles.field[i].vel += _repel(p, pos, mass, radius)
+        particles.field[i].vel += repel_particle(p, pos, mass, radius)
 
 
 @ti.kernel
@@ -141,11 +184,11 @@ def repel_species(
             continue
         if p.species != species:
             continue
-        particles.field[i].vel += _repel(p, pos, mass, radius)
+        particles.field[i].vel += repel_particle(p, pos, mass, radius)
 
 
 @ti.func
-def _repel(
+def repel_particle(
     p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32
 ) -> ti.math.vec2:
     """Repel a particle from a position.
