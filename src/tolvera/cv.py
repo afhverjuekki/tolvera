@@ -2,16 +2,15 @@ import cv2 as cv
 import numpy as np
 import taichi as ti
 
-from .particles import Particles
 from .pixels import Pixels
 
 
 @ti.data_oriented
 class CV:
-    def __init__(self, tolvera, **kwargs) -> None:
-        self.tv = tolvera
-        self.x, self.y = self.tv.x, self.tv.y
-        self.px = Pixels(self.tv, **kwargs)
+    def __init__(self, context, **kwargs) -> None:
+        self.ctx = context
+        self.x, self.y = self.ctx.x, self.ctx.y
+        self.px = Pixels(self.ctx, **kwargs)
         self.frame_rgb = np.zeros((self.y, self.x, 3), np.uint8)
         self.ggui_fps_limit = kwargs.get("ggui_fps_limit", 120)
         self.substeps = kwargs.get("substeps", 2)
@@ -19,11 +18,13 @@ class CV:
         self.colormode = kwargs.get("colormode", "rgba")
         self.device = kwargs.get("device", 0)
         self._camera = kwargs.get("camera", False)
+        self.cc_frame = np.zeros((self.y, self.x, 3), np.uint8)
+        self.cc_frame_f32 = np.zeros((self.y, self.x, 3), np.float32)
         if self._camera:
             self.camera_init()
 
     def camera_init(self):
-        print(f"[{self.tv.name}] Initialising camera device {self.device}...")
+        print(f"[{self.ctx.name}] Initialising camera device {self.device}...")
         self.camera_capture = cv.VideoCapture(self.device)
         self.camera_x = self.camera_capture.get(cv.CAP_PROP_FRAME_WIDTH)
         self.camera_y = self.camera_capture.get(cv.CAP_PROP_FRAME_HEIGHT)
@@ -37,10 +38,9 @@ class CV:
             exit()
 
     def camera_read(self):
-        ret, self.camera_frame = self.camera_capture.read()
-        # print(f"[{self.tv.name}] Camera read: {ret}")
-        self.camera_frame = self.camera_frame.astype(np.float32)
-        return self.camera_frame
+        ret, self.cc_frame = self.camera_capture.read()
+        self.cc_frame_f32 = self.cc_frame.astype(np.float32)
+        return self.cc_frame_f32
 
     def threshold(self, img, thresh=127, max=255, threshold_type="binary"):
         if threshold_type == "binary":
@@ -154,4 +154,4 @@ class CV:
 
     def __call__(self, *args, **kwargs):
         self.process()
-        return self.px.px.rgba
+        return self.px

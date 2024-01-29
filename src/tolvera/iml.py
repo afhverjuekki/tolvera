@@ -60,7 +60,7 @@ from anguilla import IML as iiIML
 
 from iipyper.osc import OSC as iiOSC
 from .osc.oscmap import OSCMap
-from .osc.update import Updater, OSCSendUpdater, OSCSend
+from .osc.update import Updater
 from .utils import *
 
 __all__ = [
@@ -144,13 +144,13 @@ class IMLDict(dotdict):
     via assignment.
     """
 
-    def __init__(self, tolvera) -> None:
+    def __init__(self, context) -> None:
         """Initialise IMLDict
 
         Args:
-            tolvera (Tolvera): Tölvera instance.
+            context (TolveraContext): TolveraContext instance.
         """
-        self.tv = tolvera
+        self.ctx = context
         self.i = {}  # input vectors dict
         self.o = {}  # output vectors dict
 
@@ -173,7 +173,7 @@ class IMLDict(dotdict):
             Any: IML instance.
         """
         try:
-            if name == "tv" and type(kwargs) is not dict and type(kwargs) is not tuple:
+            if name == "ctx" and type(kwargs) is not dict and type(kwargs) is not tuple:
                 if name in self:
                     raise ValueError(
                         f"[tolvera._iml.IMLDict] '{name}' cannot be replaced."
@@ -233,19 +233,19 @@ class IMLDict(dotdict):
             case "vec2fun":
                 ins = IMLVec2Fun(**kwargs)
             case "vec2osc":
-                ins = IMLVec2OSC(self.tv.osc.map, **kwargs)
+                ins = IMLVec2OSC(self.ctx.osc.map, **kwargs)
             case "fun2vec":
                 ins = IMLFun2Vec(**kwargs)
             case "fun2fun":
                 ins = IMLFun2Fun(**kwargs)
             case "fun2osc":
-                ins = IMLFun2OSC(self.tv.osc.map, **kwargs)
+                ins = IMLFun2OSC(self.ctx.osc.map, **kwargs)
             case "osc2vec":
-                ins = IMLOSC2Vec(self.tv.osc.map, self.o, name, **kwargs)
+                ins = IMLOSC2Vec(self.ctx.osc.map, self.o, name, **kwargs)
             case "osc2fun":
-                ins = IMLOSC2Fun(self.tv.osc.map, **kwargs)
+                ins = IMLOSC2Fun(self.ctx.osc.map, **kwargs)
             case "osc2osc":
-                ins = IMLOSC2OSC(self.tv.osc.map, self.tv.osc, **kwargs)
+                ins = IMLOSC2OSC(self.ctx.osc.map, self.ctx.osc, **kwargs)
             case _:
                 raise ValueError(
                     f"[tolvera._iml.IMLDict] Invalid IML_TYPE '{iml_type}'. Valid IML_TYPES: {IML_TYPES}."
@@ -277,7 +277,7 @@ class IMLDict(dotdict):
         else:
             outvecs = {}
             for iml in self:
-                if iml == "tv" or iml == "i" or iml == "o":
+                if iml == "ctx" or iml == "i" or iml == "o":
                     continue
                 cls_name = type(self[iml]).__name__
                 if "Vec2OSC" in cls_name:
@@ -341,7 +341,7 @@ class IMLBase(iiIML):
         )
         self.config = kwargs.get("config", {})
         if isinstance(self.size[0], tuple):
-            self.config["embed_input"] = "ProjectAndSort"
+            self.config["emb"] = "ProjectAndSort"
         print(f"[tolvera._iml.IMLBase] Initialising IML with config: {self.config}")
         super().__init__(**self.config)
         self.data = dotdict()
@@ -417,12 +417,34 @@ class IMLBase(iiIML):
         Args:
             input_weight (Any, optional): Weighting for the input vector. Defaults to None.
             output_weight (Any, optional): Weighting for the output vector. Defaults to None.
-            **kwargs: see create_random_pair kwargs.
+            **kwargs: see random_pair kwargs.
         """
-        indata, outdata = self.create_random_pair(input_weight, output_weight, **kwargs)
+        indata, outdata = self.random_pair(input_weight, output_weight, **kwargs)
         self.add(indata, outdata)
 
-    def create_random_pair(self, input_weight=None, output_weight=None, **kwargs):
+    def random_input(self, **kwargs) -> torch.Tensor:
+        """Random input vector.
+
+        Args:
+            **kwargs: self.rand kwargs.
+
+        Returns:
+            torch.Tensor: Random input vector.
+        """
+        return self.rand(self.size[0], **kwargs)
+    
+    def random_output(self, **kwargs) -> torch.Tensor:
+        """Random output vector.
+
+        Args:
+            **kwargs: self.rand kwargs
+
+        Returns:
+            torch.Tensor: Random output vector.
+        """
+        return self.rand(self.size[1], **kwargs)
+
+    def random_pair(self, input_weight=None, output_weight=None, **kwargs):
         """Create random pair.
 
         Args:
