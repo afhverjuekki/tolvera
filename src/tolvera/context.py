@@ -111,6 +111,7 @@ class TolveraContext:
         self.osc = kwargs.get("osc", False)
         self.iml = kwargs.get("iml", False)
         self.cv = kwargs.get("cv", False)
+        self.hands = kwargs.get("hands", False)
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
