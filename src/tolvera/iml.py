@@ -847,11 +847,11 @@ class IMLFun2OSC(IMLBase):
         kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]['updater']
         super().__init__(**kwargs)
 
-    def update(self) -> list|torch.Tensor|np.ndarray:
+    def update(self) -> list[float]:
         """Update mapped data.
 
         Returns:
-            list|torch.Tensor|np.ndarray: Mapped data.
+            list[float]: Mapped data.
         """
         if len(self.infun_params) > 0:
             invec = self.infun(**self.infun_kw)
@@ -904,14 +904,14 @@ class IMLOSC2Vec(IMLBase):
         self.name = name
         super().__init__(**kwargs)
 
-    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+    def update(self, vector: list[float]) -> list[float]:
         """Update mapped data.
 
         Args:
             vector (list[float]): Input vector.
 
         Returns:
-            list|torch.Tensor|np.ndarray: Mapped data.
+            list[float]: Mapped data.
         """
         self.data.mapped = self.map(vector, **self.map_kw)
         if self.name is not None:
@@ -958,14 +958,14 @@ class IMLOSC2Fun(IMLBase):
         self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
 
-    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+    def update(self, vector: list[float]) -> list[float]:
         """Update mapped data.
 
         Args:
             vector (list[float]): Input vector.
 
         Returns:
-            list|torch.Tensor|np.ndarray: Mapped data.
+            list[float]: Mapped data.
         """
         mapped = self.map(vector, **self.map_kw)
         self.data.mapped = self.outfun(mapped, **self.outfun_kw)
@@ -1011,14 +1011,14 @@ class IMLOSC2OSC(IMLBase):
         self.out_osc_route = kwargs["io"][1]
         super().__init__(**kwargs)
 
-    def update(self, vector: list[float]) -> list|torch.Tensor|np.ndarray:
+    def update(self, vector: list[float]) -> list[float]:
         """Update mapped data.
 
         Args:
             vector (list[float]): Input vector.
 
         Returns:
-            list|torch.Tensor|np.ndarray: Mapped data.
+            list[float]: Mapped data.
         """
         self.data.mapped = self.map(vector, **self.map_kw)
         self.osc.host.send(self.out_osc_route, *self.data.mapped.tolist())
