@@ -20,6 +20,8 @@ class CV:
         self._camera = kwargs.get("camera", False)
         self.cc_frame = np.zeros((self.y, self.x, 3), np.uint8)
         self.cc_frame_f32 = np.zeros((self.y, self.x, 3), np.float32)
+        self.diff = np.zeros((self.y, self.x, 3), np.uint8)
+        self.diff_p = 0.0
         if self._camera:
             self.camera_init()
 
@@ -109,6 +111,13 @@ class CV:
     def invert(self, img):
         img = cv.bitwise_not(img)
         return img
+
+    def abs_diff(self, a, b):
+        self.diff = cv.absdiff(a, b)
+        diff = self.diff#.astype(np.uint8)
+        self.diff_p = (np.count_nonzero(diff) * 100) / diff.size
+        print('diff', self.diff_p)
+        return self.diff_p
 
     @ti.kernel
     def cv_to_px(self, f: ti.types.ndarray(dtype=ti.f32, ndim=3)):
