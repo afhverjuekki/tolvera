@@ -385,7 +385,7 @@ class Pixels:
     def invert(self):
         """Invert image."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = 1.0 - self.px.rgba[i, j]
+            self.px.rgba[i, j] = 1.0 - self.px.rgba[i, j]
 
     @ti.kernel
     def decay(self, rate: ti.f32):
