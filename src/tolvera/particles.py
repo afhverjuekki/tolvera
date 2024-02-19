@@ -318,6 +318,28 @@ class Particles:
                 else:
                     self.field[j].active = 1
 
+    @ti.kernel
+    def set_active_amount(self, a: ti.f32):
+        """Set particle activity amount.
+
+        Args:
+            a (ti.i32): Amount of activity.
+        """
+        for i in range(self.field.shape[0]):
+            self.field[i].active = a
+    
+    @ti.kernel
+    def set_species_active_amount(self, i: ti.i32, a: ti.f32):
+        """Set particle activity amount of a species.
+
+        Args:
+            i (ti.i32): Species index.
+            a (ti.i32): Amount of activity.
+        """
+        for j in range(self.field.shape[0]):
+            if self.field[j].species == i:
+                self.field[j].active = a
+
     def set_pos(self, i, x, y):
         self.field[i].pos = [x, y]
 
