@@ -44,12 +44,12 @@ pip install tolvera
 
 ## Develop
 
-Fork/clone this repository and install the package in editable mode:
+Fork/clone this repository and install the package with `poetry`:
 
 ```sh
 git clone https://github.com/Intelligent-Instruments-Lab/tolvera # (or clone your own fork)
 cd tolvera
-pip install -e tolvera
+poetry install
 ```
 
 ## Contribute
