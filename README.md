@@ -29,7 +29,26 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 - `tv.osc`: Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
 - `tv.iml`: Interactive Machine Learning via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla).
 - `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
-- `tv.cv`: computer vision integration based on OpenCV.
+- `tv.cv`: computer vision integration based on OpenCV and Mediapipe.
+
+## Examples
+
+Examples can be found at [iil-examples/tolvera](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
+When run as a script, Tölvera program looks like this:
+
+```py
+from tolvera import Tolvera, run
+
+def main(**kwargs):
+    tv = Tolvera(**kwargs)
+
+    @tv.render
+    def _():
+        return tv.px
+
+if __name__ == '__main__':
+    run(main)
+```
 
 ## Install
 
@@ -70,7 +89,8 @@ To discuss Tölvera with developers and other users:
 - Use GitHub [Discussions](https://github.com/Intelligent-Instruments-Lab/tolvera/discussions) to share ideas and ask questions.
 - Use [Discord](https://discord.gg/ER7tWds9vM) for further support, sharing your work, and general chat.
 
-Across the project, we follow the [Algorave Code of Conduct](https://github.com/Algorave/algoraveconduct). Please get in touch if you experience or witness any conduct issues.
+Across the project, we follow the [Berlin Code of Conduct](https://berlincodeofconduct.org/). 
+Please get in touch if you experience or witness any conduct issues.
 
 ## Roadmap
 
