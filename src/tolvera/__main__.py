@@ -1,3 +1,5 @@
+"""Tölvera command line interface."""
+
 import fire
 
 from tolvera import Tolvera
@@ -6,6 +8,7 @@ from .sketchbook import main as sketchbook
 
 
 def help():
+    """Print help message."""
     print(
         """
     available subcommands:
@@ -20,10 +23,17 @@ def help():
 
 
 def demo(**kwargs):
+    """Run a simple demo.
+    
+    Args:
+        **kwargs: Keyword arguments for Tölvera.
+    """
+    print("Running demo...")
     tv = Tolvera(**kwargs)
 
     @tv.render
     def _():
+        """Render function that draws flocking particles."""
         tv.px.diffuse(0.99)
         tv.p()
         tv.v.flock(tv.p)
@@ -32,6 +42,11 @@ def demo(**kwargs):
 
 
 def main(**kwargs):
+    """Run Tölvera with kwargs.
+    
+    Args:
+        **kwargs: Keyword arguments for Tolvera (see help()).
+    """
     if "sketch" in kwargs or "sketches" in kwargs or "sketchbook" in kwargs:
         sketchbook(**kwargs)
     elif "demo" in kwargs:
@@ -45,4 +60,5 @@ def main(**kwargs):
 
 
 if __name__ == "__main__":
+    """Run Tölvera."""
     fire.Fire(main)

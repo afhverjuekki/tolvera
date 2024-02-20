@@ -1,29 +1,38 @@
-"""
-Inspired by https://forum.taichi-lang.cn/t/homework0-boids/563
-"""
+"""Flock behaviour based on the Boids algorithm."""
+
 import taichi as ti
 
-from ..state import State
 from ..utils import CONSTS
 
 
 @ti.data_oriented
 class Flock:
+    """Flock behaviour.
+    
+    The flock operates via a species rule matrix, which is a 2D matrix of species 
+    rules, such that every species has a separate relationship with every other 
+    species including itself. As in the Boids algorithm, the rules are:
+    - `separate`: how much a particle should separate from its neighbours.
+    - `align`: how much a particle should align (match velocity) with its neighbours.
+    - `cohere`: how much a particle should cohere (move towards) its neighbours.
+
+    Taichi Boids implementation inspired by:
+    https://forum.taichi-lang.cn/t/homework0-boids/563
+    """
     def __init__(self, tolvera, **kwargs):
+        """Initialise the Flock behaviour.
+
+        `flock_s` stores the species rule matrix. 
+        `flock_p` stores the rule values per particle, and the number of neighbours.
+        `flock_dist` stores the distance between particles.
+
+        Args:
+            tolvera (Tolvera): A Tolvera instance.
+            **kwargs: Keyword arguments (currently none).
+        """
         self.tv = tolvera
         self.kwargs = kwargs
         self.CONSTS = CONSTS({"MAX_RADIUS": (ti.f32, 300.0)})
-        self.tv.s.flock_p = {
-            "state": {
-                "separate": (ti.math.vec2, 0.0, 1.0),
-                "align": (ti.math.vec2, 0.0, 1.0),
-                "cohere": (ti.math.vec2, 0.0, 1.0),
-                "nearby": (ti.i32, 0.0, self.tv.p.n - 1),
-            },
-            "shape": self.tv.pn,
-            "osc": ("get"),
-            "randomise": False,
-        }
         self.tv.s.flock_s = {
             "state": {
                 "separate": (ti.f32, 0.01, 1.0),
@@ -34,6 +43,17 @@ class Flock:
             "shape": (self.tv.sn, self.tv.sn),
             "osc": ("set"),
             "randomise": True,
+        }
+        self.tv.s.flock_p = {
+            "state": {
+                "separate": (ti.math.vec2, 0.0, 1.0),
+                "align": (ti.math.vec2, 0.0, 1.0),
+                "cohere": (ti.math.vec2, 0.0, 1.0),
+                "nearby": (ti.i32, 0.0, self.tv.p.n - 1),
+            },
+            "shape": self.tv.pn,
+            "osc": ("get"),
+            "randomise": False,
         }
         self.tv.s.flock_dist = {
             "state": {
@@ -46,10 +66,26 @@ class Flock:
         }
 
     def randomise(self):
+        """Randomise the Flock behaviour."""
         self.tv.s.flock_s.randomise()
 
     @ti.kernel
     def step(self, particles: ti.template(), weight: ti.f32):
+        """Step the Flock behaviour.
+
+        Pairwise comparison is made and inactive particles are ignored. 
+        When the distance between two particles is less than the radius 
+        of the species, the particles are considered neighbours. 
+        
+        The separation, alignment and cohesion are calculated for
+        each particle and the velocity is updated accordingly.
+
+        State is updated in `flock_p` and `flock_dist`.
+
+        Args:
+            particles (ti.template()): A template for the particles.
+            weight (ti.f32): The weight of the Flock behaviour.
+        """
         n = particles.shape[0]
         for i in range(n):
             if particles[i].active == 0:
@@ -82,10 +118,16 @@ class Flock:
                 cohere = (cohere / nearby - p1.pos) * p1.active * species.cohere
                 vel = (separate + align + cohere).normalized()
                 particles[i].vel += vel * weight
-                particles[i].pos += particles[i].vel * p1.speed * p1.active
+                particles[i].pos += particles[i].vel * p1.speed * p1.active * weight
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(
                 separate, align, cohere, nearby
             )
 
     def __call__(self, particles, weight: ti.f32 = 1.0):
+        """Call the Flock behaviour.
+
+        Args:
+            particles (Particles): Particles to step.
+            weight (ti.f32, optional): The weight of the Flock behaviour. Defaults to 1.0.
+        """
         self.step(particles.field, weight)

@@ -1,5 +1,7 @@
 ---
 title: Tölvera
+hide:
+  - navigation
 ---
 
 {%

@@ -1,18 +1,24 @@
 [tool.poetry]
 name = "tolvera"
-version = "0.1.0"
+packages = [{ include = "tolvera", from = "src"}]
+version = "0.1.0-rc3"
 description = "Tölvera is a library for exploring music interaction with artificial life and self-organising systems."
 authors = ["Jack Armitage <jack.armitage@me.com>"]
 readme = "README.md"
+license = "AGPL-3.0"
+repository = "https://github.com/Intelligent-Instruments-Lab/tolvera"
+documentation = "https://intelligent-instruments-lab.github.io/tolvera/"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
 taichi = "^1.6.0"
-iipyper = {path = "../iipyper", develop=true}
-anguilla = {path = "../anguilla", develop=true}
 jsons = "^1.6.3"
 opencv-python = "^4.8.1.78"
-
+torch = "^2.1.1"
+iipyper = "^0.1.0b1"
+anguilla-iml = "^0.1.0b4"
+sardine = "^0.0.0b3"
+mediapipe = "^0.10.9"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
@@ -26,7 +32,6 @@ mkdocs-autorefs = "^0.5.0"
 pytest = "^7.4.3"
 black = "^23.11.0"
 isort = "^5.12.0"
-pre-commit = "^3.6.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -50,5 +55,6 @@ exclude = '''
   | \.history
 )/
 '''
+
 [tool.isort]
 profile = "black"

@@ -1,34 +1,102 @@
+"""
+`TolveraContext` is a shared context or environment for `Tolvera` instances.
+It is created automatically when a `Tolvera` instance is created, if one 
+does not already exist. It manages the integration of packages for graphics, 
+computer vision, communications protocols, and more. If multiple `Tolvera` 
+instances are created, they must share the same `TolveraContext`.
+
+
+Example:
+    `TolveraContext` can be created manually, and shared with multiple `Tolvera`
+    instances. Note that only one `render` function can be used at a time.
+    ```py
+    from tolvera import TolveraContext, Tolvera, run
+
+    def main(**kwargs):
+        ctx = TolveraContext(**kwargs)
+
+        tv1 = Tolvera(ctx=ctx, **kwargs)
+        tv2 = Tolvera(ctx=ctx, **kwargs)
+
+        @tv1.render
+        def _():
+            return tv2.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+
+Example:
+    `TolveraContext` can also be created automatically, and still shared.
+    ```py
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv1 = Tolvera(**kwargs)
+        tv2 = Tolvera(ctx=tv1.ctx, **kwargs)
+
+        @tv1.render
+        def _():
+            return tv2.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+"""
+
 from sys import exit
 
 from iipyper.state import _lock
 
-from ._taichi import Taichi
+from .taichi_ import Taichi
 from .cv import CV
+from .mp import MPHands
 from .iml import IMLDict
-from .osc import OSC
+from .osc.osc import OSC
 from .patches import *
 from .pixels import *
 from .utils import *
-
+from .state import StateDict
 
 class TolveraContext:
     """
     Context for sharing between multiple Tölvera instances.
     Context includes Taichi, OSC, IML and CV.
-    All Tölvera instances share the same context and are added to a dict.
+    All Tölvera instances share the same context and are managed as a dict.
+
+    Attributes:
+        kwargs (dict): Keyword arguments for context.
+        name (str): Name of context.
+        name_clean (str): 'Cleaned' name of context.
+        i (int): Frame counter.
+        x (int): Width of canvas.
+        y (int): Height of canvas.
+        ti (Taichi): Taichi instance.
+        canvas (Pixels): Pixels instance.
+        osc (OSC): OSC instance.
+        iml (IML): IML instance.
+        cv (CV): CV instance.
+        _cleanup_fns (list): List of cleanup functions.
+        tolveras (dict): Dict of Tölvera instances.
     """
 
     def __init__(self, **kwargs) -> None:
+        """Initialise Tölvera context with given keyword arguments."""
         self.kwargs = kwargs
         self.init(**kwargs)
 
     def init(self, **kwargs):
         """
-        Initialize wrapped external packages with given keyword arguments.
-        This only happens once when Tölvera is first initialized.
+        Initialise wrapped external packages with given keyword arguments.
+        This only happens once when Tölvera is first initialised.
 
         Args:
-            **kwargs: Keyword arguments for component initialization.
+            x (int): Width of canvas. Default: 1920.
+            y (int): Height of canvas. Default: 1080.
+            osc (bool): Enable OSC. Default: False.
+            iml (bool): Enable IML. Default: False.
+            cv (bool): Enable CV. Default: False.
+            see also kwargs for Taichi, OSC, IMLDict, and CV.
         """
         self.name = "Tölvera Context"
         self.name_clean = clean_name(self.name)
@@ -39,18 +107,21 @@ class TolveraContext:
         self.ti = Taichi(self, **kwargs)
         self.show = self.ti.show
         self.canvas = Pixels(self, **kwargs)
+        self.s = StateDict(self)
         self.osc = kwargs.get("osc", False)
         self.iml = kwargs.get("iml", False)
         self.cv = kwargs.get("cv", False)
+        self.hands = kwargs.get("hands", False)
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
             self.iml = IMLDict(self)
         if self.cv:
             self.cv = CV(self, **kwargs)
+            self.hands = MPHands(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
-        print(f"[{self.name}] Context initialization complete.")
+        print(f"[{self.name}] Context initialisation complete.")
 
     def run(self, f=None, **kwargs):
         """
@@ -68,6 +139,7 @@ class TolveraContext:
             print(f"[{self.name}] Running with no render function...")
         while self.ti.window.running:
             with _lock:
+                [t.p() for t in self.tolveras.values()]
                 if f is not None:
                     self.canvas = f(**kwargs)
                 if self.osc is not False:
@@ -116,6 +188,7 @@ class TolveraContext:
         print(f"\n[{self.name}] Adding cleanup function {f.__name__}...")
 
         def decorator(f):
+            """Decorator that appends function to cleanup functions."""
             self._cleanup_fns.append(f)
             return f
 

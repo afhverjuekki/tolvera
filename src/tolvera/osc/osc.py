@@ -1,5 +1,6 @@
 from iipyper import OSC as iiOSC
-from iipyper import OSCMap
+
+from .oscmap import OSCMap
 
 
 class OSC:

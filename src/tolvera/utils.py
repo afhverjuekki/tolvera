@@ -1,3 +1,5 @@
+"""Utility functions for Tolvera."""
+
 import base64
 import os
 import time
@@ -175,9 +177,11 @@ def ti_deserialize(field, json_str):
 def time_function(func, *args, **kwargs):
     """Time how long it takes to run a function and print the result"""
     start = time.time()
-    func(*args, **kwargs)
+    ret = func(*args, **kwargs)
     end = time.time()
     print(f"[Tolvera.utils] {func.__name__}() ran in {end-start:.4f}s")
+    if ret is not None:
+        return (ret, end - start)
     return end - start
 
 
@@ -233,7 +237,6 @@ def validate_json_path(path: str) -> bool:
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
-
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
@@ -287,6 +290,20 @@ class Lag:
         else:
             raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
 
+@ti.data_oriented
+class LagVec2:
+    def __init__(self, coef: ti.f32 = 0.5):
+        self.coef = ti.field(ti.f32, shape=())
+        self.coef[None] = coef
+        self.val = ti.field(ti.f32, shape=2)
+        self.val_prev = ti.field(ti.f32, shape=2)
+
+    @ti.kernel
+    def _update_val(self, new: ti.math.vec2) -> ti.math.vec2:
+        return ti.math.vec2([self.val_prev + ((new - self.val_prev) * self.coef[None])])
+
+    def __call__(self, new: ti.math.vec2):
+        self.val_prev = self._update_val(new)
 
 def create_and_validate_slice(
     arg: Union[int, tuple[int, ...], slice], target_array: np.ndarray

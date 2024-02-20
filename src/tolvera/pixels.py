@@ -1,4 +1,32 @@
+"""Pixels module.
+
+Example:
+    Draw a red rectangle in the centre of the screen.
+    ```py
+    import taichi as ti
+    from tolvera import Tolvera, run
+
+    def main(**kwargs):
+        tv = Tolvera(**kwargs)
+
+        @ti.kernel
+        def draw():
+            w = 100
+            tv.px.rect(tv.x/2-w/2, tv.y/2-w/2, w, w, ti.Vector([1., 0., 0., 1.]))
+
+        @tv.render
+        def _():
+            tv.p()
+            draw()
+            return tv.px
+
+    if __name__ == '__main__':
+        run(main)
+    ```
+"""
+
 import taichi as ti
+from typing import Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.struct import StructField
 
@@ -12,65 +40,29 @@ vec4 = ti.math.vec4
 
 @ti.dataclass
 class Pixel:
-    g: vec1
-    rgb: vec3
     rgba: vec4
-    rgba_inv: vec4
-
-
-@ti.dataclass
-class Point:
-    x: ti.i32
-    y: ti.i32
-    rgba: vec4
-
-
-@ti.dataclass
-class Line:
-    x0: ti.i32
-    y0: ti.i32
-    x1: ti.i32
-    y1: ti.i32
-    rgba: vec4
-
-
-@ti.dataclass
-class Rect:
-    x: ti.i32
-    y: ti.i32
-    width: ti.i32
-    height: ti.i32
-    rgba: vec4
-
-
-@ti.dataclass
-class Circle:
-    x: ti.i32
-    y: ti.i32
-    radius: ti.i32
-    rgba: vec4
-
-
-@ti.dataclass
-class Triangle:
-    x0: ti.i32
-    y0: ti.i32
-    x1: ti.i32
-    y1: ti.i32
-    x2: ti.i32
-    y2: ti.i32
-    rgba: vec4
-
-
-# TODO: ???
-@ti.dataclass
-class Polygon:
-    p: Point
 
 
 @ti.data_oriented
 class Pixels:
+    """Pixels class for drawing pixels to the screen.
+
+    This class is used to draw pixels to the screen. It contains methods for drawing
+    points, lines, rectangles, circles, triangles, and polygons. It also contains
+    methods for blending pixels together, flipping pixels, inverting pixels, and
+    diffusing, decaying and clearing pixels.
+
+    It tries to follow a similar API to the Processing library.
+    """
     def __init__(self, tolvera, **kwargs):
+        """Initialise Pixels
+
+        Args:
+            tolvera (Tolvera): Tölvera instance.
+            **kwargs: Keyword arguments.
+                polygon_mode (str): Polygon mode. Defaults to "crossing".
+                brightness (float): Brightness. Defaults to 1.0. 
+        """
         self.tv = tolvera
         self.kwargs = kwargs
         self.polygon_mode = kwargs.get("polygon_mode", "crossing")
@@ -92,18 +84,30 @@ class Pixels:
             "polygon": 5,
         }
 
-    def set(self, px):
+    def set(self, px: Any):
+        """Set pixels.
+
+        Args:
+            px (Any): Pixels to set. Can be Pixels, StructField, MatrixField, etc (see rgba_from_px).
+        """
         self.px.rgba = self.rgba_from_px(px)
 
     def get(self):
+        """Get pixels."""
         return self.px
 
     @ti.kernel
     def clear(self):
+        """Clear pixels."""
         self.px.rgba.fill(0)
 
     @ti.kernel
     def diffuse(self, evaporate: ti.f32):
+        """Diffuse pixels.
+        
+        Args:
+            evaporate (float): Evaporation rate.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             d = ti.Vector([0.0, 0.0, 0.0, 0.0])
             for di in ti.static(range(-1, 2)):
@@ -115,21 +119,51 @@ class Pixels:
             self.px.rgba[i, j] = d
 
     @ti.func
-    def background(self, r, g, b):
+    def background(self, r: ti.f32, g: ti.f32, b: ti.f32):
+        """Set background colour.
+
+        Args:
+            r (ti.f32): Red.
+            g (ti.f32): Green.
+            b (ti.f32): Blue.
+        """
         bg = ti.Vector([r, g, b, 1.0])
         self.rect(0, 0, self.x, self.y, bg)
 
     @ti.func
     def point(self, x: ti.i32, y: ti.i32, rgba: vec4):
+        """Draw point.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            rgba (vec4): Colour.
+        """
         self.px.rgba[x, y] = rgba
 
     @ti.func
     def points(self, x: ti.template(), y: ti.template(), rgba: vec4):
+        """Draw points with the same colour.
+
+        Args:
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            rgba (vec4): Colour.
+        """
         for i in ti.static(range(len(x))):
             self.point(x[i], y[i], rgba)
 
     @ti.func
     def rect(self, x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: vec4):
+        """Draw a filled rectangle.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            w (ti.i32): Width.
+            h (ti.i32): Height.
+            rgba (vec4): Colour.
+        """
         # TODO: fill arg
         # TODO: gradients, lerp with ti.math.mix(x, y, a)
         for i, j in ti.ndrange(w, h):
@@ -137,8 +171,15 @@ class Pixels:
 
     @ti.func
     def line(self, x0: ti.i32, y0: ti.i32, x1: ti.i32, y1: ti.i32, rgba: vec4):
-        """
-        Bresenham's line algorithm
+        """Draw a line using Bresenham's algorithm.
+
+        Args:
+            x0 (ti.i32): X start position.
+            y0 (ti.i32): Y start position.
+            x1 (ti.i32): X end position.
+            y1 (ti.i32): Y end position.
+            rgba (vec4): Colour.
+
         TODO: thickness
         TODO: anti-aliasing
         TODO: should lines wrap around (as two lines)?
@@ -170,6 +211,14 @@ class Pixels:
 
     @ti.func
     def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4):
+        """Draw a filled circle.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            r (ti.i32): Radius.
+            rgba (vec4): Colour.
+        """
         for i in range(r + 1):
             d = ti.sqrt(r**2 - i**2)
             d_int = ti.cast(d, ti.i32)
@@ -182,11 +231,27 @@ class Pixels:
 
     @ti.func
     def circles(self, x: ti.template(), y: ti.template(), r: ti.template(), rgba: vec4):
+        """Draw circles with the same colour.
+
+        Args:
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            r (ti.template): Radii.
+            rgba (vec4): Colour.
+        """
         for i in ti.static(range(len(x))):
             self.circle(x[i], y[i], r[i], rgba)
 
     @ti.func
     def triangle(self, a, b, c, rgba: vec4):
+        """Draw a filled triangle.
+
+        Args:
+            a (vec2): Point A.
+            b (vec2): Point B.
+            c (vec2): Point C.
+            rgba (vec4): Colour.
+        """
         # TODO: fill arg
         x = ti.Vector([a[0], b[0], c[0]])
         y = ti.Vector([a[1], b[1], c[1]])
@@ -194,13 +259,28 @@ class Pixels:
 
     @ti.func
     def polygon(self, x: ti.template(), y: ti.template(), rgba: vec4):
-        # TODO: fill arg
-        # after http://www.dgp.toronto.edu/~mac/e-stuff/point_in_polygon.py
+        """Draw a filled polygon.
+        
+        Polygons are drawn according to the polygon mode, which can be "crossing" 
+        (default) or "winding". First, the bounding box of the polygon is calculated.
+        Then, we check if each pixel in the bounding box is inside the polygon. If it
+        is, we draw it (along with each neighbour pixel).
+
+        Reference for point in polygon inclusion testing:
+        http://www.dgp.toronto.edu/~mac/e-stuff/point_in_polygon.py
+
+        Args:
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            rgba (vec4): Colour.
+        
+        TODO: fill arg
+        """
         x_min, x_max = ti.cast(x.min(), ti.i32), ti.cast(x.max(), ti.i32)
         y_min, y_max = ti.cast(y.min(), ti.i32), ti.cast(y.max(), ti.i32)
         l = len(x)
         for i, j in ti.ndrange(x_max - x_min, y_max - y_min):
-            p = [x_min + i, y_min + j]
+            p = ti.Vector([x_min + i, y_min + j])
             if self._is_inside(p, x, y, l) != 0:
                 # TODO: abstract out, weight?
                 """
@@ -222,7 +302,18 @@ class Pixels:
                 self.px.rgba[_x + 1, _y + 1] = rgba
 
     @ti.func
-    def _is_inside(self, p, x, y, l):
+    def _is_inside(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
+        """Check if point is inside polygon.
+
+        Args:
+            p (vec2): Point.
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            l (ti.i32): Number of points.
+
+        Returns:
+            int: 1 if inside, 0 if outside.
+        """
         is_inside = 0
         if self.polygon_mode == "crossing":
             is_inside = self._is_inside_crossing(p, x, y, l)
@@ -231,7 +322,18 @@ class Pixels:
         return is_inside
 
     @ti.func
-    def _is_inside_crossing(self, p, x, y, l):
+    def _is_inside_crossing(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
+        """Check if point is inside polygon using crossing number algorithm.
+
+        Args:
+            p (vec2): Point.
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            l (ti.i32): Number of points.
+
+        Returns:
+            int: 1 if inside, 0 if outside.
+        """
         n = 0
         v0, v1 = ti.Vector([0.0, 0.0]), ti.Vector([0.0, 0.0])
         for i in range(l):
@@ -244,7 +346,18 @@ class Pixels:
         return n % 2
 
     @ti.func
-    def _is_inside_winding(self, p, x, y, l):
+    def _is_inside_winding(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
+        """Check if point is inside polygon using winding number algorithm.
+
+        Args:
+            p (vec2): Point.
+            x (ti.template): X positions.
+            y (ti.template): Y positions.
+            l (ti.i32): Number of points.
+
+        Returns:
+            int: 1 if inside, 0 if outside.
+        """
         n = 0
         v0, v1 = ti.Vector([0.0, 0.0]), ti.Vector([0.0, 0.0])
         for i in range(l):
@@ -258,109 +371,202 @@ class Pixels:
 
     @ti.kernel
     def flip_x(self):
-        """
-        Invert image in x-axis.
-        """
+        """Flip image in x-axis."""
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba_inv[i, j] = self.px.rgba[self.x - 1 - i, j]
 
     @ti.kernel
     def flip_y(self):
-        """
-        Flip image in y-axis.
-        """
+        """Flip image in y-axis."""
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba_inv[i, j] = self.px.rgba[i, self.y - 1 - j]
 
     @ti.kernel
     def invert(self):
-        """
-        Invert image.
-        """
+        """Invert image."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = 1.0 - self.px.rgba[i, j]
+            self.px.rgba[i, j] = 1.0 - self.px.rgba[i, j]
 
     @ti.kernel
-    def decay(self, evaporate: ti.f32):
+    def decay(self, rate: ti.f32):
+        """Decay pixels.
+
+        Args:
+            rate (ti.f32): decay rate.
+        """
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba[i, j] *= evaporate
+            self.px.rgba[i, j] *= rate
 
     def blend_add(self, px: ti.template()):
+        """Blend by adding pixels together (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_add(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_add(self, rgba: ti.template()):
+        """Blend by adding pixels together (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] += rgba[i, j]
 
     def blend_sub(self, px: ti.template()):
+        """Blend by subtracting pixels (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_sub(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_sub(self, rgba: ti.template()):
+        """Blend by subtracting pixels (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] -= rgba[i, j]
 
     def blend_mul(self, px: ti.template()):
+        """Blend by multiplying pixels (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_mul(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_mul(self, rgba: ti.template()):
+        """Blend by multiplying pixels (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] *= rgba[i, j]
 
     def blend_div(self, px: ti.template()):
+        """Blend by dividing pixels (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_div(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_div(self, rgba: ti.template()):
+        """Blend by dividing pixels (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] /= rgba[i, j]
 
     def blend_min(self, px: ti.template()):
+        """Blend by taking the minimum of each pixel (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_min(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_min(self, rgba: ti.template()):
+        """Blend by taking the minimum of each pixel (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] = ti.min(self.px.rgba[i, j], rgba[i, j])
 
     def blend_max(self, px: ti.template()):
+        """Blend by taking the maximum of each pixel (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_max(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_max(self, rgba: ti.template()):
+        """Blend by taking the maximum of each pixel (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] = ti.max(self.px.rgba[i, j], rgba[i, j])
 
     def blend_diff(self, px: ti.template()):
+        """Blend by taking the difference of each pixel (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_diff(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_diff(self, rgba: ti.template()):
+        """Blend by taking the difference of each pixel (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] = ti.abs(self.px.rgba[i, j] - rgba[i, j])
 
     def blend_diff_inv(self, px: ti.template()):
+        """Blend by taking the inverse difference of each pixel (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+        """
         self._blend_diff_inv(self.rgba_from_px(px))
 
     @ti.kernel
     def _blend_diff_inv(self, rgba: ti.template()):
+        """Blend by taking the inverse difference of each pixel (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] = ti.abs(rgba[i, j] - self.px.rgba[i, j])
 
-    def blend_mix(self, px: ti.template(), a: ti.f32):
-        self._blend_mix(self.rgba_from_px(px))
+    def blend_mix(self, px: ti.template(), amount: ti.f32):
+        """Blend by mixing pixels (Python scope).
+
+        Args:
+            px (ti.template): Pixels to blend with.
+            amount (ti.f32): Amount to mix.
+        """
+        self._blend_mix(self.rgba_from_px(px), amount)
 
     @ti.kernel
     def _blend_mix(self, rgba: ti.template(), amount: ti.f32):
+        """Blend by mixing pixels (Taichi scope).
+
+        Args:
+            rgba (ti.template): Pixels to blend with.
+            amount (ti.f32): Amount to mix.
+        """
         for i, j in ti.ndrange(self.x, self.y):
             self.px.rgba[i, j] = ti.math.mix(self.px.rgba[i, j], rgba[i, j], amount)
 
     @ti.kernel
     def blur(self, radius: ti.i32):
-        """
-        Box blur
+        """Blur pixels.
+
+        Args:
+            radius (ti.i32): Blur radius.
         """
         for i, j in ti.ndrange(self.x, self.y):
             d = ti.Vector([0.0, 0.0, 0.0, 0.0])
@@ -375,11 +581,25 @@ class Pixels:
     def particles(
         self, particles: ti.template(), species: ti.template(), shape="circle"
     ):
+        """Draw particles.
+
+        Args:
+            particles (ti.template): Particles.
+            species (ti.template): Species.
+            shape (str, optional): Shape. Defaults to "circle".
+        """
         shape = self.shape_enum[shape]
         self._particles(particles, species, shape)
 
     @ti.kernel
     def _particles(self, particles: ti.template(), species: ti.template(), shape: int):
+        """Draw particles.
+
+        Args:
+            particles (ti.template): Particles.
+            species (ti.template): Species.
+            shape (int): Shape enum value.
+        """
         for i in range(self.tv.p.n):
             p = particles.field[i]
             s = species[p.species]
@@ -408,6 +628,17 @@ class Pixels:
             #     self.polygon(px, py, rgba)
 
     def rgba_from_px(self, px):
+        """Get rgba from pixels.
+
+        Args:
+            px (Any): Pixels to get rgba from.
+
+        Raises:
+            TypeError: If pixel field cannot be found.
+
+        Returns:
+            MatrixField: RGBA matrix field.
+        """
         if isinstance(px, Pixels):
             return px.px.rgba
         elif isinstance(px, StructField):
@@ -420,26 +651,6 @@ class Pixels:
             except:
                 raise TypeError(f"Cannot find pixel field in {type(px)}")
 
-    @ti.kernel
-    def update(self):
-        pass
-
-    def reset(self):
-        self.clear()
-
     def __call__(self):
+        """Call returns pixels."""
         return self.get()
-
-    @ti.func
-    def rgba_inv(self):  # -> vec3:
-        # TODO: rgba_inv
-        pass
-
-    # TODO: Normalise positions to [0,1] range?
-    @ti.func
-    def pos_to_px(self, pos: ti.math.vec2) -> ti.math.vec2:
-        return pos * [self.tv.x, self.tv.y]
-
-    @ti.func
-    def px_to_pos(self, px: ti.math.vec2) -> ti.math.vec2:
-        return px / [self.tv.x, self.tv.y]
