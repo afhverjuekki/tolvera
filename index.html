@@ -372,6 +372,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#install" class="md-nav__link">
     <span class="md-ellipsis">
       Install
@@ -1267,6 +1276,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#install" class="md-nav__link">
     <span class="md-ellipsis">
       Install
@@ -1389,19 +1407,34 @@
 <li><code>tv.osc</code>: Open Sound Control (OSC) via <a href="https://github.com/Intelligent-Instruments-Lab/iipyper">iipyper</a>, including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).</li>
 <li><code>tv.iml</code>: Interactive Machine Learning via <a href="https://github.com/Intelligent-Instruments-Lab/anguilla">anguilla</a>.</li>
 <li><code>tv.ti</code>: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).</li>
-<li><code>tv.cv</code>: computer vision integration based on OpenCV.</li>
+<li><code>tv.cv</code>: computer vision integration based on OpenCV and Mediapipe.</li>
 </ul>
+<h2 id="examples">Examples</h2>
+<p>Examples can be found at <a href="https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera">iil-examples/tolvera</a>.
+When run as a script, Tölvera program looks like this:</p>
+<div class="language-py highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span> <span class="nn">tolvera</span> <span class="kn">import</span> <span class="n">Tolvera</span><span class="p">,</span> <span class="n">run</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">tv</span> <span class="o">=</span> <span class="n">Tolvera</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="nd">@tv</span><span class="o">.</span><span class="n">render</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="k">def</span> <span class="nf">_</span><span class="p">():</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="k">return</span> <span class="n">tv</span><span class="o">.</span><span class="n">px</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">'__main__'</span><span class="p">:</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">)</span>
+</span></code></pre></div>
 <h2 id="install">Install</h2>
 <p>Taichi <a href="https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends">supports numerous operating systems and backends</a>.
 If you plan on using Vulkan for graphics (recommended for macOS), you may need to <a href="https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends">install the Vulkan SDK</a> first and restart your machine.</p>
 <p>Tölvera is <a href="https://pypi.org/project/tolvera">registered on PyPI</a> and can be installed via a Python package manager such as <code>pip</code>:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>tolvera
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>tolvera
 </span></code></pre></div>
 <h2 id="develop">Develop</h2>
 <p>Fork/clone this repository and install the package with <code>poetry</code>:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Intelligent-Instruments-Lab/tolvera<span class="w"> </span><span class="c1"># (or clone your own fork)</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>tolvera
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>poetry<span class="w"> </span>install
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Intelligent-Instruments-Lab/tolvera<span class="w"> </span><span class="c1"># (or clone your own fork)</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>tolvera
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>poetry<span class="w"> </span>install
 </span></code></pre></div>
 <h2 id="contribute">Contribute</h2>
 <p>We welcome <a href="https://github.com/Intelligent-Instruments-Lab/tolvera/pulls">Pull Requests</a> across all areas of the project:</p>
@@ -1419,33 +1452,34 @@ If you plan on using Vulkan for graphics (recommended for macOS), you may need t
 <li>Use GitHub <a href="https://github.com/Intelligent-Instruments-Lab/tolvera/discussions">Discussions</a> to share ideas and ask questions.</li>
 <li>Use <a href="https://discord.gg/ER7tWds9vM">Discord</a> for further support, sharing your work, and general chat.</li>
 </ul>
-<p>Across the project, we follow the <a href="https://github.com/Algorave/algoraveconduct">Algorave Code of Conduct</a>. Please get in touch if you experience or witness any conduct issues.</p>
+<p>Across the project, we follow the <a href="https://berlincodeofconduct.org/">Berlin Code of Conduct</a>. 
+Please get in touch if you experience or witness any conduct issues.</p>
 <h2 id="roadmap">Roadmap</h2>
 <p>See <a href="https://github.com/Intelligent-Instruments-Lab/tolvera/discussion">Discussion</a>.</p>
 <h2 id="citing">Citing</h2>
 <p>Tölvera is being written about and used in a number of contexts (see <a href="https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib">references.bib</a>), here are a few recent examples:</p>
-<div class="language-bibtex highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">armitageAgentialScoresExploring2023</span><span class="p">,</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="na">Address</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Boston, Massachusetts, USA}</span><span class="p">,</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="na">Author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{ Jack Armitage and Thor Magnusson }</span><span class="p">,</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="na">Title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Agential Scores: Artificial Life for Emergent, Self-Organising and Entangled Music Notation}</span><span class="p">,</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="na">Booktitle</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Proceedings of the International Conference on Technologies for Music Notation and Representation -- TENOR'2023}</span><span class="p">,</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="na">Pages</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{51 - 61}</span><span class="p">,</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="na">Year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{2023}</span><span class="p">,</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="na">Editor</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Anthony Paul De Ritis and Victor Zappi and Jeremy Van Buskirk and John Mallia}</span><span class="p">,</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="na">Publisher</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Northeastern University}</span><span class="p">,</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span><span class="na">ISBN</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{978-0-6481592-7-8}</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">}</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">armitageStrengjavera2023</span><span class="p">,</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">  </span><span class="na">title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Strengjavera}</span><span class="p">,</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="na">booktitle</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{{{AI Music Creativity}} 2023}</span><span class="p">,</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span><span class="na">author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Armitage, Jack}</span><span class="p">,</span>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="na">year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{2023}</span><span class="p">,</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span><span class="na">address</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{{University of Sussex, Brighton, UK}}</span><span class="p">,</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="na">doi</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{10.5281/zenodo.8329855}</span><span class="p">,</span>
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">  </span><span class="na">ISBN</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{978-0-9957862-9-5}</span><span class="p">,</span>
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">  </span><span class="na">url</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{https://zenodo.org/records/8329855}</span>
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="p">}</span>
+<div class="language-bibtex highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">armitageAgentialScoresExploring2023</span><span class="p">,</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="na">Address</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Boston, Massachusetts, USA}</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="na">Author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{ Jack Armitage and Thor Magnusson }</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="na">Title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Agential Scores: Artificial Life for Emergent, Self-Organising and Entangled Music Notation}</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="na">Booktitle</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Proceedings of the International Conference on Technologies for Music Notation and Representation -- TENOR'2023}</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="na">Pages</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{51 - 61}</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="na">Year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{2023}</span><span class="p">,</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="na">Editor</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Anthony Paul De Ritis and Victor Zappi and Jeremy Van Buskirk and John Mallia}</span><span class="p">,</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="na">Publisher</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Northeastern University}</span><span class="p">,</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="na">ISBN</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{978-0-6481592-7-8}</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">}</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">armitageStrengjavera2023</span><span class="p">,</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">  </span><span class="na">title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Strengjavera}</span><span class="p">,</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">  </span><span class="na">booktitle</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{{{AI Music Creativity}} 2023}</span><span class="p">,</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">  </span><span class="na">author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Armitage, Jack}</span><span class="p">,</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="na">year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{2023}</span><span class="p">,</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">  </span><span class="na">address</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{{University of Sussex, Brighton, UK}}</span><span class="p">,</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">  </span><span class="na">doi</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{10.5281/zenodo.8329855}</span><span class="p">,</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">  </span><span class="na">ISBN</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{978-0-9957862-9-5}</span><span class="p">,</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">  </span><span class="na">url</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{https://zenodo.org/records/8329855}</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="inspiration">Inspiration</h2>
 <ul>
