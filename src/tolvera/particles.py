@@ -299,8 +299,8 @@ class Particles:
             dist = p1.pos - p2.pos
             if dist.norm() < radius:
                 pdist = p1.ppos - p2.ppos
-                dpos = ti.math.abs(pdist - dist)
-                dvel = ti.math.abs((p1.pvel - p2.pvel) - (p1.vel - p2.vel))
+                dpos = ti.abs(pdist - dist)
+                dvel = ti.abs((p1.pvel - p2.pvel) - (p1.vel - p2.vel))
                 self.tv.s.collisions_p[i].dpos = dpos
                 self.tv.s.collisions_p[i].dvel = dvel
                 if pdist.norm() > radius:
