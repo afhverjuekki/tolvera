@@ -236,7 +236,6 @@ class Particles:
     @ti.kernel
     def update(self):
         """Update the particle system."""
-        # TODO: collisions
         j = 0
         for i in range(self.n):
             if self.field[i] == 0.0: continue
@@ -284,6 +283,16 @@ class Particles:
 
     @ti.func
     def detect_collisions(self, i: ti.i32, radius: ti.f32):
+        """Detect collisions between particles.
+
+        TODO: Merge deltas into @ti.dataclass, or reimplement Particle.field as tv.s?
+        TODO: Multiple collision states? Collided, Colliding, etc.
+        TODO: Detect collisions between external objects.
+
+        Args:
+            i (ti.i32): Particle index.
+            radius (ti.f32): Collision radius.
+        """
         for j in range(self.n):
             p1, p2 = tv.p.field[i], tv.p.field[j]
             if p2.active == 0: continue
