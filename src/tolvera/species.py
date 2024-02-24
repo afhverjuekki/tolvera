@@ -1,4 +1,4 @@
-"""Species class for initialising species."""
+"""Species class."""
 
 import taichi as ti
 

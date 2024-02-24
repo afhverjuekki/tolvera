@@ -84,6 +84,7 @@ class Pixels:
             "polygon": 5,
         }
 
+    
     def set(self, px: Any):
         """Set pixels.
 
@@ -91,6 +92,16 @@ class Pixels:
             px (Any): Pixels to set. Can be Pixels, StructField, MatrixField, etc (see rgba_from_px).
         """
         self.px.rgba = self.rgba_from_px(px)
+
+    @ti.kernel
+    def k_set(self, px: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            self.px.rgba[x, y] = px.px.rgba[x, y]
+
+    @ti.kernel
+    def f_set(self, px: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            self.px.rgba[x, y] = px.px.rgba[x, y]
 
     def get(self):
         """Get pixels."""

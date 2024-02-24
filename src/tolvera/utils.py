@@ -443,3 +443,7 @@ def npall_are_multiples(arr, tolerance=100):
 
 def map_range(arr, in_min, in_max, out_min, out_max):
     return out_min + ((arr - in_min) * (out_max - out_min)) / (in_max - in_min)
+
+@ti.func
+def ti_map_range(val, in_min, in_max, out_min, out_max):
+    return out_min + ((val - in_min) * (out_max - out_min)) / (in_max - in_min)
