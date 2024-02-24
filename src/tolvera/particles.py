@@ -294,7 +294,7 @@ class Particles:
             radius (ti.f32): Collision radius.
         """
         for j in range(self.n):
-            p1, p2 = tv.p.field[i], tv.p.field[j]
+            p1, p2 = self.tv.p.field[i], self.tv.p.field[j]
             if p2.active == 0: continue
             dist = p1.pos - p2.pos
             if dist.norm() < radius:
