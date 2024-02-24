@@ -21,6 +21,8 @@ class Particle:
     active: ti.f32
     pos: ti.math.vec2
     vel: ti.math.vec2
+    ppos: ti.math.vec2
+    pvel: ti.math.vec2
     mass: ti.f32
     size: ti.f32
     speed: ti.f32
@@ -226,21 +228,14 @@ class Particles:
     def update(self):
         """Update the particle system."""
         # TODO: collisions
-        for i in range(self.n):
-            if self.field[i] == 0.0:
-                continue
-            self.toroidal_wrap(i)
-            self.limit_speed(i)
-
-    @ti.kernel
-    def update_active(self):
-        """Update the active particles."""
         j = 0
         for i in range(self.n):
-            p = self.field[i]
-            if p.active > 0.0:
-                self.active_indexes[j] = i
-                j += 1
+            if self.field[i] == 0.0: continue
+            self.toroidal_wrap(i)
+            self.limit_speed(i)
+            self.update_prev(i)
+            self.active_indexes[j] = i
+            j += 1
         self.active_count[None] = j
 
     @ti.func
@@ -277,6 +272,16 @@ class Particles:
         if p.vel.norm() > s.speed:
             self.field[i].vel = p.vel.normalized() * sp * self._speed[None]
 
+    @ti.func
+    def update_prev(self, i: ti.i32):
+        """Update the previous position and velocity of a particle.
+
+        Args:
+            i (ti.i32): Particle index.
+        """
+        self.field[i].ppos = self.field[i].pos
+        self.field[i].pvel = self.field[i].vel
+
     @ti.kernel
     def activity_decay(self):
         """Decay the activity of the particles."""
@@ -287,7 +292,6 @@ class Particles:
     def process(self):
         """Process the particle system."""
         for i in range(self.substep):
-            self.update_active()
             self.update()
 
     @ti.kernel
