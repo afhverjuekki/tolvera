@@ -126,7 +126,7 @@ class Pixels:
                     dx = (i + di) % self.x
                     dy = (j + dj) % self.y
                     d += self.px.rgba[dx, dy]
-            d *= evaporate / 9.0
+            d *= 0.99 / 9.0
             self.px.rgba[i, j] = d
 
     @ti.func

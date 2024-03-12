@@ -3,7 +3,7 @@ import taichi as ti
 import numpy as np
 import enum
 
-from .osc.update import Updater
+from ..osc.update import Updater
 
 class HandLandmark(enum.IntEnum):
   """The 21 hand landmarks."""
@@ -51,6 +51,7 @@ class MPHands:
     def __init__(self, context, **kwargs) -> None:
         self.ctx = context
         self.kwargs = kwargs
+        self.n_conns = len(HAND_CONNECTIONS)
 
         self.config = {
             'static_image_mode': kwargs.get('static_mode', False),
@@ -64,8 +65,8 @@ class MPHands:
         self.setup_connections()
         
         self.hands_np = {
-            'pxnorm':np.zeros((self.config['max_num_hands'], 21, 3), np.float32),
-            'px':np.zeros((self.config['max_num_hands'], 21, 2), np.float32),
+            'pxnorm':np.zeros((self.config['max_num_hands'], self.n_conns, 3), np.float32),
+            'px':np.zeros((self.config['max_num_hands'], self.n_conns, 2), np.float32),
         }
         self.ctx.s.hands = {
             'state': {
@@ -73,7 +74,7 @@ class MPHands:
                 'px': (ti.math.vec2, 0.0, 1.0),
                 # 'metres': (ti.math.vec3, 0.0, 1.0), # multi_hand_world_landmarks
             },
-            'shape': (self.config['max_num_hands'], 21)
+            'shape': (self.config['max_num_hands'], self.n_conns)
         }
         self.handed = ti.field(ti.i32, shape=(self.config['max_num_hands'])) # 0=l, 1=r
         self.handed.fill(-1)
@@ -81,7 +82,7 @@ class MPHands:
         if self.ctx.iml:
             self.ctx.iml.hands = {
                 'type': 'vec2vec',
-                'size': ((21,2), 1),
+                'size': ((self.n_conns,2), 1),
             }
 
         self.updater = Updater(self.detect, kwargs.get('hands_detect_rate', 10))

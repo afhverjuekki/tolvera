@@ -50,7 +50,7 @@ from iipyper.state import _lock
 
 from .taichi_ import Taichi
 from .cv import CV
-from .mp import MPHands
+from .mp import *
 from .iml import IMLDict
 from .osc.osc import OSC
 from .patches import *
@@ -112,6 +112,7 @@ class TolveraContext:
         self.iml = kwargs.get("iml", False)
         self.cv = kwargs.get("cv", False)
         self.hands = kwargs.get("hands", False)
+        self.pose = kwargs.get("pose", False)
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
@@ -119,6 +120,7 @@ class TolveraContext:
         if self.cv:
             self.cv = CV(self, **kwargs)
             self.hands = MPHands(self, **kwargs)
+            self.pose = MPPose(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
         print(f"[{self.name}] Context initialisation complete.")
