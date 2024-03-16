@@ -384,13 +384,13 @@ class Pixels:
     def flip_x(self):
         """Flip image in x-axis."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = self.px.rgba[self.x - 1 - i, j]
+            self.px.rgba[i, j] = self.px.rgba[self.x - 1 - i, j]
 
     @ti.kernel
     def flip_y(self):
         """Flip image in y-axis."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = self.px.rgba[i, self.y - 1 - j]
+            self.px.rgba[i, j] = self.px.rgba[i, self.y - 1 - j]
 
     @ti.kernel
     def invert(self):
