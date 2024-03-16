@@ -250,6 +250,9 @@ class MPHands:
 
     def landmark_name_from_index(self, index):
         return HandLandmark(index).name
+    
+    def landmark_index_from_name(self, name):
+        return HandLandmark[name].value
 
     @ti.kernel
     def get_landmark(self, hand: ti.i32, landmark: ti.i32) -> ti.math.vec2:
