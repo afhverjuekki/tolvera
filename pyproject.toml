@@ -19,6 +19,7 @@ anguilla-iml = "^0.1.0b4"
 sardine = "^0.0.0b3"
 mediapipe = "0.10.9"
 signalflow = "^0.4.8"
+torch = "^2.2.2"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
