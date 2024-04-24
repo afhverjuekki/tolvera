@@ -11,7 +11,7 @@ documentation = "https://intelligent-instruments-lab.github.io/tolvera/"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-taichi = "^1.6.0"
+taichi = "^1.7.0"
 jsons = "^1.6.3"
 opencv-python = "^4.8.1.78"
 torch = "^2.1.1"
@@ -19,6 +19,7 @@ iipyper = "^0.1.0b1"
 anguilla-iml = "^0.1.0b4"
 sardine = "^0.0.0b3"
 mediapipe = "^0.10.9"
+signalflow = "^0.4.8"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"

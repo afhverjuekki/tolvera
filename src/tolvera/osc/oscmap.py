@@ -145,7 +145,7 @@ class OSCMap:
                 self.osc,
                 f["address"],
                 f=func,
-                count=kwargs["count"],
+                # count=kwargs["count"],
                 client=self.client_name,
             )
         f["type"] = "args"

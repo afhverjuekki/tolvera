@@ -50,7 +50,7 @@ from iipyper.state import _lock
 
 from .taichi_ import Taichi
 from .cv import CV
-from .mp import MPHands
+from .mp import *
 from .iml import IMLDict
 from .osc.osc import OSC
 from .patches import *
@@ -112,13 +112,23 @@ class TolveraContext:
         self.iml = kwargs.get("iml", False)
         self.cv = kwargs.get("cv", False)
         self.hands = kwargs.get("hands", False)
+        self.pose = kwargs.get("pose", False)
+        self.face = kwargs.get("face", False)
+        self.face_mesh = kwargs.get("face_mesh", False)
         if self.osc:
             self.osc = OSC(self, **kwargs)
         if self.iml:
             self.iml = IMLDict(self)
         if self.cv:
             self.cv = CV(self, **kwargs)
-            self.hands = MPHands(self, **kwargs)
+            if self.hands:
+                self.hands = MPHands(self, **kwargs)
+            if self.pose:
+                self.pose = MPPose(self, **kwargs)
+            if self.face:
+                self.face = MPFace(self, **kwargs)
+            if self.face_mesh:
+                self.face_mesh = MPFaceMesh(self, **kwargs)
         self._cleanup_fns = []
         self.tolveras = {}
         print(f"[{self.name}] Context initialisation complete.")
