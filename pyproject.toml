@@ -17,7 +17,7 @@ opencv-python = "^4.8.1.78"
 iipyper = "^0.1.0b1"
 anguilla-iml = "^0.1.0b4"
 sardine = "^0.0.0b3"
-mediapipe = "^0.10.9"
+mediapipe = "0.10.9"
 signalflow = "^0.4.8"
 
 [tool.poetry.group.dev.dependencies]
