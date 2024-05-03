@@ -73,3 +73,37 @@ if __name__=='__main__':
 
 Exploration of 3D printing with Tölvera can be achieved via [FullControl](https://fullcontrol.xyz). See example [here](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera/3dprinting).
 
+## Sketchbook
+
+Tölvera has an experimental sketchbook built-in.
+For example, if the following program exists in a folder called `mysketch.py`:
+
+```py
+from tolvera import Tolvera
+
+def mysketch(**kwargs):
+    tv = Tolvera(**kwargs)
+
+    @tv.render
+    def _():
+        tv.px.diffuse(0.99)
+        tv.v.flock(tv.p)
+        tv.px.particles(tv.p, tv.s.species)
+        return tv.px
+```
+
+It can be run with:
+
+```sh
+python -m tolvera --sketch "mysketch"
+```
+
+Available commands:
+
+```
+--sketchbook    Set a sketchbook folder
+--sketches      List available sketches
+--sketch        Run a particular sketch (can be a file path or index)
+--random        Run a random sketch from the sketchbook
+```
+

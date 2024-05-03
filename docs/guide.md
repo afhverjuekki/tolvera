@@ -279,3 +279,92 @@ The image below demonstrates how Tölvera's state and drawing capabilities can b
 
 Tölvera integrates with OpenCV and Mediapipe to enable exploration of computer vision and tracking of hands, face and full body pose.
 See [examples](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera/cv).
+
+## Command-line arguments
+
+### Tölvera Module (`python -m tolvera`)
+All arguments below can be applied, and in addition:
+```
+--demo  Run a tv.v.flock() demo.
+--help  Print a help message.
+```
+
+See also `sketchbook` in [experiments](/experiments).
+
+### Tölvera Context (`tv.ctx`)
+```
+--x             Width in pixels. Defaults to 1920.
+--y             Height in pixels. Defaults to 1080.
+```
+
+### Tölvera Instance (`tv`)
+```
+--name          Name of Tölvera instance. Defaults to "Tölvera".
+--speed         Global speed scalar. Defaults to 1.
+--particles     Number of particles. Defaults to 1024. Aliased to tv.pn.
+--species       Number of species. Defaults to 4. Aliased to tv.sn.
+--substep       Number of substeps of render function. Defaults to 1.
+```
+
+### Taichi (`tv.ti`)
+```
+--gpu        GPU architecture to run on. Defaults to "vulkan".
+--cpu        Run on CPU instead of GPU. Defaults to False.
+--fps        Frames per second. Defaults to 120.
+--seed       Random seed. Defaults to int(time.time()).
+--headless   False
+--name       Instance name. Defaults to "Tölvera".
+```
+
+### Pixels (`tv.px`)
+```
+--polygon_mode  Polygon drawing mode. Defaults to 'crossing'.
+--brightness    Brightness scalar. Defaults to 1.
+```
+
+### Open Sound Control (`tv.osc`)
+```
+--osc               Enable OSC. Defaults to False.
+--host              OSC Host IP. Defaults to "127.0.0.1".
+--client            OSC Client IP. Defaults to "127.0.0.1".
+--client_name       OSC client name. Defaults to self.ctx.name_clean.
+--receive_port      OSC host port. Defaults to 5001.
+--send_port         OSC client port. Defaults to 5000.
+--osc_trace         Print all OSC messages. Defaults to False.
+--osc_verbose       Verbose printing of iipyper. Defaults to False.
+--create_patch      Create a Max or Pd patch based on tv.osc.map. Defaults to False.
+--patch_type        Type of patch to create. Defaults to "Pd".
+--patch_filepath    Filepath of patch. Defaults to self.client_name.
+--export_patch      Export patch schema to XML, JSON or both. Defaults to None.
+```
+
+### Interactive Machine Learning (`tv.iml`)
+```
+--update_rate           Rate of IML updates relative to FPS. Default to 10.
+--config                anguilla instance configuration. Default to {}.
+--map_kw                anguilla.map kwargs. Default to {}.
+--infun_kw              Input method kwargs. Default to {}.
+--outfun_kw             Output method kwargs. Default to {}.
+--randomise             IML randomisation. Default to False.
+--rand_pairs            IML randomisation. Default to 32.
+--rand_input_weight     IML input randomisation weight. Default to None.
+--rand_output_weight    IML output randomisation weight. Default to None.
+--rand_method           IML randomisation method. Default to "rand".
+--rand_kw               IML randomisation kwargs. Default to {}.
+--lag                   Lag value updates. Default to False.
+--lag_coef              Lag coefficient. Default to 0.5.
+--name                  Name of IML instance. Default to None.
+```
+
+### Computer Vision (`tv.cv`)
+```
+--camera            Enable camera. Defaults to False.
+--device            OpenCV device index. Defaults to 0.
+--substeps          Number of substeps for reading camera frames. Defaults to 2.
+--colormode         Color channels. Defaults to 'rgba'.
+--ggui_fps_limit    FPS limit of Taichi GGUI. Defaults to 120fps.
+--hands             Enable hand tracking. Defaults to False.
+--pose              Enable pose tracking. Defaults to False.
+--face              Enable face tracking. Defaults to False.
+--face_mesh         Enable face mesh tracking. Defaults to False.
+```
