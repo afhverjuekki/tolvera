@@ -21,6 +21,8 @@ __all__ = [
     "gravitate",
     "gravitate_species",
     "noise",
+    "centripetal",
+    "centripetal_particle",
 ]
 
 
@@ -287,3 +289,42 @@ def noise(particles: ti.template(), weight: ti.f32):
             continue
         particles.field[i].vel += (ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * weight)
         particles.field[i].pos += p.vel * p.speed * p.active
+
+@ti.kernel
+def centripetal(particles: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32):
+    """Apply a centripetal force to the particles.
+
+    Args:
+        particles (ti.template): Particles.
+        centre (ti.math.vec2): Centripetal centre.
+        direction (ti.i32): Centripetal direction.
+        weight (ti.f32): Centripetal weight.
+    """
+    for i in range(particles.field.shape[0]):
+        p = particles.field[i]
+        if p.active == 0:
+            continue
+        particles.field[i].vel += centripetal_particle(p, centre, direction, weight)
+
+@ti.func
+def centripetal_particle(p: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32) -> ti.math.vec2:
+    """Apply a centripetal force to a particle.
+
+    Args:
+        p (Particle): Individual particle.
+        centre (ti.math.vec2): Centripetal centre.
+        direction (ti.i32): Centripetal direction.
+        weight (ti.f32): Centripetal weight.
+
+    Returns:
+        ti.math.vec2: Centripetal velocity.
+    """
+    r = p.pos - centre
+    if direction == 0:
+        r = -r
+    v_perp = ti.Vector([-r[1], r[0]])
+    norm = v_perp.norm() + 1e-5
+    v_perp_normalized = v_perp / norm
+    speed = p.vel.norm()
+    new_vel = v_perp_normalized * speed * weight
+    return new_vel

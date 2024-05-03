@@ -127,6 +127,9 @@ class Tolvera:
         self.cleanup = context.cleanup
         self.cv = context.cv
         self.hands = context.hands
+        self.pose = context.pose
+        self.face = context.face
+        self.face_mesh = context.face_mesh
 
     def setup(self, **kwargs):
         """
@@ -158,7 +161,14 @@ class Tolvera:
         if self.osc is not False:
             self.add_to_osc_map()
         if self.cv is not False:
-            self.hands.px = self.px
+            if self.hands:
+                self.hands.px = self.px
+            if self.pose:
+                self.pose.px = self.px
+            if self.face:
+                self.face.px = self.px
+            if self.face_mesh:
+                self.face_mesh.px = self.px
         self.ctx.add(self)
         print(f"[{self.name}] Setup complete.")
 

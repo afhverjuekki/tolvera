@@ -73,6 +73,8 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - attr_list
+  - md_in_html
 
 extra_css:
   - stylesheets/extra.css
@@ -83,6 +85,7 @@ plugins:
   - include-markdown
   - autorefs
   - mkdocs-video
+  - awesome-pages
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py  

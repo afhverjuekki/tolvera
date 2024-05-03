@@ -84,6 +84,7 @@ class Pixels:
             "polygon": 5,
         }
 
+    
     def set(self, px: Any):
         """Set pixels.
 
@@ -91,6 +92,16 @@ class Pixels:
             px (Any): Pixels to set. Can be Pixels, StructField, MatrixField, etc (see rgba_from_px).
         """
         self.px.rgba = self.rgba_from_px(px)
+
+    @ti.kernel
+    def k_set(self, px: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            self.px.rgba[x, y] = px.px.rgba[x, y]
+
+    @ti.kernel
+    def f_set(self, px: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            self.px.rgba[x, y] = px.px.rgba[x, y]
 
     def get(self):
         """Get pixels."""
@@ -115,7 +126,7 @@ class Pixels:
                     dx = (i + di) % self.x
                     dy = (j + dj) % self.y
                     d += self.px.rgba[dx, dy]
-            d *= evaporate / 9.0
+            d *= 0.99 / 9.0
             self.px.rgba[i, j] = d
 
     @ti.func
@@ -373,13 +384,13 @@ class Pixels:
     def flip_x(self):
         """Flip image in x-axis."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = self.px.rgba[self.x - 1 - i, j]
+            self.px.rgba[i, j] = self.px.rgba[self.x - 1 - i, j]
 
     @ti.kernel
     def flip_y(self):
         """Flip image in y-axis."""
         for i, j in ti.ndrange(self.x, self.y):
-            self.px.rgba_inv[i, j] = self.px.rgba[i, self.y - 1 - j]
+            self.px.rgba[i, j] = self.px.rgba[i, self.y - 1 - j]
 
     @ti.kernel
     def invert(self):

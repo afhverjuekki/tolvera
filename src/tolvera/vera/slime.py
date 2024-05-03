@@ -23,7 +23,7 @@ class Slime:
     Taichi Physarum implementation inspired by:
     https://github.com/taichi-dev/taichi/blob/master/python/taichi/examples/simulation/physarum.py
     """
-    def __init__(self, tolvera, evaporate: ti.f32 = 0.99, **kwargs):
+    def __init__(self, tolvera, **kwargs):
         """Initialise the Slime behaviour.
 
         `slime_p` stores the particle state.
@@ -74,7 +74,7 @@ class Slime:
         }
         self.trail = Pixels(self.tv, **kwargs)
         self.evaporate = ti.field(dtype=ti.f32, shape=())
-        self.evaporate[None] = evaporate
+        self.evaporate[None] = kwargs.get("evaporate", 0.99)
 
     def randomise(self):
         """Randomise the Slime behaviour."""

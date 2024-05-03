@@ -54,6 +54,7 @@ if __name__ == '__main__':
 
 Taichi [supports numerous operating systems and backends](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends).
 If you plan on using Vulkan for graphics (recommended for macOS), you may need to [install the Vulkan SDK](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends) first and restart your machine.
+```
 
 Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be installed via a Python package manager such as `pip`:
 
@@ -63,13 +64,29 @@ pip install tolvera
 
 ## Develop
 
-Fork/clone this repository and install the package with `poetry`:
+Fork/clone this repository and install the package with [`poetry`](https://python-poetry.org/):
 
 ```sh
 git clone https://github.com/Intelligent-Instruments-Lab/tolvera # (or clone your own fork)
 cd tolvera
 poetry install
 ```
+
+## Known Issues & Limitations
+
+- Tölvera currently [does not support Python 3.12 and above](https://github.com/taichi-dev/taichi/issues/8365) - a Python 3.11 installation is recommended.
+This can be created in the following way using [miniconda](https://docs.anaconda.com/free/miniconda/index.html):
+```sh
+conda create -n tolvera python=3.11
+conda activate tolvera
+```
+- Tölvera does not support Intel-based Apple devices (due to [`anguilla`](https://github.com/Intelligent-Instruments-Lab/anguilla)'s FAISS dependency, and Mediapipe not supporting Intel Macs).
+- On macOS, [an OpenMP issue](https://github.com/pytorch/pytorch/issues/78490) may prevent Tölvera programs from running, which can be addressed by adding the following environment variable:
+```sh
+export KMP_DUPLICATE_LIB_OK=TRUE
+```
+- Sonification via [SignalFlow](https://signalflow.dev) does not work on Windows.
+- Mediapipe versions [may need to be downgraded](https://github.com/google/mediapipe/issues/5168) in order to work on macOS and Windows.
 
 ## Contribute
 
@@ -98,30 +115,16 @@ See [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussi
 
 ## Citing
 
-Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)), here are a few recent examples:
+Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)).
+The current canonical citation is:
 
 ```bibtex
-@inproceedings{armitageAgentialScoresExploring2023,
-  Address = {Boston, Massachusetts, USA},
-  Author = { Jack Armitage and Thor Magnusson },
-  Title = {Agential Scores: Artificial Life for Emergent, Self-Organising and Entangled Music Notation},
-  Booktitle = {Proceedings of the International Conference on Technologies for Music Notation and Representation -- TENOR'2023},
-  Pages = {51 - 61},
-  Year = {2023},
-  Editor = {Anthony Paul De Ritis and Victor Zappi and Jeremy Van Buskirk and John Mallia},
-  Publisher = {Northeastern University},
-  ISBN = {978-0-6481592-7-8}
-}
-
-@inproceedings{armitageStrengjavera2023,
-  title = {Strengjavera},
-  booktitle = {{{AI Music Creativity}} 2023},
-  author = {Armitage, Jack},
-  year = {2023},
-  address = {{University of Sussex, Brighton, UK}},
-  doi = {10.5281/zenodo.8329855},
-  ISBN = {978-0-9957862-9-5},
-  url = {https://zenodo.org/records/8329855}
+@inproceedings{armitageTolveraComposingBasal2024,
+  title = {T{\"o}lvera: {{Composing With Basal Agencies}}},
+  booktitle = {Proc. {{New Interfaces}} for {{Musical Expression}}},
+  author = {Armitage, Jack and Shepardson, Victor and Magnusson, Thor},
+  year = {2024},
+  address = {Utrecht, NL},
 }
 ```
 

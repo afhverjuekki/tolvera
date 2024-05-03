@@ -145,7 +145,7 @@ class OSCMap:
                 self.osc,
                 f["address"],
                 f=func,
-                count=kwargs["count"],
+                # count=kwargs["count"],
                 client=self.client_name,
             )
         f["type"] = "args"
@@ -308,7 +308,6 @@ class OSCMap:
         assert (
             len(f["params"]) == 1
         ), "receive_list can only receive one param (list[float])"
-        print(f)
         hint = f["hints"][list(f["params"].keys())[0]]
         assert (
             hint == list[float]
@@ -506,6 +505,9 @@ class OSCMap:
             else:
                 d[tag] = text
         return d
+
+    def pascal_to_camel(self, s):
+        return s[0].lower() + s[1:]
 
     def xml_to_json(self, xml_str):
         e = ET.ElementTree(ET.fromstring(xml_str))

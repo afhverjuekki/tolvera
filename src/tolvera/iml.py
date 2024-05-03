@@ -341,7 +341,7 @@ class IMLBase(iiIML):
         )
         self.config = kwargs.get("config", {})
         if isinstance(self.size[0], tuple):
-            self.config["emb"] = "ProjectAndSort"
+            self.config["embed_input"] = "ProjectAndSort"
         print(f"[tolvera._iml.IMLBase] Initialising IML with config: {self.config}")
         super().__init__(**self.config)
         self.data = dotdict()
