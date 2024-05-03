@@ -72,7 +72,7 @@ cd tolvera
 poetry install
 ```
 
-## Known Issues & Limitations
+## Known Issues & Limitations
 
 - Tölvera currently [does not support Python 3.12 and above](https://github.com/taichi-dev/taichi/issues/8365) - a Python 3.11 installation is recommended.
 This can be created in the following way using [miniconda](https://docs.anaconda.com/free/miniconda/index.html):
