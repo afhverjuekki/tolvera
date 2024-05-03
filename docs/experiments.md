@@ -6,6 +6,9 @@ hide:
 
 # Experiments
 
+These are ongoing experiments with Tölvera, Taichi and third-party libraries.
+Most are working examples, but don't be surprised if there is the occasional broken one - please report issues [here](https://github.com/Intelligent-Instruments-Lab/tolvera/issues).
+
 ## Live Coding
 
 Tölvera can be live coded via [Sardine](https://sardine.raphaelforment.fr/).
