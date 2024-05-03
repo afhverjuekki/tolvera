@@ -282,6 +282,8 @@ See [examples](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/
 
 ## Command-line arguments
 
+When Tölvera is instanced, a global `kwargs` dictionary is passed down through the various modules that allows setting of flags and parameters.
+
 ### Tölvera Module (`python -m tolvera`)
 All arguments below can be applied, and in addition:
 ```
