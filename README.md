@@ -98,30 +98,16 @@ See [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussi
 
 ## Citing
 
-Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)), here are a few recent examples:
+Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)).
+The current canonical citation is:
 
 ```bibtex
-@inproceedings{armitageAgentialScoresExploring2023,
-  Address = {Boston, Massachusetts, USA},
-  Author = { Jack Armitage and Thor Magnusson },
-  Title = {Agential Scores: Artificial Life for Emergent, Self-Organising and Entangled Music Notation},
-  Booktitle = {Proceedings of the International Conference on Technologies for Music Notation and Representation -- TENOR'2023},
-  Pages = {51 - 61},
-  Year = {2023},
-  Editor = {Anthony Paul De Ritis and Victor Zappi and Jeremy Van Buskirk and John Mallia},
-  Publisher = {Northeastern University},
-  ISBN = {978-0-6481592-7-8}
-}
-
-@inproceedings{armitageStrengjavera2023,
-  title = {Strengjavera},
-  booktitle = {{{AI Music Creativity}} 2023},
-  author = {Armitage, Jack},
-  year = {2023},
-  address = {{University of Sussex, Brighton, UK}},
-  doi = {10.5281/zenodo.8329855},
-  ISBN = {978-0-9957862-9-5},
-  url = {https://zenodo.org/records/8329855}
+@inproceedings{armitageTolveraComposingBasal2024,
+  title = {T{\"o}lvera: {{Composing With Basal Agencies}}},
+  booktitle = {Proc. {{New Interfaces}} for {{Musical Expression}}},
+  author = {Armitage, Jack and Shepardson, Victor and Magnusson, Thor},
+  year = {2024},
+  address = {Utrecht, NL},
 }
 ```
 
