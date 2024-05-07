@@ -85,7 +85,7 @@ Please get in touch if you experience or witness any conduct issues.
 
 See [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussion).
 
-## Citing
+## Citation
 
 Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)).
 The current canonical citation is our [NIME 2024](https://www.nime2024.org/) paper:
@@ -111,7 +111,8 @@ The current canonical citation is our [NIME 2024](https://www.nime2024.org/) pap
 
 ## Contact
 
-`tolvera` is developed by the [Intelligent Instruments Lab](https://iil.is/about). Get in touch to [collaborate](https://iil.is/collaborate):
+`tolvera` is developed primarily by [Jack Armitage](https://jackarmitage.com) and [collaborators](https://iil.is/people) at the [Intelligent Instruments Lab](https://iil.is/about). 
+Get in touch to [collaborate](https://iil.is/collaborate):
 
  ◦ <a href="https://iil.is" target="_blank" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
 <a href="https://facebook.com/intelligentinstrumentslab" target="_blank" title="facebook.com">Facebook</a> ◦ 
