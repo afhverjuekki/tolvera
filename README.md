@@ -1,18 +1,20 @@
 # Tölvera
 
-[Tölvera](https://tolvera.is) is a library for exploring musical performance with artificial life (ALife) and self-organising systems. The word is an Icelandic [kenning](https://en.wikipedia.org/wiki/Kenning):
+[Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z). 
+It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
+With built-in support for Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper) and interactive machine learning (IML) via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla), Tölvera interfaces with and rapidly maps onto existing creative computing software and hardware, striving to be both an accessible and powerful tool for exploring diverse intelligence in musical contexts.
 
-- Tölva = computer, from tala (number) + völva (prophetess)
-- Vera = being
-- Tölvera = number being
+We have employed Tölvera in various collaborative artistic works, including musical performances, compositions, and multimedia installations (see [`references.bib`](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib) for peer-reviewed publications).
+In these applications it has [sometimes](https://www.youtube.com/watch?v=W2c8vFmdANY) served as a visual component, and in [others](https://marcodonnarumma.com/works/ex-silens/) it has acted as a non-visual behaviour engine, contributing to the underlying dynamics of the artwork or performance.
 
-Tölvera is written in [Taichi](https://www.taichi-lang.org/), a domain-specific language embedded in Python.
+Tölvera makes use of [Taichi](https://www.taichi-lang.org/), a domain-specific language embedded in Python that enables parallelisation, and is experimental software subject to change.
 
-This is experimental software and everything is currently subject to change.
+We would be happy to have you join us on our [Discord](https://discord.gg/ER7tWds9vM) server!
 
-Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
+## Showcase & Examples
 
-## Showcase
+Examples can be found at [iil-examples/tolvera](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
+See also the [guide](https://intelligent-instruments-lab.github.io/tolvera/guide), [reference](https://intelligent-instruments-lab.github.io/tolvera/reference) and [experiments](https://intelligent-instruments-lab.github.io/tolvera/experiments) pages.
 
 [Visit the YouTube Playlist](https://www.youtube.com/embed/ahSXjnYHZLU?&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x) (if you'd like to add a video, please get in touch).
 
@@ -20,41 +22,10 @@ Join us on the Tölvera [Discord](https://discord.gg/ER7tWds9vM).
 
 <!-- [![](assets/images/tolvera.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB) -->
 
-## Features
-
-- `tv.v`: a collection of "vera" (beings) including Move, Flock, Slime and Swarm, with more being continuously added. Vera can be combined and composed in various ways.
-- `tv.p`: extensible particle system. Particles are divided into multiple species, where each species has a unique relationship with every other species, including itself
-- `tv.s`: n-dimensional state structures that can be used by "vera", including built-in OSC and IML creation (see below).
-- `tv.px`: drawing library including various shapes and blend modes, styled similarly to p5.js etc.
-- `tv.osc`: Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
-- `tv.iml`: Interactive Machine Learning via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla).
-- `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
-- `tv.cv`: computer vision integration based on OpenCV and Mediapipe.
-
-## Examples
-
-Examples can be found at [iil-examples/tolvera](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
-When run as a script, Tölvera program looks like this:
-
-```py
-from tolvera import Tolvera, run
-
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
-
-    @tv.render
-    def _():
-        return tv.px
-
-if __name__ == '__main__':
-    run(main)
-```
-
 ## Install
 
 Taichi [supports numerous operating systems and backends](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends).
 If you plan on using Vulkan for graphics (recommended for macOS), you may need to [install the Vulkan SDK](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends) first and restart your machine.
-```
 
 Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be installed via a Python package manager such as `pip`:
 
@@ -64,7 +35,8 @@ pip install tolvera
 
 ## Develop
 
-Fork/clone this repository and install the package with [`poetry`](https://python-poetry.org/):
+For development, we use [`poetry`](https://python-poetry.org/).
+Fork/clone this repository and install the package with `poetry:
 
 ```sh
 git clone https://github.com/Intelligent-Instruments-Lab/tolvera # (or clone your own fork)
@@ -116,7 +88,7 @@ See [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussi
 ## Citing
 
 Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)).
-The current canonical citation is:
+The current canonical citation is our [NIME 2024](https://www.nime2024.org/) paper:
 
 ```bibtex
 @inproceedings{armitageTolveraComposingBasal2024,
@@ -130,6 +102,7 @@ The current canonical citation is:
 
 ## Inspiration
 
+- [Michael Levin](https://en.wikipedia.org/wiki/Michael_Levin_(biologist))
 - [SwissGL](https://swiss.gl)
 - [Lenia](https://chakazul.github.io/lenia.html)
 - Particle Life (attributed to various, see for example [Clusters](https://www.ventrella.com/Clusters/))
@@ -150,6 +123,8 @@ The current canonical citation is:
 <a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" title="www.linkedin.com">LinkedIn</a> ◦ 
 <a href="mailto:iil@lhi.is" target="_blank" title="">Email</a> ◦ 
 
-## Funding
+## Acknowledgements
 
-The Intelligent Instruments project (INTENT) is funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant agreement No. 101001848).
+We thank the Taichi community for their wonderful project, that makes Tölvera possible.
+
+The [Intelligent Instruments](https://iil.is) project (INTENT) is funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant agreement No. 101001848).

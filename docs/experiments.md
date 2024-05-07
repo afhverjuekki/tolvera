@@ -7,6 +7,7 @@ hide:
 # Experiments
 
 These are ongoing experiments with Tölvera, Taichi and third-party libraries.
+You can find more experiments in the [examples](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera) folder.
 Most are working examples, but don't be surprised if there is the occasional broken one - please report issues [here](https://github.com/Intelligent-Instruments-Lab/tolvera/issues).
 
 ## Live Coding

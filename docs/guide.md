@@ -4,14 +4,26 @@ hide:
   - navigation
 ---
 
-# Guide
+# Tölvera `v0.1.0` Guide
 
-This guide provides an overview of the Tölvera v0.1.0 API:
+This guide provides an overview of the Tölvera `v0.1.0` API:
 
 - For specific methods available in each area, see [Reference](/reference/tolvera/context).
 - More code examples are available [here](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
 
-The v0.2.0 API will be different, so everything here is subject to change.
+The `v0.2.0` API will be different, so everything here is subject to change.
+Please share your feedback on our [Discord](https://discord.gg/ER7tWds9vM).
+
+## Overview of Features
+
+- `tv.v`: a collection of "vera" (beings) including Move, Flock, Slime and Swarm, with more being continuously added. Vera can be combined and composed in various ways.
+- `tv.p`: extensible particle system. Particles are divided into multiple species, where each species has a unique relationship with every other species, including itself
+- `tv.s`: n-dimensional state structures that can be used by "vera", including built-in OSC and IML creation (see below).
+- `tv.px`: drawing library including various shapes and blend modes, styled similarly to p5.js etc.
+- `tv.osc`: Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
+- `tv.iml`: Interactive Machine Learning via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla).
+- `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
+- `tv.cv`: computer vision integration based on OpenCV and Mediapipe.
 
 ## Program Structure
 
@@ -59,8 +71,8 @@ class Particle:
 ```
 
 Particles are divided into species (represented as an integer), and species can have different relationships with each other, creating a matrix of species-species interactions.
-This idea was inspired by [Particle Life](https://particle-life.com/), and provides a simple means to mimic ecological complexity, even when using a single behaviour.
-Species are implemented as multi-dimensional state, which means all `tv.v` behaviour models can make use of the multispecies matrix.
+This idea was inspired by [Particle Life](https://particle-life.com/), and provides a simple means to mimic ecological complexity, even when using a single behaviour or model.
+Species are implemented as multi-dimensional state (see below), which means all `tv.v` behaviour models can make use of the multispecies matrix.
 
 <figure markdown="span">
   ![Species](../assets/images/species.jpg)
@@ -101,6 +113,7 @@ State can also be reused and combined with state from other models, to compose e
 ## Vera (`tv.v`)
 
 The image below shows some of the available behaviours and models in Tölvera.
+Some of these are inspired directly from open source code posted by the Taichi community - thank you!
 
 <figure markdown="span">
   ![Species](../assets/images/vera.jpg)
