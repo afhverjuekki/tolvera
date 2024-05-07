@@ -4,6 +4,8 @@
 It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
 With built-in support for Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper) and interactive machine learning (IML) via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla), Tölvera interfaces with and rapidly maps onto existing creative computing software and hardware, striving to be both an accessible and powerful tool for exploring diverse intelligence in musical contexts.
 
+The word Tölvera is an Icelandic [kenning](https://en.wikipedia.org/wiki/Kenning) based on _tölva_ meaning computer, from _tala_ (number) and _völva_ (prophetess), and _vera_ (being), composed together as _number being_.
+
 We have employed Tölvera in various collaborative artistic works, including musical performances, compositions, and multimedia installations (see [`references.bib`](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib) for peer-reviewed publications).
 In these applications it has [sometimes](https://www.youtube.com/watch?v=W2c8vFmdANY) served as a visual component, and in [others](https://marcodonnarumma.com/works/ex-silens/) it has acted as a non-visual behaviour engine, contributing to the underlying dynamics of the artwork or performance.
 
@@ -111,7 +113,7 @@ The current canonical citation is our [NIME 2024](https://www.nime2024.org/) pap
 
 ## Contact
 
-`tolvera` is developed primarily by [Jack Armitage](https://jackarmitage.com) and [collaborators](https://iil.is/people) at the [Intelligent Instruments Lab](https://iil.is/about). 
+Tölvera is developed primarily by [Jack Armitage](https://jackarmitage.com) and [collaborators](https://iil.is/people) at the [Intelligent Instruments Lab](https://iil.is/about). 
 Get in touch to [collaborate](https://iil.is/collaborate):
 
  ◦ <a href="https://iil.is" target="_blank" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
@@ -122,7 +124,7 @@ Get in touch to [collaborate](https://iil.is/collaborate):
 <a href="https://discord.gg/fY9GYMebtJ" target="_blank" title="discord.gg">Discord</a> ◦ 
 <a href="https://github.com/intelligent-instruments-lab" target="_blank" title="github.com">GitHub</a> ◦ 
 <a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" title="www.linkedin.com">LinkedIn</a> ◦ 
-<a href="mailto:iil@lhi.is" target="_blank" title="">Email</a> ◦ 
+<a href="mailto:jack@hi.is" target="_blank" title="">Email</a> ◦ 
 
 ## Acknowledgements
 
