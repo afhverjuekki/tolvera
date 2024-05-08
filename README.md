@@ -7,7 +7,9 @@ With built-in support for Open Sound Control (OSC) via [iipyper](https://github.
 The word Tölvera is an Icelandic [kenning](https://en.wikipedia.org/wiki/Kenning) based on _tölva_ meaning computer, from _tala_ (number) and _völva_ (prophetess), and _vera_ (being), composed together as _number being_.
 
 We have employed Tölvera in various collaborative artistic works, including musical performances, compositions, and multimedia installations (see [`references.bib`](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib) for peer-reviewed publications).
-In these applications it has [sometimes](https://www.youtube.com/watch?v=W2c8vFmdANY) served as a visual component, and in [others](https://marcodonnarumma.com/works/ex-silens/) it has acted as a non-visual behaviour engine, contributing to the underlying dynamics of the artwork or performance.
+Tölvera's role in these pieces has mainly been "mappable behaviour engine", where interface inputs can control Tölvera programs, and Tölvera runtime data can control interface outputs, in practically any combination.
+In this way, and to controllable degrees, Tölvera can contribute to the underlying dynamics of a given interactive scenario.
+It can also add a [visual component](https://www.youtube.com/watch?v=W2c8vFmdANY), and equally has been used without projection in [other works](https://marcodonnarumma.com/works/ex-silens/).
 
 Tölvera makes use of [Taichi](https://www.taichi-lang.org/), a domain-specific language embedded in Python that enables parallelisation, and is experimental software subject to change.
 
