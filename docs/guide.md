@@ -4,14 +4,26 @@ hide:
   - navigation
 ---
 
-# Guide
+# Tölvera `v0.1.0` Guide
 
-This guide provides an overview of the Tölvera v0.1.0 API:
+This guide provides an overview of the Tölvera `v0.1.0` API:
 
 - For specific methods available in each area, see [Reference](/reference/tolvera/context).
 - More code examples are available [here](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
 
-The v0.2.0 API will be different, so everything here is subject to change.
+The `v0.2.0` API will be different, so everything here is subject to change.
+Please share your feedback on our [Discord](https://discord.gg/ER7tWds9vM).
+
+## Overview of Features
+
+- `tv.v`: a collection of "vera" (beings) including Move, Flock, Slime and Swarm, with more being continuously added. Vera can be combined and composed in various ways.
+- `tv.p`: extensible particle system. Particles are divided into multiple species, where each species has a unique relationship with every other species, including itself
+- `tv.s`: n-dimensional state structures that can be used by "vera", including built-in OSC and IML creation (see below).
+- `tv.px`: drawing library including various shapes and blend modes, styled similarly to p5.js etc.
+- `tv.osc`: Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper), including automated export of OSC schemas to JSON, XML, Pure Data (Pd), Max/MSP (SuperCollider TBC).
+- `tv.iml`: Interactive Machine Learning via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla).
+- `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
+- `tv.cv`: computer vision integration based on OpenCV and Mediapipe.
 
 ## Program Structure
 
@@ -59,8 +71,8 @@ class Particle:
 ```
 
 Particles are divided into species (represented as an integer), and species can have different relationships with each other, creating a matrix of species-species interactions.
-This idea was inspired by [Particle Life](https://particle-life.com/), and provides a simple means to mimic ecological complexity, even when using a single behaviour.
-Species are implemented as multi-dimensional state, which means all `tv.v` behaviour models can make use of the multispecies matrix.
+This idea was inspired by [Particle Life](https://particle-life.com/), and provides a simple means to mimic ecological complexity, even when using a single behaviour or model.
+Species are implemented as multi-dimensional state (see below), which means all `tv.v` behaviour models can make use of the multispecies matrix.
 
 <figure markdown="span">
   ![Species](../assets/images/species.jpg)
@@ -101,6 +113,7 @@ State can also be reused and combined with state from other models, to compose e
 ## Vera (`tv.v`)
 
 The image below shows some of the available behaviours and models in Tölvera.
+Some of these are inspired directly from open source code posted by the Taichi community - thank you!
 
 <figure markdown="span">
   ![Species](../assets/images/vera.jpg)
@@ -279,3 +292,94 @@ The image below demonstrates how Tölvera's state and drawing capabilities can b
 
 Tölvera integrates with OpenCV and Mediapipe to enable exploration of computer vision and tracking of hands, face and full body pose.
 See [examples](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera/cv).
+
+## Command-line arguments
+
+When Tölvera is instanced, a global `kwargs` dictionary is passed down through the various modules that allows setting of flags and parameters.
+
+### Tölvera Module (`python -m tolvera`)
+All arguments below can be applied, and in addition:
+```
+--demo  Run a tv.v.flock() demo.
+--help  Print a help message.
+```
+
+See also `sketchbook` in [experiments](/experiments).
+
+### Tölvera Context (`tv.ctx`)
+```
+--x             Width in pixels. Defaults to 1920.
+--y             Height in pixels. Defaults to 1080.
+```
+
+### Tölvera Instance (`tv`)
+```
+--name          Name of Tölvera instance. Defaults to "Tölvera".
+--speed         Global speed scalar. Defaults to 1.
+--particles     Number of particles. Defaults to 1024. Aliased to tv.pn.
+--species       Number of species. Defaults to 4. Aliased to tv.sn.
+--substep       Number of substeps of render function. Defaults to 1.
+```
+
+### Taichi (`tv.ti`)
+```
+--gpu        GPU architecture to run on. Defaults to "vulkan".
+--cpu        Run on CPU instead of GPU. Defaults to False.
+--fps        Frames per second. Defaults to 120.
+--seed       Random seed. Defaults to int(time.time()).
+--headless   False
+--name       Instance name. Defaults to "Tölvera".
+```
+
+### Pixels (`tv.px`)
+```
+--polygon_mode  Polygon drawing mode. Defaults to 'crossing'.
+--brightness    Brightness scalar. Defaults to 1.
+```
+
+### Open Sound Control (`tv.osc`)
+```
+--osc               Enable OSC. Defaults to False.
+--host              OSC Host IP. Defaults to "127.0.0.1".
+--client            OSC Client IP. Defaults to "127.0.0.1".
+--client_name       OSC client name. Defaults to self.ctx.name_clean.
+--receive_port      OSC host port. Defaults to 5001.
+--send_port         OSC client port. Defaults to 5000.
+--osc_trace         Print all OSC messages. Defaults to False.
+--osc_verbose       Verbose printing of iipyper. Defaults to False.
+--create_patch      Create a Max or Pd patch based on tv.osc.map. Defaults to False.
+--patch_type        Type of patch to create. Defaults to "Pd".
+--patch_filepath    Filepath of patch. Defaults to self.client_name.
+--export_patch      Export patch schema to XML, JSON or both. Defaults to None.
+```
+
+### Interactive Machine Learning (`tv.iml`)
+```
+--update_rate           Rate of IML updates relative to FPS. Default to 10.
+--config                anguilla instance configuration. Default to {}.
+--map_kw                anguilla.map kwargs. Default to {}.
+--infun_kw              Input method kwargs. Default to {}.
+--outfun_kw             Output method kwargs. Default to {}.
+--randomise             IML randomisation. Default to False.
+--rand_pairs            IML randomisation. Default to 32.
+--rand_input_weight     IML input randomisation weight. Default to None.
+--rand_output_weight    IML output randomisation weight. Default to None.
+--rand_method           IML randomisation method. Default to "rand".
+--rand_kw               IML randomisation kwargs. Default to {}.
+--lag                   Lag value updates. Default to False.
+--lag_coef              Lag coefficient. Default to 0.5.
+--name                  Name of IML instance. Default to None.
+```
+
+### Computer Vision (`tv.cv`)
+```
+--camera            Enable camera. Defaults to False.
+--device            OpenCV device index. Defaults to 0.
+--substeps          Number of substeps for reading camera frames. Defaults to 2.
+--colormode         Color channels. Defaults to 'rgba'.
+--ggui_fps_limit    FPS limit of Taichi GGUI. Defaults to 120fps.
+--hands             Enable hand tracking. Defaults to False.
+--pose              Enable pose tracking. Defaults to False.
+--face              Enable face tracking. Defaults to False.
+--face_mesh         Enable face mesh tracking. Defaults to False.
+```

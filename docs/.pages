@@ -1,5 +1,5 @@
 nav:
     - index.md
     - guide.md
-    - experiments.md
     - reference
+    - experiments.md

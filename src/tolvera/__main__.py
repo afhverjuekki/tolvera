@@ -35,7 +35,6 @@ def demo(**kwargs):
     def _():
         """Render function that draws flocking particles."""
         tv.px.diffuse(0.99)
-        tv.p()
         tv.v.flock(tv.p)
         tv.px.particles(tv.p, tv.s.species, "circle")
         return tv.px
