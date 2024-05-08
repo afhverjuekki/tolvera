@@ -4,7 +4,7 @@ hide:
   - navigation
 ---
 
-# Tölvera `v0.1.0` Guide
+# Tölvera `v0.1.0` API Guide
 
 This guide provides an overview of the Tölvera `v0.1.0` API:
 
