@@ -49,7 +49,7 @@ extra:
       link: https://iil.is
       name: Intelligent Instrumets Lab
     - icon: material/email-outline
-      link: mailto:iil@lhi.is
+      link: mailto:jack@hi.is
     - icon: fontawesome/brands/facebook
       link: https://facebook.com/intelligentinstrumentslab
     - icon: fontawesome/brands/instagram
@@ -59,7 +59,7 @@ extra:
     - icon: fontawesome/brands/youtube
       link: https://youtube.com/@IntelligentInstruments
     - icon: fontawesome/brands/discord
-      link: https://discord.gg/fY9GYMebtJ
+      link: https://discord.gg/ER7tWds9vM
     - icon: fontawesome/brands/github
       link: https://github.com/intelligent-instruments-lab
     - icon: fontawesome/brands/linkedin
@@ -73,6 +73,8 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - attr_list
+  - md_in_html
 
 extra_css:
   - stylesheets/extra.css
@@ -83,6 +85,7 @@ plugins:
   - include-markdown
   - autorefs
   - mkdocs-video
+  - awesome-pages
   - gen-files:
       scripts:
       - scripts/gen_ref_pages.py  

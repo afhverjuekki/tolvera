@@ -114,7 +114,7 @@ class ReactionDiffusion:
     def process(self):
         # for _ in range(self.substep[None]):
         for _ in range(self.tv.s.rd.field[0].substep):
-            self.compute(self.tv.ctx.i % 2)
+            self.compute(self.tv.ctx.i[None] % 2)
 
     def __call__(self):
         self.process()

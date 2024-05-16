@@ -331,54 +331,62 @@ class Particles:
             self.update()
 
     @ti.kernel
-    def set_active(self, a: ti.i32):
-        """Set the active particles.
+    def set_total_active(self, total: ti.i32):
+        """Set the total number of active particles.
 
         Args:
-            a (ti.i32): Amount of active particles.
+            total (ti.i32): Total active particles.
         """
         for i in range(self.field.shape[0]):
-            if i > a:
+            if i >= total:
                 self.field[i].active = 0
             else:
                 self.field[i].active = 1
 
     @ti.kernel
-    def set_species_active(self, i: ti.i32, a: ti.i32):
-        """Set the active particles of a species.
+    def set_total_active_amount(self, total: ti.i32, amount: ti.f32):
+        """Set the total number of active particles.
+
+        Args:
+            total (ti.i32): Total active particles.
+            amount (ti.f32): Amount of activity.
+        """
+        for i in range(self.field.shape[0]):
+            if i >= total:
+                self.field[i].active = 0
+            else:
+                self.field[i].active = amount
+
+    @ti.kernel
+    def set_species_total_active(self, i: ti.i32, total: ti.i32):
+        """Set the total number of active particles for a species.
 
         Args:
             i (ti.i32): Species index.
-            a (ti.i32): Amount of active particles.
+            total (ti.i32): Total active particles.
         """
         for j in range(self.field.shape[0]):
             if self.field[j].species == i:
-                if j > a:
+                if j >= total:
                     self.field[j].active = 0
                 else:
                     self.field[j].active = 1
-
-    @ti.kernel
-    def set_active_amount(self, a: ti.f32):
-        """Set particle activity amount.
-
-        Args:
-            a (ti.i32): Amount of activity.
-        """
-        for i in range(self.field.shape[0]):
-            self.field[i].active = a
     
     @ti.kernel
-    def set_species_active_amount(self, i: ti.i32, a: ti.f32):
+    def set_species_total_active_amount(self, i: ti.i32, total: ti.i32, amount: ti.f32):
         """Set particle activity amount of a species.
 
         Args:
             i (ti.i32): Species index.
-            a (ti.i32): Amount of activity.
+            total: (ti.i32): Total number of active particles.
+            amount (ti.i32): Amount of activity.
         """
         for j in range(self.field.shape[0]):
             if self.field[j].species == i:
-                self.field[j].active = a
+                if j >= total:
+                    self.field[j].active = 0
+                else:
+                    self.field[j].active = amount
 
     def set_pos(self, i, x, y):
         self.field[i].pos = [x, y]

@@ -62,8 +62,10 @@ class ParticleLife():
                     F = s.attract/d
                     fx += F*dx
                     fy += F*dy
-            particles[i].vel = (particles[i].vel + ti.Vector([fx, fy])) * self.CONSTS.V * weight
-            particles[i].pos += (particles[i].vel * p1.speed * p1.active * weight)
+            # particles[i].vel = (particles[i].vel + ti.Vector([fx, fy])) * self.CONSTS.V * weight
+            # particles[i].pos += (particles[i].vel * p1.speed * p1.active * weight)
+            particles[i].vel = (particles[i].vel + ti.Vector([fx, fy])) * self.CONSTS.V * weight * p1.speed * p1.active
+            particles[i].pos += particles[i].vel
     def __call__(self, particles, weight: ti.f32 = 1.0):
         """Call the Particle Life model.
 
