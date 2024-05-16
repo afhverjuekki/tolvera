@@ -117,8 +117,8 @@ class Flock:
                 align = align / nearby * p1.active * species.align
                 cohere = (cohere / nearby - p1.pos) * p1.active * species.cohere
                 vel = (separate + align + cohere).normalized()
-                particles[i].vel += vel * weight
-                particles[i].pos += particles[i].vel * p1.speed * p1.active * weight
+                particles[i].vel += vel * weight * p1.speed * p1.active 
+                particles[i].pos += particles[i].vel
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(
                 separate, align, cohere, nearby
             )
