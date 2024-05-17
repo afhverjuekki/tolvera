@@ -137,7 +137,7 @@ class MaxPatcher:
                     box["box"]["outlettype"] = ["", "bang"]
         return box_id, box
 
-    def object(self, text, inlets, outlets, x, y):
+    def object(self, text: str, inlets: int, outlets: int, x: float, y: float):
         box_id, box = self.create_box(
             "object", inlets, outlets, x, y, len(text) * self.w
         )
@@ -271,7 +271,9 @@ class MaxPatcher:
         self.save(self.filepath)
 
     def receive_list_func(self, f):
-        raise NotImplementedError("receive_list_func not implemented yet")
+        self.osc_send_list(self.s_x, self.s_y, f["address"], f["params"])
+        self.s_x += len(f["address"]) * 6.0 + 50.0
+        self.save(self.filepath)
 
     """
     osc send/receive no args/list (msg)
@@ -500,29 +502,24 @@ class MaxPatcher:
         """
         [comment] path, list name, params
         [r] path
-        [list prepend path]
-        [list trim]
-        [s send.to.iipyper]
+        [prepend path]
+        [s send]
         """
-        # y_off = 0
-        # self.comment(path, x, y)
-        # y_off += 15
-        # l = list(params.items())[0]
-        # self.comment(f"{l[0]}", x, y + y_off)
-        # y_off += 15
-        # self.comment(f"l {l[1][1]} {l[1][2]}", x, y + y_off)
-        # y_off += self.h
-        # receive_id = self.object(f"r {self.path_to_snakecase(path)}", x, y + y_off)
-        # y_off += self.h
-        # prepend_id = self.object(f"list prepend {path}", x, y + y_off)
-        # y_off += self.h
-        # trim_id = self.object(f"list trim", x, y + y_off)
-        # y_off += self.h
-        # send_id = self.object(f"s send.to.iipyper", x, y + y_off)
-        # self.connect(receive_id, 0, prepend_id, 0)
-        # self.connect(prepend_id, 0, trim_id, 0)
-        # self.connect(trim_id, 0, send_id, 0)
-        pass
+        y_off = 0
+        self.comment(path, x, y)
+        y_off += 15
+        l = list(params.items())[0]
+        self.comment(f"{l[0]}", x, y + y_off)
+        y_off += 15
+        self.comment(f"l {l[1][1]} {l[1][2]}", x, y + y_off)
+        y_off += self.h
+        receive_id = self.object(f"r {self.path_to_snakecase(path)}", 0, 1, x, y + y_off)
+        y_off += self.h + 3
+        prepend_id = self.object(f"prepend {path}", 1, 1, x, y + y_off)
+        y_off += self.h + 3
+        send_id = self.object(f"s send", 0, 1, x, y + y_off)
+        self.connect(receive_id, 0, prepend_id, 0)
+        self.connect(prepend_id, 0, send_id, 0)
 
     def osc_receive_list(self, x, y, path, params):
         """
@@ -579,6 +576,9 @@ class MaxPatcher:
                 case "string":
                     arg_types.append("s")
         return " ".join(arg_types)
+
+    def path_to_snakecase(self, path):
+        return path.replace("/", "_")[1:]  # +'_'+label[0:3]
 
     """
     save/load
