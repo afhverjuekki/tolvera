@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "tolvera"
 packages = [{ include = "tolvera", from = "src"}]
-version = "0.1.0-rc10"
+version = "0.1.0-rc11"
 description = "Tölvera is a library for exploring music interaction with artificial life and self-organising systems."
 authors = ["Jack Armitage <jack.armitage@me.com>"]
 readme = "README.md"
