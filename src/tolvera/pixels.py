@@ -221,6 +221,17 @@ class Pixels:
         self.px.rgba[x, y] = rgba
 
     @ti.func
+    def lines(self, points: ti.template(), rgba: vec4):
+        """Draw lines with the same colour.
+
+        Args:
+            points (ti.template): Points.
+            rgba (vec4): Colour.
+        """
+        for i in range(points.shape[0] - 1):
+            self.line(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], rgba)
+
+    @ti.func
     def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4):
         """Draw a filled circle.
 
