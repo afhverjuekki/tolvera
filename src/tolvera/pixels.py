@@ -181,44 +181,118 @@ class Pixels:
             self.px.rgba[x + i, y + j] = rgba
 
     @ti.func
-    def line(self, x0: ti.i32, y0: ti.i32, x1: ti.i32, y1: ti.i32, rgba: vec4):
-        """Draw a line using Bresenham's algorithm.
+    def plot(self, x, y, c, rgba):
+        """Set the pixel color with blending."""
+        self.px.rgba[x, y] = self.px.rgba[x, y] * (1 - c) + rgba * c
 
-        Args:
-            x0 (ti.i32): X start position.
-            y0 (ti.i32): Y start position.
-            x1 (ti.i32): X end position.
-            y1 (ti.i32): Y end position.
-            rgba (vec4): Colour.
+    @ti.func
+    def ipart(self, x):
+        return ti.math.floor(x)
 
-        TODO: thickness
-        TODO: anti-aliasing
-        TODO: should lines wrap around (as two lines)?
-        """
-        dx = ti.abs(x1 - x0)
-        dy = ti.abs(y1 - y0)
-        x, y = x0, y0
-        sx = -1 if x0 > x1 else 1
-        sy = -1 if y0 > y1 else 1
-        if dx > dy:
-            err = dx / 2.0
-            while x != x1:
-                self.px.rgba[x, y] = rgba
-                err -= dy
-                if err < 0:
-                    y += sy
-                    err += dx
-                x += sx
+    @ti.func
+    def round(self, x):
+        return self.ipart(x + 0.5)
+
+    @ti.func
+    def fpart(self, x):
+        return x - ti.math.floor(x)
+
+    @ti.func
+    def rfpart(self, x):
+        return 1 - self.fpart(x)
+
+    @ti.func
+    def line(self, x0: ti.f32, y0: ti.f32, x1: ti.f32, y1: ti.f32, rgba: vec4):
+        """Draw an anti-aliased line using Xiaolin Wu's algorithm."""
+        steep = ti.abs(y1 - y0) > ti.abs(x1 - x0)
+        if steep:
+            x0, y0 = y0, x0
+            x1, y1 = y1, x1
+
+        if x0 > x1:
+            x0, x1 = x1, x0
+            y0, y1 = y1, y0
+
+        dx = x1 - x0
+        dy = y1 - y0
+        gradient = dy / dx if dx != 0 else 1.0
+
+        xend = ti.math.round(x0)
+        yend = y0 + gradient * (xend - x0)
+        xgap = self.rfpart(x0 + 0.5)
+        xpxl1 = int(xend)
+        ypxl1 = int(self.ipart(yend))
+        if steep:
+            self.plot(ypxl1, xpxl1, self.rfpart(yend) * xgap, rgba)
+            self.plot(ypxl1 + 1, xpxl1, self.fpart(yend) * xgap, rgba)
         else:
-            err = dy / 2.0
-            while y != y1:
-                self.px.rgba[x, y] = rgba
-                err -= dx
-                if err < 0:
-                    x += sx
-                    err += dy
-                y += sy
-        self.px.rgba[x, y] = rgba
+            self.plot(xpxl1, ypxl1, self.rfpart(yend) * xgap, rgba)
+            self.plot(xpxl1, ypxl1 + 1, self.fpart(yend) * xgap, rgba)
+
+        intery = yend + gradient
+
+        xend = ti.math.round(x1)
+        yend = y1 + gradient * (xend - x1)
+        xgap = self.fpart(x1 + 0.5)
+        xpxl2 = int(xend)
+        ypxl2 = int(self.ipart(yend))
+        if steep:
+            self.plot(ypxl2, xpxl2, self.rfpart(yend) * xgap, rgba)
+            self.plot(ypxl2 + 1, xpxl2, self.fpart(yend) * xgap, rgba)
+        else:
+            self.plot(xpxl2, ypxl2, self.rfpart(yend) * xgap, rgba)
+            self.plot(xpxl2, ypxl2 + 1, self.fpart(yend) * xgap, rgba)
+
+        if steep:
+            for x in range(xpxl1 + 1, xpxl2):
+                self.plot(int(self.ipart(intery)), x, self.rfpart(intery), rgba)
+                self.plot(int(self.ipart(intery)) + 1, x, self.fpart(intery), rgba)
+                intery += gradient
+        else:
+            for x in range(xpxl1 + 1, xpxl2):
+                self.plot(x, int(self.ipart(intery)), self.rfpart(intery), rgba)
+                self.plot(x, int(self.ipart(intery)) + 1, self.fpart(intery), rgba)
+                intery += gradient
+
+    # @ti.func
+    # def line(self, x0: ti.i32, y0: ti.i32, x1: ti.i32, y1: ti.i32, rgba: vec4):
+    #     """Draw a line using Bresenham's algorithm.
+
+    #     Args:
+    #         x0 (ti.i32): X start position.
+    #         y0 (ti.i32): Y start position.
+    #         x1 (ti.i32): X end position.
+    #         y1 (ti.i32): Y end position.
+    #         rgba (vec4): Colour.
+
+    #     TODO: thickness
+    #     TODO: anti-aliasing
+    #     TODO: should lines wrap around (as two lines)?
+    #     """
+    #     dx = ti.abs(x1 - x0)
+    #     dy = ti.abs(y1 - y0)
+    #     x, y = x0, y0
+    #     sx = -1 if x0 > x1 else 1
+    #     sy = -1 if y0 > y1 else 1
+    #     if dx > dy:
+    #         err = dx / 2.0
+    #         while x != x1:
+    #             self.px.rgba[x, y] = rgba
+    #             err -= dy
+    #             if err < 0:
+    #                 y += sy
+    #                 err += dx
+    #             x += sx
+    #     else:
+    #         err = dy / 2.0
+    #         while y != y1:
+    #             self.px.rgba[x, y] = rgba
+    #             err -= dx
+    #             if err < 0:
+    #                 x += sx
+    #                 err += dy
+    #             y += sy
+    #     self.px.rgba[x, y] = rgba
 
     @ti.func
     def lines(self, points: ti.template(), rgba: vec4):

@@ -27,7 +27,7 @@ __all__ = [
 
 
 @ti.kernel
-def move(particles: ti.template()):
+def move(particles: ti.template(), weight: ti.f32):
     """Move the particles.
 
     Args:
@@ -37,7 +37,7 @@ def move(particles: ti.template()):
         if particles.field[i].active == 0:
             continue
         p1 = particles.field[i]
-        particles.field[i].pos += p1.vel * p1.speed * p1.active
+        particles.field[i].pos += p1.vel * p1.speed * p1.active * weight
 
 
 @ti.kernel

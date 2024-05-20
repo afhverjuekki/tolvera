@@ -242,7 +242,7 @@ class Particles:
             self.toroidal_wrap(i)
             self.limit_speed(i)
             self.detect_collisions(i, self.C.COLL_RAD)
-            self.update_prev(i)
+            # self.update_prev(i)
             self.active_indexes[j] = i
             j += 1
         self.active_count[None] = j
