@@ -29,6 +29,7 @@ import taichi as ti
 from typing import Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.struct import StructField
+from taichi.lang.field import ScalarField
 
 from .utils import CONSTS
 
@@ -66,8 +67,8 @@ class Pixels:
         self.tv = tolvera
         self.kwargs = kwargs
         self.polygon_mode = kwargs.get("polygon_mode", "crossing")
-        self.x = self.tv.x
-        self.y = self.tv.y
+        self.x = kwargs.get("x", self.tv.x)
+        self.y = kwargs.get("y", self.tv.y)
         self.px = Pixel.field(shape=(self.x, self.y))
         brightness = kwargs.get("brightness", 1.0)
         self.CONSTS = CONSTS(
@@ -102,6 +103,37 @@ class Pixels:
     def f_set(self, px: ti.template()):
         for x, y in ti.ndrange(self.x, self.y):
             self.px.rgba[x, y] = px.px.rgba[x, y]
+
+    @ti.func
+    def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
+        """
+        for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
+            p = px.px.rgba[i, j]
+            if p[0]+p[1]+p[2] > 0: # transparency
+                self.px.rgba[x + i, y + j] = p
+
+    @ti.kernel
+    def from_numpy(self, img: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            if img[x, y, 0]+img[x, y, 1]+img[x, y, 2] > 0.:
+                self.px.rgba[x, y] = ti.Vector([
+                    img[x, y, 0]/255.,
+                    img[x, y, 1]/255.,
+                    img[x, y, 2]/255.,
+                    img[x, y, 3]/255.])
+
+    def from_img(self, path: str):
+        img = ti.tools.imread(path)
+        img_fld = ti.field(dtype=ti.f32, shape=img.shape)
+        img_fld.from_numpy(img)
+        self.from_numpy(img_fld)
+        return img_fld
 
     def get(self):
         """Get pixels."""
@@ -179,6 +211,20 @@ class Pixels:
         # TODO: gradients, lerp with ti.math.mix(x, y, a)
         for i, j in ti.ndrange(w, h):
             self.px.rgba[x + i, y + j] = rgba
+
+    @ti.func
+    def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
+        """
+        for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
+            p = px.px.rgba[i, j]
+            if p[0]+p[1]+p[2] > 0: # transparency
+                self.px.rgba[x + i, y + j] = p
 
     @ti.func
     def plot(self, x, y, c, rgba):
@@ -740,6 +786,8 @@ class Pixels:
         elif isinstance(px, StructField):
             return px.rgba
         elif isinstance(px, MatrixField):
+            return px
+        elif isinstance(px, ScalarField):
             return px
         else:
             try:

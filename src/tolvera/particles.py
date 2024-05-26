@@ -241,7 +241,7 @@ class Particles:
             if self.field[i] == 0.0: continue
             self.toroidal_wrap(i)
             self.limit_speed(i)
-            self.detect_collisions(i, self.C.COLL_RAD)
+            # self.detect_collisions(i, self.C.COLL_RAD)
             # self.update_prev(i)
             self.active_indexes[j] = i
             j += 1
