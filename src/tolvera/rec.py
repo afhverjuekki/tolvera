@@ -1,6 +1,5 @@
 import os
 import taichi as ti
-from typing import Any
 from tqdm import tqdm
 from .pixels import Pixel
 
@@ -21,6 +20,22 @@ TODO: post-processing
 @ti.data_oriented
 class VideoRecorder:
     def __init__(self, tolvera, **kwargs) -> None:
+        """Initialise a video recorder for a Tölvera program.
+
+        Args:
+            tolvera (Tolvera): Tölvera instance to record.
+            f (int): Number of frames to record. Defaults to 16.
+            r (int): Ratio of frames to record (tv.ti.fps/r). Defaults to 4.
+            c (int): Frame counter. Defaults to 0.
+            w (int): Width of video. Defaults to tv.x.
+            h (int): Height of video. Defaults to tv.y.
+            output_dir (str): Output directory. Defaults to './output'.
+            filename (str): Output filename. Defaults to 'output'.
+            automatic_build (bool): Automatically build video. Defaults to True.
+            build_mp4 (bool): Build mp4. Defaults to True.
+            build_gif (bool): Build gif. Defaults to False.
+            clean_frames (bool): Clean frames. Defaults to True.
+        """
         self.tv = tolvera
         self.f = kwargs.get('f', 16) # number of frames to record
         self.r = kwargs.get('r', 4) # ratio of frames to record (tv.ti.fps/r)
@@ -39,20 +54,39 @@ class VideoRecorder:
         print(f"[VideoRecorder] {self.w}x{self.h} every {self.r} frames {self.f} times to {self.output_dir}/{self.filename}.")
 
     @ti.kernel
-    def fill(self, i: ti.i32):
+    def rec(self, i: ti.i32):
+        """Record the current frame to the video.
+
+        Args:
+            i (ti.i32): Frame index.
+        """
         for x, y in ti.ndrange(self.tv.x, self.tv.y):
             self.vid[x, y, i].rgba = self.tv.px.px.rgba[x, y]
     
     @ti.kernel
-    def unfill(self, i: ti.i32):
+    def dump(self, i: ti.i32):
+        """Dump the current frame to the video.
+
+        Args:
+            i (ti.i32): Frame index.
+        """
         for x, y in ti.ndrange(self.tv.x, self.tv.y):
             self.px.rgba[x, y] = self.vid[x, y, i].rgba
 
+    def write_frame(self, i: int):
+        """Write a frame to the video.
+
+        Args:
+            i (int): Frame index.
+        """
+        self.dump(i)
+        self.video_manager.write_frame(self.px.rgba)
+
     def write(self):
+        """Write all frames to the video and build if necessary."""
         print(f"[VideoRecorder] Writing {self.f} frames to {self.filename}")
         for i in tqdm(range(self.f)):
-            self.unfill(i)
-            self.video_manager.write_frame(self.px.rgba)
+            self.write_frame(i)
         if self.automatic_build:
             print(f"[VideoRecorder] Building {self.filename} with mp4={self.build_mp4} and gif={self.build_gif}")
             self.video_manager.make_video(mp4=self.build_mp4, gif=self.build_gif)
@@ -70,12 +104,14 @@ class VideoRecorder:
                 os.remove(f"{self.video_manager.frame_directory}/{fn}")
 
     def step(self):
+        """Record the current frame and increment the frame counter."""
         i = self.tv.ctx.i[None]
         if i % self.r == 0:
-            self.fill(self.c)
+            self.rec(self.c)
             self.c += 1
         if i == self.f*self.r:
             self.tv.ctx.stop()
 
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
+    def __call__(self, *args, **kwds):
+        """Record the current frame and increment the frame counter."""
         self.step()
