@@ -9,4 +9,5 @@ from .utils import *
 from .vera import Vera
 from .tolvera_ import Tolvera
 from .rec import VideoRecorder
+from .dualsense import DualSense
 # from .sf import *
