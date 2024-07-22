@@ -29,6 +29,7 @@ import taichi as ti
 from typing import Any
 from taichi.lang.matrix import MatrixField
 from taichi.lang.struct import StructField
+from taichi.lang.field import ScalarField
 
 from .utils import CONSTS
 
@@ -66,8 +67,8 @@ class Pixels:
         self.tv = tolvera
         self.kwargs = kwargs
         self.polygon_mode = kwargs.get("polygon_mode", "crossing")
-        self.x = self.tv.x
-        self.y = self.tv.y
+        self.x = kwargs.get("x", self.tv.x)
+        self.y = kwargs.get("y", self.tv.y)
         self.px = Pixel.field(shape=(self.x, self.y))
         brightness = kwargs.get("brightness", 1.0)
         self.CONSTS = CONSTS(
@@ -102,6 +103,37 @@ class Pixels:
     def f_set(self, px: ti.template()):
         for x, y in ti.ndrange(self.x, self.y):
             self.px.rgba[x, y] = px.px.rgba[x, y]
+
+    @ti.func
+    def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
+        """
+        for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
+            p = px.px.rgba[i, j]
+            if p[0]+p[1]+p[2] > 0: # transparency
+                self.px.rgba[x + i, y + j] = p
+
+    @ti.kernel
+    def from_numpy(self, img: ti.template()):
+        for x, y in ti.ndrange(self.x, self.y):
+            if img[x, y, 0]+img[x, y, 1]+img[x, y, 2] > 0.:
+                self.px.rgba[x, y] = ti.Vector([
+                    img[x, y, 0]/255.,
+                    img[x, y, 1]/255.,
+                    img[x, y, 2]/255.,
+                    img[x, y, 3]/255.])
+
+    def from_img(self, path: str):
+        img = ti.tools.imread(path)
+        img_fld = ti.field(dtype=ti.f32, shape=img.shape)
+        img_fld.from_numpy(img)
+        self.from_numpy(img_fld)
+        return img_fld
 
     def get(self):
         """Get pixels."""
@@ -180,45 +212,155 @@ class Pixels:
         for i, j in ti.ndrange(w, h):
             self.px.rgba[x + i, y + j] = rgba
 
-    @ti.func
-    def line(self, x0: ti.i32, y0: ti.i32, x1: ti.i32, y1: ti.i32, rgba: vec4):
-        """Draw a line using Bresenham's algorithm.
+    @ti.kernel
+    def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
 
         Args:
-            x0 (ti.i32): X start position.
-            y0 (ti.i32): Y start position.
-            x1 (ti.i32): X end position.
-            y1 (ti.i32): Y end position.
-            rgba (vec4): Colour.
-
-        TODO: thickness
-        TODO: anti-aliasing
-        TODO: should lines wrap around (as two lines)?
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
         """
-        dx = ti.abs(x1 - x0)
-        dy = ti.abs(y1 - y0)
-        x, y = x0, y0
-        sx = -1 if x0 > x1 else 1
-        sy = -1 if y0 > y1 else 1
-        if dx > dy:
-            err = dx / 2.0
-            while x != x1:
-                self.px.rgba[x, y] = rgba
-                err -= dy
-                if err < 0:
-                    y += sy
-                    err += dx
-                x += sx
+        self.stamp_f(x, y, px)
+
+    @ti.func
+    def stamp_f(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
+        """
+        for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
+            p = px.px.rgba[i, j]
+            if p[0]+p[1]+p[2] > 0: # transparency
+                self.px.rgba[x + i, y + j] = p
+
+    @ti.func
+    def plot(self, x, y, c, rgba):
+        """Set the pixel color with blending."""
+        self.px.rgba[x, y] = self.px.rgba[x, y] * (1 - c) + rgba * c
+
+    @ti.func
+    def ipart(self, x):
+        return ti.math.floor(x)
+
+    @ti.func
+    def round(self, x):
+        return self.ipart(x + 0.5)
+
+    @ti.func
+    def fpart(self, x):
+        return x - ti.math.floor(x)
+
+    @ti.func
+    def rfpart(self, x):
+        return 1 - self.fpart(x)
+
+    @ti.func
+    def line(self, x0: ti.f32, y0: ti.f32, x1: ti.f32, y1: ti.f32, rgba: vec4):
+        """Draw an anti-aliased line using Xiaolin Wu's algorithm."""
+        steep = ti.abs(y1 - y0) > ti.abs(x1 - x0)
+        if steep:
+            x0, y0 = y0, x0
+            x1, y1 = y1, x1
+
+        if x0 > x1:
+            x0, x1 = x1, x0
+            y0, y1 = y1, y0
+
+        dx = x1 - x0
+        dy = y1 - y0
+        gradient = dy / dx if dx != 0 else 1.0
+
+        xend = ti.math.round(x0)
+        yend = y0 + gradient * (xend - x0)
+        xgap = self.rfpart(x0 + 0.5)
+        xpxl1 = int(xend)
+        ypxl1 = int(self.ipart(yend))
+        if steep:
+            self.plot(ypxl1, xpxl1, self.rfpart(yend) * xgap, rgba)
+            self.plot(ypxl1 + 1, xpxl1, self.fpart(yend) * xgap, rgba)
         else:
-            err = dy / 2.0
-            while y != y1:
-                self.px.rgba[x, y] = rgba
-                err -= dx
-                if err < 0:
-                    x += sx
-                    err += dy
-                y += sy
-        self.px.rgba[x, y] = rgba
+            self.plot(xpxl1, ypxl1, self.rfpart(yend) * xgap, rgba)
+            self.plot(xpxl1, ypxl1 + 1, self.fpart(yend) * xgap, rgba)
+
+        intery = yend + gradient
+
+        xend = ti.math.round(x1)
+        yend = y1 + gradient * (xend - x1)
+        xgap = self.fpart(x1 + 0.5)
+        xpxl2 = int(xend)
+        ypxl2 = int(self.ipart(yend))
+        if steep:
+            self.plot(ypxl2, xpxl2, self.rfpart(yend) * xgap, rgba)
+            self.plot(ypxl2 + 1, xpxl2, self.fpart(yend) * xgap, rgba)
+        else:
+            self.plot(xpxl2, ypxl2, self.rfpart(yend) * xgap, rgba)
+            self.plot(xpxl2, ypxl2 + 1, self.fpart(yend) * xgap, rgba)
+
+        if steep:
+            for x in range(xpxl1 + 1, xpxl2):
+                self.plot(int(self.ipart(intery)), x, self.rfpart(intery), rgba)
+                self.plot(int(self.ipart(intery)) + 1, x, self.fpart(intery), rgba)
+                intery += gradient
+        else:
+            for x in range(xpxl1 + 1, xpxl2):
+                self.plot(x, int(self.ipart(intery)), self.rfpart(intery), rgba)
+                self.plot(x, int(self.ipart(intery)) + 1, self.fpart(intery), rgba)
+                intery += gradient
+
+    # @ti.func
+    # def line(self, x0: ti.i32, y0: ti.i32, x1: ti.i32, y1: ti.i32, rgba: vec4):
+    #     """Draw a line using Bresenham's algorithm.
+
+    #     Args:
+    #         x0 (ti.i32): X start position.
+    #         y0 (ti.i32): Y start position.
+    #         x1 (ti.i32): X end position.
+    #         y1 (ti.i32): Y end position.
+    #         rgba (vec4): Colour.
+
+    #     TODO: thickness
+    #     TODO: anti-aliasing
+    #     TODO: should lines wrap around (as two lines)?
+    #     """
+    #     dx = ti.abs(x1 - x0)
+    #     dy = ti.abs(y1 - y0)
+    #     x, y = x0, y0
+    #     sx = -1 if x0 > x1 else 1
+    #     sy = -1 if y0 > y1 else 1
+    #     if dx > dy:
+    #         err = dx / 2.0
+    #         while x != x1:
+    #             self.px.rgba[x, y] = rgba
+    #             err -= dy
+    #             if err < 0:
+    #                 y += sy
+    #                 err += dx
+    #             x += sx
+    #     else:
+    #         err = dy / 2.0
+    #         while y != y1:
+    #             self.px.rgba[x, y] = rgba
+    #             err -= dx
+    #             if err < 0:
+    #                 x += sx
+    #                 err += dy
+    #             y += sy
+    #     self.px.rgba[x, y] = rgba
+
+    @ti.func
+    def lines(self, points: ti.template(), rgba: vec4):
+        """Draw lines with the same colour.
+
+        Args:
+            points (ti.template): Points.
+            rgba (vec4): Colour.
+        """
+        for i in range(points.shape[0] - 1):
+            self.line(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], rgba)
 
     @ti.func
     def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4):
@@ -655,6 +797,8 @@ class Pixels:
         elif isinstance(px, StructField):
             return px.rgba
         elif isinstance(px, MatrixField):
+            return px
+        elif isinstance(px, ScalarField):
             return px
         else:
             try:

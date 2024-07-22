@@ -14,7 +14,6 @@ class CV:
         self.frame_rgb = np.zeros((self.y, self.x, 3), np.uint8)
         self.ggui_fps_limit = kwargs.get("ggui_fps_limit", 120)
         self.substeps = kwargs.get("substeps", 2)
-        self.invert = kwargs.get("invert", True)
         self.colormode = kwargs.get("colormode", "rgba")
         self.device = kwargs.get("device", 0)
         self._camera = kwargs.get("camera", False)

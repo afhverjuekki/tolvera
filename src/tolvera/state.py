@@ -269,6 +269,15 @@ class State:
         self.nddict.randomise()
         self.from_nddict()
 
+    def randomise_attr(self, attr: str):
+        """Randomise an attribute in this state.
+
+        Args:
+            attr (str): Attribute name.
+        """
+        self.nddict.randomise_attr(attr)
+        self.from_nddict()
+
     def setup_osc(self, osc: tuple|str = None):
         """Setup OSC for this state.
 

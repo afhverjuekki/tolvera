@@ -443,6 +443,29 @@ class NpNdarrayDict:
                 )
             # Add more conditions here if you have other data types
 
+    def randomise_attr(self, key: str) -> None:
+        """
+        Randomize a specific attribute in the state dictionary based on its datatype,
+        minimum, and maximum values.
+
+        Args:
+            key: The attribute key to randomize.
+        """
+        data_type = self.dict[key]["dtype"]
+        min_val = self.dict[key]["min"]
+        max_val = self.dict[key]["max"]
+        shape = self.dict[key]["shape"]
+
+        if np.issubdtype(data_type, np.integer):
+            self.data[key] = np.random.randint(
+                min_val, max_val + 1, size=shape, dtype=data_type
+            )
+        elif np.issubdtype(data_type, np.floating):
+            self.data[key] = np.random.uniform(min_val, max_val, size=shape).astype(
+                data_type
+            )
+        # Add more conditions here if you have other data types
+
     def attr_apply(self, key: str, func: Callable[[np.ndarray], np.ndarray]) -> None:
         """
         Apply a user-defined function to the array of a specified key.

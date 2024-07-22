@@ -69,6 +69,14 @@ class Flock:
         """Randomise the Flock behaviour."""
         self.tv.s.flock_s.randomise()
 
+    def randomise_attr(self, attr):
+        """Randomise a specific attribute of the Flock behaviour.
+
+        Args:
+            attr (str): The attribute to randomise.
+        """
+        self.tv.s.flock_s.randomise_attr(attr)
+
     @ti.kernel
     def step(self, particles: ti.template(), weight: ti.f32):
         """Step the Flock behaviour.
@@ -117,8 +125,8 @@ class Flock:
                 align = align / nearby * p1.active * species.align
                 cohere = (cohere / nearby - p1.pos) * p1.active * species.cohere
                 vel = (separate + align + cohere).normalized()
-                particles[i].vel += vel * weight
-                particles[i].pos += particles[i].vel * p1.speed * p1.active * weight
+                particles[i].vel += vel * weight * p1.speed * p1.active 
+                particles[i].pos += particles[i].vel
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(
                 separate, align, cohere, nearby
             )

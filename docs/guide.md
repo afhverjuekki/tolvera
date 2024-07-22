@@ -25,6 +25,11 @@ Please share your feedback on our [Discord](https://discord.gg/ER7tWds9vM).
 - `tv.ti`: Taichi-based simulation and rendering engine. Can be run "headless" (without graphics).
 - `tv.cv`: computer vision integration based on OpenCV and Mediapipe.
 
+<figure markdown="span">
+  ![Species](../assets/images/overview.png)
+  <figcaption>Overview of Tölvera inputs, modules and outputs.</figcaption>
+</figure>
+
 ## Program Structure
 
 This example demonstrates the basic usage of Tölvera when used as a standalone Python script. 

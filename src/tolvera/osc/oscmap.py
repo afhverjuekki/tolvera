@@ -180,9 +180,9 @@ class OSCMap:
         return decorator
 
     def add_send_list(self, func, kwargs):
-        self.add_send_list_to_osc_map(func, kwargs)
+        f = self.add_send_list_to_osc_map(func, kwargs)
         if self.create_patch is True:
-            self.add_send_list_to_patcher(func)
+            self.add_send_list_to_patcher(f)
 
     def add_send_list_to_osc_map(self, func, kwargs):
         f = self.map_func_to_dict(func, kwargs)
@@ -215,13 +215,14 @@ class OSCMap:
         self.dict["send"][f["name"]] = f
         if self.export is not None:
             self.export_dict()
+        return f
 
     def add_send_list_to_patcher(self, func):
-        f = self.dict["send"][func.__name__]
+        f = self.dict["send"][func["name"]]
         self.patcher.send_list_func(f)
 
     def send_list_inline(self, name: str, sender_func, length: int, send_mode="broadcast", count=1, **kwargs):
-        kwargs = {**kwargs, **{"name": name, "length": length, "send_mode": send_mode, "count": count}}
+        kwargs = {**kwargs, **{"name": name, "vector": (0.0,0.0,1.0), "length": length, "send_mode": send_mode, "count": count}}
         self.send_list(**kwargs)(sender_func)
 
     """

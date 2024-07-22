@@ -101,10 +101,10 @@ class TolveraContext:
         self.name = "Tölvera Context"
         self.name_clean = clean_name(self.name)
         print(f"[{self.name}] Initializing context...")
-        self.i = 0
         self.x = kwargs.get("x", 1920)
         self.y = kwargs.get("y", 1080)
         self.ti = Taichi(self, **kwargs)
+        self.i = ti.field(ti.i32, ())
         self.show = self.ti.show
         self.canvas = Pixels(self, **kwargs)
         self.s = StateDict(self)
@@ -149,17 +149,20 @@ class TolveraContext:
             print(f"[{self.name}] Running with no render function...")
         while self.ti.window.running:
             with _lock:
-                [t.p() for t in self.tolveras.values()]
-                if f is not None:
-                    self.canvas = f(**kwargs)
-                if self.osc is not False:
-                    self.osc.map()
-                if self.iml is not False:
-                    self.iml()
-                if self.cv is not False:
-                    self.cv()
-                self.ti.show(self.canvas)
-                self.i += 1
+                self.step(f, **kwargs)
+    
+    def step(self, f, **kwargs):
+        [t.p() for t in self.tolveras.values()]
+        if f is not None:
+            self.canvas = f(**kwargs)
+        if self.osc is not False:
+            self.osc.map()
+        if self.iml is not False:
+            self.iml()
+        if self.cv is not False:
+            self.cv()
+        self.ti.show(self.canvas)
+        self.i[None] += 1
 
     def stop(self):
         """

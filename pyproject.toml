@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "tolvera"
 packages = [{ include = "tolvera", from = "src"}]
-version = "0.1.0-rc9"
+version = "0.1.0-rc13"
 description = "Tölvera is a library for exploring music interaction with artificial life and self-organising systems."
 authors = ["Jack Armitage <jack.armitage@me.com>"]
 readme = "README.md"
@@ -19,6 +19,8 @@ anguilla-iml = "^0.1.0b4"
 sardine = "^0.0.0b3"
 mediapipe = "0.10.9"
 torch = "^2.2.2"
+tqdm = "^4.66.4"
+dualsense-controller = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
