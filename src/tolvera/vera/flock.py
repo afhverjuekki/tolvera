@@ -69,6 +69,14 @@ class Flock:
         """Randomise the Flock behaviour."""
         self.tv.s.flock_s.randomise()
 
+    def randomise_attr(self, attr):
+        """Randomise a specific attribute of the Flock behaviour.
+
+        Args:
+            attr (str): The attribute to randomise.
+        """
+        self.tv.s.flock_s.randomise_attr(attr)
+
     @ti.kernel
     def step(self, particles: ti.template(), weight: ti.f32):
         """Step the Flock behaviour.

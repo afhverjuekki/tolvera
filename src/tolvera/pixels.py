@@ -212,8 +212,19 @@ class Pixels:
         for i, j in ti.ndrange(w, h):
             self.px.rgba[x + i, y + j] = rgba
 
-    @ti.func
+    @ti.kernel
     def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
+        """Stamp pixels.
+
+        Args:
+            x (ti.i32): X position.
+            y (ti.i32): Y position.
+            px (ti.template): Pixels to stamp.
+        """
+        self.stamp_f(x, y, px)
+
+    @ti.func
+    def stamp_f(self, x: ti.i32, y: ti.i32, px: ti.template()):
         """Stamp pixels.
 
         Args:

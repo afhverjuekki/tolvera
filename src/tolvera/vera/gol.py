@@ -12,6 +12,8 @@ TODO: parse rules from string
 TODO: represent rules using tv.s
 TODO: draw with gaps in grid
 TODO: alpha?
+TODO: multispecies
+TODO: torus mode?
 """
 
 import taichi as ti
@@ -44,7 +46,7 @@ class GOL:
         self.cell_size = kwargs.get('cell_size', 8)
         self.img_size = self.n * self.cell_size
         self.w = self.h = self.img_size
-        self.tv.s.gol = {
+        self.tv.s.gol_cells = {
             'state': {
                 'alive': (ti.i32, 0, 1),
                 'count': (ti.i32, 0, 8),
@@ -56,7 +58,7 @@ class GOL:
         # https://www.conwaylife.com/wiki/Cellular_automaton#Rules
         self.B = kwargs.get('B', [3]) # [2]
         self.S = kwargs.get('S', [2, 3]) # [0]
-        # self.tv.s.gol = {
+        # self.tv.s.gol_rules = {
         #     "state": {
         #         "birth": (ti.i32, 0, 10),
         #         "survival": (ti.i32, 0, 10),
@@ -73,7 +75,7 @@ class GOL:
 
     def randomise(self):
         """Randomise the rules."""
-        self.tv.s.gol.randomise()
+        self.tv.s.gol_cells.randomise()
         # self.init()
 
     @ti.kernel
@@ -89,7 +91,7 @@ class GOL:
 
     @ti.func
     def get_alive(self, i, j):
-        alive = self.tv.s.gol.field[i,j].alive
+        alive = self.tv.s.gol_cells.field[i,j].alive
         return alive if 0 <= i < self.n and 0 <= j < self.n else 0
 
     @ti.func
@@ -120,14 +122,27 @@ class GOL:
 
     @ti.func
     def count_neighbours(self):
-        for i, j in self.tv.s.gol.field:
-            self.tv.s.gol.field[i,j].count = self.get_count(i, j)
+        for i, j in self.tv.s.gol_cells.field:
+            self.tv.s.gol_cells.field[i,j].count = self.get_count(i, j)
 
     @ti.func
     def update_alive(self):
-        for i, j in self.tv.s.gol.field:
-            cell = self.tv.s.gol.field[i,j]
-            self.tv.s.gol.field[i,j].alive = self.calc_rule(cell.alive, cell.count)
+        for i, j in self.tv.s.gol_cells.field:
+            cell = self.tv.s.gol_cells.field[i,j]
+            self.tv.s.gol_cells.field[i,j].alive = self.calc_rule(cell.alive, cell.count)
+
+    @ti.func
+    def cell_from_point(pos: ti.math.vec2):
+        """
+        if gx <= x < gx + gw and gy <= y < gy + gh:
+            i, j = int((x - gx) / gc), int((y - gy) / gc)
+        """
+        pass
+
+    @ti.func
+    def fill_area(self, x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, alive: ti.i32):
+        for i, j in ti.ndrange(w, h):
+            self.tv.s.gol_cells.field[x + i, y + j].alive = alive
 
     @ti.kernel
     def run(self):
@@ -137,8 +152,8 @@ class GOL:
     @ti.kernel
     def draw(self):
         c = ti.Vector(self.dead_c)
-        for i, j in self.tv.s.gol.field:
-            cell = self.tv.s.gol.field[i,j]
+        for i, j in self.tv.s.gol_cells.field:
+            cell = self.tv.s.gol_cells.field[i,j]
             if cell.alive == 1:
                 c = ti.Vector(self.alive_c)
             else:

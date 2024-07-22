@@ -1,5 +1,6 @@
 import os
 import taichi as ti
+from datetime import datetime
 from tqdm import tqdm
 from .pixels import Pixel
 
@@ -15,10 +16,34 @@ TODO: bundle with _tolvera? would need to manually add cleanup func
 TODO: post-processing
     optional overlay custom text, frames elapsed in corner of video
     custom/override with @ti.kernel/func
+TODO: record on/off toggle controls
+TODO: OSC API?
+TODO: compare perf with cv.VideoWriter https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
+TODO: headless/offline mode
 """
+
+DT_FMT = "%Y-%m-%d_%H%M%S"
 
 @ti.data_oriented
 class VideoRecorder:
+    """Video Recorder (WIP)
+    
+    Example:
+        from tolvera import Tolvera, run, VideoRecorder
+        def main(**kwargs):
+            tv = Tolvera(**kwargs)
+            vid = VideoRecorder(tv, **kwargs)
+            @tv.cleanup
+            def write():
+                vid.write()
+            @tv.render
+            def _():
+                vid()
+                tv.px.diffuse(0.99)
+                tv.v.flock(tv.p)
+                tv.px.particles(tv.p, tv.s.species())
+                return tv.px
+    """
     def __init__(self, tolvera, **kwargs) -> None:
         """Initialise a video recorder for a Tölvera program.
 
@@ -43,12 +68,13 @@ class VideoRecorder:
         self.w = kwargs.get('w', self.tv.x) # width
         self.h = kwargs.get('h', self.tv.y) # height
         self.output_dir = kwargs.get('', './output')
-        self.filename = kwargs.get('filename', 'output')
+        self.filename = f"{datetime.now().strftime(DT_FMT)}_{kwargs.get('filename', 'output')}"
         self.automatic_build = kwargs.get('automatic_build', True)
         self.build_mp4 = kwargs.get('build_mp4', True)
         self.build_gif = kwargs.get('build_gif', False)
         self.clean_frames = kwargs.get('clean_frames', True)
-        self.video_manager = ti.tools.VideoManager(output_dir=self.output_dir, video_filename=self.filename, width=self.w, height=self.h, framerate=24, automatic_build=False)
+        self.framerate = kwargs.get('framerate', 24)
+        self.video_manager = ti.tools.VideoManager(output_dir=self.output_dir, video_filename=self.filename, width=self.w, height=self.h, framerate=self.framerate, automatic_build=False)
         self.vid = Pixel.field(shape=(self.tv.x, self.tv.y, self.f))
         self.px = Pixel.field(shape=(self.tv.x, self.tv.y))
         print(f"[VideoRecorder] {self.w}x{self.h} every {self.r} frames {self.f} times to {self.output_dir}/{self.filename}.")
