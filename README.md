@@ -2,6 +2,8 @@
 
 > ⭐️ Tölvera has been selected for Mozilla's first Builders Accelerator! [Read the announcement](https://blog.mozilla.org/en/mozilla/14-ai-projects-to-watch-mozillas-first-builders-accelerator-cohort-kicks-off/) and join our [Discord](https://discord.gg/ER7tWds9vM)!
 
+![type:video](https://www.youtube.com/embed/BmoinLR8Otc)
+
 [Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems. 
 It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
 
