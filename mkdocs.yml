@@ -1,22 +1,22 @@
 # CUSTOMISE:
 
 site_name: Tölvera
-repo_url: https://github.com/Intelligent-Instruments-Lab/tolvera
-repo_name: iil/tolvera
+repo_url: https://github.com/afhverjuekki/tolvera
+repo_name: æ/tolvera
 
 # ONLY CUSTOMISE IF NEEDED:
 
 theme:
   name: "material"
-  logo: assets/logo/iil_logo_black.svg
+  logo: assets/logo/ae.png
   favicon: assets/favicon/favicon.ico
   palette:
 
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: yellow
-      accent: blue grey
+      primary: white
+      accent: black
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
@@ -24,8 +24,8 @@ theme:
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue grey
-      accent: yellow
+      primary: black
+      accent: white
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -41,29 +41,29 @@ theme:
     - content.code.copy
     - content.code.select
 
-copyright: ©️ Intelligent Instrumets Lab
+copyright: ©️ Afhverju Ekki
 extra:
   generator: false
   social:
     - icon: material/link
-      link: https://iil.is
-      name: Intelligent Instrumets Lab
+      link: http://æ.is
+      name: Afhverju Ekki
     - icon: material/email-outline
-      link: mailto:jack@hi.is
+      link: mailto:ja@æ.is
     - icon: fontawesome/brands/facebook
-      link: https://facebook.com/intelligentinstrumentslab
+      link: https://facebook.com/afhverjuekkiis
     - icon: fontawesome/brands/instagram
-      link: https://instagram.com/intelligentinstruments
+      link: https://instagram.com/afhverju.ekki.is
     - icon: fontawesome/brands/x-twitter
-      link: https://x.com/_iil_is
+      link: https://x.com/jdkarmitage
     - icon: fontawesome/brands/youtube
-      link: https://youtube.com/@IntelligentInstruments
+      link: https://youtube.com/jdkarmitage
     - icon: fontawesome/brands/discord
       link: https://discord.gg/ER7tWds9vM
     - icon: fontawesome/brands/github
-      link: https://github.com/intelligent-instruments-lab
+      link: https://github.com/afhverjuekki
     - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/company/intelligent-instruments-lab
+      link: https://www.linkedin.com/company/afhverjuekki
 
 markdown_extensions:
   - pymdownx.highlight:
