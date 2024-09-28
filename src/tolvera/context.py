@@ -148,6 +148,13 @@ class TolveraContext:
         else:
             print(f"[{self.name}] Running with no render function...")
         while self.ti.window.running:
+            # print(kwargs)
+            # exit()
+            # gui = kwargs.get('gui', None)
+            # if gui is not None:
+            #     gui()
+            # with self.ti.gui.sub_window("Sub Window", 0.1, 0.1, 0.2, 0.2) as w:
+            #     w.text("text")
             with _lock:
                 self.step(f, **kwargs)
     

@@ -63,6 +63,9 @@ class Taichi:
             show_window=not self.headless,
         )
         self.canvas = self.window.get_canvas()
+        self.gui = self.window.get_gui()
+        # if self.3D:
+        #   self.scene = self.window.scene() # 3D
 
     def show(self, px):
         """Show Taichi canvas and show window."""

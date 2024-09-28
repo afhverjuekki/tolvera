@@ -17,16 +17,20 @@ class CV:
         self.colormode = kwargs.get("colormode", "rgba")
         self.device = kwargs.get("device", 0)
         self._camera = kwargs.get("camera", False)
+        self._video = kwargs.get("video", False)
+        self._videofile = kwargs.get("videofile", None)
         self.cc_frame = np.zeros((self.y, self.x, 3), np.uint8)
         self.cc_frame_f32 = np.zeros((self.y, self.x, 3), np.float32)
         self.diff = np.zeros((self.y, self.x, 3), np.uint8)
         self.diff_p = 0.0
         if self._camera:
-            self.camera_init()
+            self.capture_init(self.device)
+        elif self._video:
+            self.capture_init(self._videofile)
 
-    def camera_init(self):
-        print(f"[{self.ctx.name}] Initialising camera device {self.device}...")
-        self.camera_capture = cv.VideoCapture(self.device)
+    def capture_init(self, filename):
+        print(f"[{self.ctx.name}] Initialising video capture with '{filename}'...")
+        self.camera_capture = cv.VideoCapture(filename)
         self.camera_x = self.camera_capture.get(cv.CAP_PROP_FRAME_WIDTH)
         self.camera_y = self.camera_capture.get(cv.CAP_PROP_FRAME_HEIGHT)
         self.camera_fps = self.camera_capture.get(cv.CAP_PROP_FPS)
@@ -35,13 +39,20 @@ class CV:
         ) * self.substeps
         self.i = 0
         if not self.camera_capture.isOpened():
-            print("Cannot open camera")
+            print("[tolvera.CV] Cannot open capture")
             exit()
 
-    def camera_read(self):
+    def capture_read(self):
         ret, self.cc_frame = self.camera_capture.read()
-        self.cc_frame_f32 = self.cc_frame.astype(np.float32)
-        return self.cc_frame_f32
+        if ret:
+            self.cc_frame_f32 = self.cc_frame.astype(np.float32)
+            return self.cc_frame_f32
+        elif self._video:
+            self.camera_capture.set(cv.CAP_PROP_POS_FRAMES, 0)
+            return self.cc_frame_f32
+        else:
+            print("[tolvera.CV] Cannot read frame")
+            exit()
 
     def threshold(self, img, thresh=127, max=255, threshold_type="binary"):
         if threshold_type == "binary":
@@ -147,7 +158,7 @@ class CV:
     def process(self):
         self.i += 1
         if self.i % self.camera_substeps == 0:
-            frame = self.camera_read()
+            frame = self.capture_read()
             # thresh = self.threshold(frame)
             # contours = self.find_contours(thresh)
             # polygons = self.approx_poly_dp(contours)

@@ -27,23 +27,23 @@ class GOL:
 
         Args:
             tolvera (Tolvera): A Tolvera instance.
-            n (int, optional): The number of cells. Defaults to 64.
-            speed (float, optional): The speed factor. Defaults to 1.
-            cell_size (int, optional): The size of each cell. Defaults to 8.
-            B (list, optional): The birth rules. Defaults to [3].
-            S (list, optional): The survival rules. Defaults to [2, 3].
-            alive_c (list, optional): The colour of alive cells. Defaults to [1.0, 1.0, 1.0, 1.0].
-            dead_c (list, optional): The colour of dead cells. Defaults to [0.0, 0.0, 0.0, 1.0].
-            random (float, optional): The randomisation factor. Defaults to 0.8.
+            gol_n (int, optional): The number of cells. Defaults to 64.
+            gol_speed (float, optional): The speed factor. Defaults to 1.
+            gol_cell_size (int, optional): The size of each cell. Defaults to 8.
+            gol_B (list, optional): The birth rules. Defaults to [3].
+            gol_S (list, optional): The survival rules. Defaults to [2, 3].
+            gol_alive_c (list, optional): The colour of alive cells. Defaults to [1.0, 1.0, 1.0, 1.0].
+            gol_dead_c (list, optional): The colour of dead cells. Defaults to [0.0, 0.0, 0.0, 1.0].
+            gol_random (float, optional): The randomisation factor. Defaults to 0.8.
         """
         self.tv = tolvera
         self.kwargs = kwargs
         # self.CONSTS = CONSTS({"C": (ti.f32, 300.0)})
-        self.n = kwargs.get('n', 64)
+        self.n = kwargs.get('gol_n', 64)
         self.speed = ti.field(ti.f32, shape=())
-        self.speed[None] = kwargs.get('speed', 1)
+        self.speed[None] = kwargs.get('gol_speed', 1)
         self.substep = ti.field(ti.i32, shape=())
-        self.cell_size = kwargs.get('cell_size', 8)
+        self.cell_size = kwargs.get('gol_cell_size', 8)
         self.img_size = self.n * self.cell_size
         self.w = self.h = self.img_size
         self.tv.s.gol_cells = {
@@ -56,18 +56,18 @@ class GOL:
         }
         self.px = Pixels(self.tv, x=self.img_size, y=self.img_size)
         # https://www.conwaylife.com/wiki/Cellular_automaton#Rules
-        self.B = kwargs.get('B', [3]) # [2]
-        self.S = kwargs.get('S', [2, 3]) # [0]
+        self.B = kwargs.get('gol_B', [3]) # [2]
+        self.S = kwargs.get('gol_S', [2, 3]) # [0]
         # self.tv.s.gol_rules = {
         #     "state": {
         #         "birth": (ti.i32, 0, 10),
         #         "survival": (ti.i32, 0, 10),
         #     }, "shape": 1,
         # }
-        self.alive_c = kwargs.get('alive_c', [1.0, 1.0, 1.0, 1.0])
-        self.dead_c = kwargs.get('dead_c', [0.0, 0.0, 0.0, 1.0])
+        self.alive_c = kwargs.get('gol_alive_c', [1.0, 1.0, 1.0, 1.0])
+        self.dead_c = kwargs.get('gol_dead_c', [0.0, 0.0, 0.0, 1.0])
         self.random = ti.field(ti.f32, shape=())
-        self.random[None] = kwargs.get('random', 0.8)
+        self.random[None] = kwargs.get('gol_random', 0.8)
         self.init()
 
     def init(self):
