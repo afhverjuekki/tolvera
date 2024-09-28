@@ -121,21 +121,10 @@ The current canonical citation is our [NIME 2024](https://www.nime2024.org/) pap
 
 ## Contact
 
-Tölvera is developed primarily by [Jack Armitage](https://jackarmitage.com) and [collaborators](https://iil.is/people) at the [Intelligent Instruments Lab](https://iil.is/about). 
-Get in touch to [collaborate](https://iil.is/collaborate):
-
- ◦ <a href="https://iil.is" target="_blank" title="Intelligent Instrumets Lab">iil.is</a> ◦ 
-<a href="https://facebook.com/intelligentinstrumentslab" target="_blank" title="facebook.com">Facebook</a> ◦ 
-<a href="https://instagram.com/intelligentinstruments" target="_blank" title="instagram.com">Instagram</a> ◦ 
-<a href="https://x.com/_iil_is" target="_blank" title="x.com">X (Twitter)</a> ◦ 
-<a href="https://youtube.com/@IntelligentInstruments" target="_blank" title="youtube.com">YouTube</a> ◦ 
-<a href="https://discord.gg/fY9GYMebtJ" target="_blank" title="discord.gg">Discord</a> ◦ 
-<a href="https://github.com/intelligent-instruments-lab" target="_blank" title="github.com">GitHub</a> ◦ 
-<a href="https://www.linkedin.com/company/intelligent-instruments-lab" target="_blank" title="www.linkedin.com">LinkedIn</a> ◦ 
-<a href="mailto:jack@hi.is" target="_blank" title="">Email</a> ◦ 
+Tölvera is developed by [Jack Armitage](https://jackarmitage.com).
 
 ## Acknowledgements
 
-We thank the Taichi community for their wonderful project, that makes Tölvera possible.
+We thank the Taichi community for their project that makes Tölvera possible.
 
-The [Intelligent Instruments](https://iil.is) project (INTENT) is funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant agreement No. 101001848).
+Tölvera was originally created at the [Intelligent Instruments Lab](https://iil.is).
