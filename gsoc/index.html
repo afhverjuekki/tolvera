@@ -14,7 +14,7 @@
       
       
       <link rel="icon" href="../assets/favicon/favicon.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.3">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.4">
     
     
       
@@ -22,7 +22,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.d7758b05.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.8608ea7d.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
@@ -1685,6 +1685,42 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#7-packaging-and-portable-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Packaging and Portable Deployment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-creative-coding-sketchbook" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Creative Coding Sketchbook
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-live-coding-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Live Coding Environment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-visual-debugging-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Visual Debugging Tools
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1841,6 +1877,42 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#7-packaging-and-portable-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Packaging and Portable Deployment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-creative-coding-sketchbook" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Creative Coding Sketchbook
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-live-coding-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Live Coding Environment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-visual-debugging-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Visual Debugging Tools
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1934,6 +2006,18 @@ Jack has experience supervising GSOC projects with BeagleBoard.org and Bela.io, 
 <li><a href="https://linktr.ee/bobhermit">Robin Morabito</a>, Biologist &amp; Artist. Robin has been experimenting with Tölvera for DNA visualisation.</li>
 </ul>
 <h2 id="project-ideas">Project Ideas</h2>
+<ol>
+<li>Expand Artificial Life Model Library</li>
+<li>Generative AI/LLM Interface</li>
+<li>Physics Module</li>
+<li>Scalable Particle System</li>
+<li>High Performance Computer Vision</li>
+<li>Real-time OSC Mapping Engine</li>
+<li>Packaging and Portable Deployment</li>
+<li>Creative Coding Sketchbook</li>
+<li>Live Coding Environment</li>
+<li>Visual Debugging Tools</li>
+</ol>
 <h3 id="1-expand-artificial-life-model-library">1. Expand Artificial Life Model Library</h3>
 <ul>
 <li><strong>Difficulty</strong>: Intermediate</li>
@@ -2005,12 +2089,10 @@ Jack has experience supervising GSOC projects with BeagleBoard.org and Bela.io, 
 <p><strong>Description</strong>: Redesign Tölvera's particle system (<code>tv.p</code>) to handle millions of particles efficiently. This involves implementing spatial partitioning, GPU optimization, and multispecies interaction improvements. The goal is to enable much more complex scenes while maintaining real-time performance.</p>
 <p><strong>Expected Outcomes</strong>:</p>
 <ul>
-<li>Redesigned particle system with spatial acceleration</li>
-<li>Improved species interaction system</li>
-<li>Comprehensive benchmarking suite</li>
-<li>Migration guide for existing code</li>
-<li>Example programs demonstrating scale improvements</li>
-<li>Performance comparison across platforms</li>
+<li>Redesigned particle system with improved performance</li>
+<li>Thoughtful creative coding APIs for ease of composition with other Tölvera features</li>
+<li>Benchmarking test, performance comparison across platforms</li>
+<li>Update examples to demonstrate new system</li>
 </ul>
 <p><strong>Required Skills</strong>:</p>
 <ul>
@@ -2052,8 +2134,8 @@ Jack has experience supervising GSOC projects with BeagleBoard.org and Bela.io, 
 <ul>
 <li>Redesigned OSC mapping API </li>
 <li>Improved client generators for Max/MSP, PureData, SuperCollider</li>
-<li>Built-in OSC monitoring and debugging tools</li>
-<li>Migration guide for existing code</li>
+<li>Integration with state (<code>tv.s</code>)</li>
+<li>Integration with <code>iipyper</code>'s NDArray Splat operator</li>
 <li>Example programs showing common mapping patterns</li>
 <li>Performance benchmarks for real-time audio rate control</li>
 </ul>
@@ -2063,6 +2145,90 @@ Jack has experience supervising GSOC projects with BeagleBoard.org and Bela.io, 
 <li>Knowledge of OSC protocol</li>
 <li>Familiarity with music software</li>
 <li>Real-time systems experience</li>
+</ul>
+<h3 id="7-packaging-and-portable-deployment">7.  Packaging and Portable Deployment</h3>
+<ul>
+<li><strong>Difficulty Level</strong>: Advanced</li>
+<li><strong>Project Length</strong>: 350 hours</li>
+</ul>
+<p><strong>Description</strong>: Tölvera currently runs as a Python package, but many potential applications would benefit from standalone deployment options. This project aims to create a deployment pipeline that can package Tölvera programs for multiple platforms and use cases, with a focus on maintaining real-time performance and minimal dependencies.</p>
+<p><strong>Expected Outcomes</strong>:</p>
+<ul>
+<li>Research and document different packaging approaches including:</li>
+<li>Taichi AOT compilation for GPU-accelerated components</li>
+<li>Python compilation via Nuitka for non-Taichi components</li>
+<li>Implement proof-of-concept deployments for 2-3 target platforms</li>
+<li>Create template projects and documentation for each supported target</li>
+<li>Handle feature subsetting (e.g. disable IML/OSC when not needed)</li>
+</ul>
+<p><strong>Required Skills</strong>:</p>
+<ul>
+<li>Python programming</li>
+<li>Familiarity with C/C++ and build systems (CMake)</li>
+<li>Interest in application packaging and deployment</li>
+<li>Basic knowledge of GPU programming concepts</li>
+</ul>
+<h3 id="8-creative-coding-sketchbook">8. Creative Coding Sketchbook</h3>
+<ul>
+<li><strong>Difficulty</strong>: Intermediate</li>
+<li><strong>Size</strong>: 350 hours (large)</li>
+</ul>
+<p><strong>Description</strong>: Develop Tölvera's proof-of-concept sketchbook into a creative coding environment inspired by Arduino and Processing. This includes creating a robust CLI tool, sketch manager, and improved development workflow. The project aims to make Tölvera more accessible to artists and creative coders while establishing foundations for a potential standalone creative coding platform.</p>
+<p><strong>Expected Outcomes</strong>:</p>
+<ul>
+<li>Creative sketchbook system with templates, organisation (categories, tags)</li>
+<li>Consideration of dependency management between sketches</li>
+<li>CLI tool (<code>tolvera</code>) featuring</li>
+<li>Migration of existing Tölvera examples</li>
+<li>Documentation and tests for sketchbook functionality</li>
+</ul>
+<p><strong>Required Skills</strong>:</p>
+<ul>
+<li>Python programming </li>
+<li>Experience with CLI development</li>
+<li>Understanding of creative coding workflows</li>
+<li>Interest in developer tooling</li>
+</ul>
+<h3 id="9-live-coding-environment">9. Live Coding Environment</h3>
+<ul>
+<li><strong>Difficulty</strong>: Intermediate</li>
+<li><strong>Size</strong>: 350 hours (large)</li>
+</ul>
+<p><strong>Description</strong>: Create a custom live coding environment for Tölvera that improves upon the current Sardine-based proof-of-concept. The project involves developing an asynchronous REPL specifically designed for Tölvera's needs, with special handling for redefining Taichi kernels and state management. This could include creating a VSCode extension to provide syntax highlighting, code completion, and live coding UI features.</p>
+<p><strong>Expected Outcomes</strong>:</p>
+<ul>
+<li>Custom async REPL with proper Taichi kernel handling and state persistence</li>
+<li>VSCode extension for syntax highlighting, completion and live evaluation</li>
+<li>Documentation for live coding patterns and extension usage</li>
+<li>Performance benchmarks for REPL vs script</li>
+</ul>
+<p><strong>Required Skills</strong>:</p>
+<ul>
+<li>Strong Python and async programming experience</li>
+<li>Knowledge of REPL design and VSCode extension development</li>
+<li>Experience with live coding systems and practices</li>
+<li>Interest in creative coding and developer tooling</li>
+</ul>
+<p>Here's a project idea for developing visual debugging tools for Tölvera:</p>
+<h3 id="10-visual-debugging-tools">10. Visual Debugging Tools</h3>
+<ul>
+<li><strong>Difficulty</strong>: Medium</li>
+<li><strong>Size</strong>: 350 hours (large)</li>
+</ul>
+<p><strong>Description</strong>: Create a comprehensive visual debugging toolkit for Tölvera that helps users understand and debug particle systems from multiple perspectives - from individual particle behavior to system-wide patterns. The project draws inspiration from Seymour Papert's constructionist principles and Bret Victor's "ladder of abstraction" approach to create tools that bridge concrete and abstract understanding of particle systems.</p>
+<p><strong>Expected Outcomes</strong>:</p>
+<ul>
+<li>Interactive widget library for visualizing particle properties and behaviors</li>
+<li>Multi-scale visualization tools from particle to system level views</li>
+<li>Real-time parameter exploration and modification interfaces  </li>
+<li>Integration with existing debugging workflows and IDEs</li>
+</ul>
+<p><strong>Required Skills</strong>:</p>
+<ul>
+<li>Python and visualization programming</li>
+<li>Experience with UI/UX design for developer tools</li>
+<li>Knowledge of debugging tool architecture</li>
+<li>Interest in educational technology principles</li>
 </ul>
 <h2 id="contact">Contact</h2>
 <ul>
