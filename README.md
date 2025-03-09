@@ -1,6 +1,3 @@
-Here's the complete edited `README.md` file with all the necessary updates. You can copy and paste it directly.  
-
-```markdown
 # Tölvera
 
 ⭐️ Tölvera has been selected for Mozilla's first Builders Accelerator! Read the announcement and join our Discord!
@@ -128,4 +125,3 @@ We thank the **Taichi community** for their contributions that make Tölvera pos
 Originally created at the **Intelligent Instruments Lab**.
 ```
 
-This is fully formatted, including **black** and **isort** setup, a **pre-commit hook** section, and general consistency improvements. 🚀 Let me know if you need any modifications!
