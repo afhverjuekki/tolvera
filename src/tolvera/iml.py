@@ -56,8 +56,8 @@ from typing import Any
 import numpy as np
 import torch
 from anguilla import IML as iiIML
-
 from iipyper.osc import OSC as iiOSC
+
 from .osc.oscmap import OSCMap
 from .osc.update import Updater
 from .utils import *
@@ -102,27 +102,28 @@ RAND_METHODS = [
 
 # see anguilla.app.server.main
 ANGUILLA_ROUTES = {
-    'config': '/anguilla/config',
-    'add': '/anguilla/add',
-    'add_batch': '/anguilla/add_batch',
-    'remove': '/anguilla/remove',
-    'remove_near': '/anguilla/remove_near',
-    'map': '/anguilla/map',
-    'map_batch': '/anguilla/map_batch',
-    'reset': '/anguilla/reset',
-    'load': '/anguilla/load',
-    'save': '/anguilla/save',
+    "config": "/anguilla/config",
+    "add": "/anguilla/add",
+    "add_batch": "/anguilla/add_batch",
+    "remove": "/anguilla/remove",
+    "remove_near": "/anguilla/remove_near",
+    "map": "/anguilla/map",
+    "map_batch": "/anguilla/map_batch",
+    "reset": "/anguilla/reset",
+    "load": "/anguilla/load",
+    "save": "/anguilla/save",
 }
+
 
 def rand_select(method="rand"):
     """Select randomisation method.
-    
+
     Args:
         method (str, optional): Randomisation method. Defaults to "rand".
-    
+
     Raises:
         ValueError: Invalid method.
-        
+
     Returns:
         callable: Randomisation method.
     """
@@ -198,7 +199,7 @@ class IMLDict(dotdict):
                     )
                 self[name] = kwargs
             elif type(kwargs) is dict:
-                iml_type = self.infer_type(kwargs['io'])
+                iml_type = self.infer_type(kwargs["io"])
                 return self.add(name, iml_type, **kwargs)
             elif type(kwargs) is tuple:
                 # iml_type = kwargs[0] # TODO: which index is 'iml_type'?
@@ -229,23 +230,32 @@ class IMLDict(dotdict):
         i, o = io[0], io[1]
         if type(i).__name__ == "method":
             on = type(o).__name__
-            if   on == "method": iml_type = "fun2fun"
-            elif o == list:      iml_type = "fun2vec"
-            elif o == str:       iml_type = "fun2osc"
+            if on == "method":
+                iml_type = "fun2fun"
+            elif o == list:
+                iml_type = "fun2vec"
+            elif o == str:
+                iml_type = "fun2osc"
             else:
                 raise ValueError(f"[tolvera.iml.IMLDict] Invalid types '{i}' & '{o}'.")
         elif i == list:
             on = type(o).__name__
-            if   o == list:      iml_type = "vec2vec"
-            elif on == "method": iml_type = "vec2fun"
-            elif o == str:       iml_type = "vec2osc"
+            if o == list:
+                iml_type = "vec2vec"
+            elif on == "method":
+                iml_type = "vec2fun"
+            elif o == str:
+                iml_type = "vec2osc"
             else:
                 raise ValueError(f"[tolvera.iml.IMLDict] Invalid types '{i}' & '{o}'.")
         elif i == str:
             on = type(o).__name__
-            if   o == str:       iml_type = "osc2osc"
-            elif on == "method": iml_type = "osc2fun"
-            elif o == list:      iml_type = "osc2vec"
+            if o == str:
+                iml_type = "osc2osc"
+            elif on == "method":
+                iml_type = "osc2fun"
+            elif o == list:
+                iml_type = "osc2vec"
             else:
                 raise ValueError(f"[tolvera.iml.IMLDict] Invalid types '{i}' & '{o}'.")
         return iml_type
@@ -329,7 +339,7 @@ class IMLDict(dotdict):
                 if "Vec2OSC" in cls_name:
                     self[iml].invec = self.i[iml]
                 elif "OSC" in cls_name:
-                    # Fun2OSC, OSC2Fun, OSC2OSC and OSC2Vec 
+                    # Fun2OSC, OSC2Fun, OSC2OSC and OSC2Vec
                     # are handled by tv.osc.map (OSCMap)
                     continue
                 elif "Vec2" in cls_name:
@@ -347,8 +357,8 @@ class IMLDict(dotdict):
 
 class IMLBase(iiIML):
     """
-    This class inherits from [anguilla](https://intelligent-instruments-lab.github.io/anguilla) 
-    and adds some functionality. It is not intended to be used directly, but rather 
+    This class inherits from [anguilla](https://intelligent-instruments-lab.github.io/anguilla)
+    and adds some functionality. It is not intended to be used directly, but rather
     to be inherited from.
 
     The base class is initialised with a size tuple (input, output) and a config dict
@@ -359,9 +369,10 @@ class IMLBase(iiIML):
     It also provides a `lag` method which lags the mapped data.
     Finally, it provides an `update` method which is called by the `updater` (see `.osc.update`).
     """
+
     def __init__(self, **kwargs) -> None:
         """Initialise IMLBase
-    
+
         kwargs:
             size (tuple, required): (input, output) sizes.
             io (tuple, optional): (input, output) functions.
@@ -420,14 +431,12 @@ class IMLBase(iiIML):
 
     def init_lag(self, **kwargs):
         """Initialise lag() method with kwargs
-        
+
         kwargs: see __init__ kwargs.
         """
         self.lag_coef = kwargs.get("lag_coef", 0.5)
         self.lag = Lag(coef=self.lag_coef)
-        print(
-            f"[tolvera.iml.IMLBase] Lagging mapped data with coef {self.lag_coef}."
-        )
+        print(f"[tolvera.iml.IMLBase] Lagging mapped data with coef {self.lag_coef}.")
 
     def randomise(
         self,
@@ -478,7 +487,7 @@ class IMLBase(iiIML):
             torch.Tensor: Random input vector.
         """
         return self.rand(self.size[0], **kwargs)
-    
+
     def random_output(self, **kwargs) -> torch.Tensor:
         """Random output vector.
 
@@ -499,7 +508,7 @@ class IMLBase(iiIML):
             **kwargs:
                 rand_method (str, optional): Randomisation method. Defaults to "rand".
                 rand_kw (dict, optional): Random kwargs to pass to rand_method (see utils).
-            
+
         Raises:
             ValueError: Invalid input_weight type.
             ValueError: Invalid output_weight type.
@@ -577,7 +586,9 @@ class IMLBase(iiIML):
         """
         self.data.mapped = self.lag(self.data.mapped, lag_coef)
 
-    def update(self, invec: list|torch.Tensor|np.ndarray) -> list|torch.Tensor|np.ndarray:
+    def update(
+        self, invec: list | torch.Tensor | np.ndarray
+    ) -> list | torch.Tensor | np.ndarray:
         """Update mapped data.
 
         Args:
@@ -658,14 +669,15 @@ class IMLVec2Fun(IMLBase):
             print('outvec', outvec)
 
         tv.iml.flock_p2fun = {
-            'size': (tv.s.flock_p.size, 8), 
+            'size': (tv.s.flock_p.size, 8),
             'io': (None, update),
         }
         ```
     """
+
     def __init__(self, **kwargs) -> None:
         """Initialise IMLVec2Fun
-        
+
         Args:
             kwargs:
                 io (tuple, required): (None, callable) output function.
@@ -681,7 +693,9 @@ class IMLVec2Fun(IMLBase):
         self.outfun = kwargs["io"][1]
         super().__init__(**kwargs)
 
-    def update(self, invec: list|torch.Tensor|np.ndarray) -> list|torch.Tensor|np.ndarray:
+    def update(
+        self, invec: list | torch.Tensor | np.ndarray
+    ) -> list | torch.Tensor | np.ndarray:
         """Update mapped data.
 
         Args:
@@ -703,11 +717,12 @@ class IMLVec2OSC(IMLBase):
 
         ```py
         tv.iml.flock_p2osc = {
-            'size': (tv.s.flock_p.size, 8), 
+            'size': (tv.s.flock_p.size, 8),
             'io': (None, 'tolvera_flock'),
         }
         ```
     """
+
     def __init__(self, osc_map: OSCMap, **kwargs) -> None:
         """Initialise IMLVec2OSC
 
@@ -725,12 +740,17 @@ class IMLVec2OSC(IMLBase):
             type(kwargs["io"][1]) is str
         ), f"IMLVec2OSC 'io[1]' is not str, got {type(kwargs['io'][1])}."
         self.osc_map = osc_map
-        self.out_osc_route = '/return'+ANGUILLA_ROUTES['map']
-        self.osc_map.send_list_inline(self.out_osc_route, self.update, kwargs["size"][1], count=kwargs.get("update_rate", 10))
-        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]['updater']
+        self.out_osc_route = "/return" + ANGUILLA_ROUTES["map"]
+        self.osc_map.send_list_inline(
+            self.out_osc_route,
+            self.update,
+            kwargs["size"][1],
+            count=kwargs.get("update_rate", 10),
+        )
+        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]["updater"]
         super().__init__(**kwargs)
 
-    def update(self) -> list|torch.Tensor|np.ndarray:
+    def update(self) -> list | torch.Tensor | np.ndarray:
         """Update mapped data.
 
         Returns:
@@ -755,13 +775,14 @@ class IMLFun2Vec(IMLBase):
     Example:
         ```py
         tv.iml.flock_p2vec = {
-            'size': (tv.s.flock_p.size, 8), 
+            'size': (tv.s.flock_p.size, 8),
             'io': (tv.s.flock_p.to_vec, None),
         }
         # ...
         flock_s_outvec = tv.iml.o['flock_p2flock_s']
         ```
     """
+
     def __init__(self, **kwargs) -> None:
         """Initialise IMLFun2Vec
 
@@ -781,7 +802,7 @@ class IMLFun2Vec(IMLBase):
         self.infun_params = inspect.signature(self.infun).parameters
         super().__init__(**kwargs)
 
-    def update(self) -> list|torch.Tensor|np.ndarray:
+    def update(self) -> list | torch.Tensor | np.ndarray:
         """Update mapped data.
 
         Returns:
@@ -807,11 +828,12 @@ class IMLFun2Fun(IMLBase):
             print('outvec', vector)
 
         tv.iml.test2test = {
-            'size': (4, 8), 
+            'size': (4, 8),
             'io': (infun, outfun),
         }
         ```
     """
+
     def __init__(self, **kwargs) -> None:
         """Initialise IMLFun2Fun
 
@@ -833,7 +855,7 @@ class IMLFun2Fun(IMLBase):
         self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
 
-    def update(self) -> list|torch.Tensor|np.ndarray:
+    def update(self) -> list | torch.Tensor | np.ndarray:
         """Update mapped data.
 
         Returns:
@@ -859,11 +881,12 @@ class IMLFun2OSC(IMLBase):
             return [0,0,0,0]
 
         tv.iml.test2osc = {
-            'size': (4, 8), 
+            'size': (4, 8),
             'io': (infun, 'out_vec'),
         }
         ```
     """
+
     def __init__(self, osc_map: OSCMap, **kwargs) -> None:
         """Initialise IMLFun2OSC
 
@@ -877,15 +900,20 @@ class IMLFun2OSC(IMLBase):
         assert callable(
             kwargs["io"][0]
         ), f"IMLFun2Vec 'io[0]' not callable, got {type(kwargs['io'][0])}."
-        assert (
-            isinstance(kwargs["io"][1], str)
+        assert isinstance(
+            kwargs["io"][1], str
         ), f"IMLFun2Vec 'io[1]' not str, got {type(kwargs['io'][1])}."
         self.infun = kwargs["io"][0]
         self.infun_params = inspect.signature(self.infun).parameters
         self.osc_map = osc_map
-        self.out_osc_route = '/return'+ANGUILLA_ROUTES['map']
-        self.osc_map.send_list_inline(self.out_osc_route, self.update, kwargs["size"][1], count=kwargs.get("update_rate", 10))
-        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]['updater']
+        self.out_osc_route = "/return" + ANGUILLA_ROUTES["map"]
+        self.osc_map.send_list_inline(
+            self.out_osc_route,
+            self.update,
+            kwargs["size"][1],
+            count=kwargs.get("update_rate", 10),
+        )
+        kwargs["updater"] = self.osc_map.dict["send"][self.out_osc_route]["updater"]
         super().__init__(**kwargs)
 
     def update(self) -> list[float]:
@@ -910,13 +938,14 @@ class IMLOSC2Vec(IMLBase):
 
         ```py
         tv.iml.test2vec = {
-            'size': (4, 8), 
+            'size': (4, 8),
             'io': ('in_vec', None),
         }
         # ...
         flock_s_outvec = tv.iml.o['flock_p2flock_s']
         ```
     """
+
     def __init__(self, osc_map, outvecs: dict, name: str, **kwargs) -> None:
         """Initialise IMLOSC2Vec
 
@@ -937,9 +966,14 @@ class IMLOSC2Vec(IMLBase):
         ), f"IMLOSC2Vec 'io[1]' is not None, got {type(kwargs['io'][1])}."
         self.name = kwargs.get("name", None)
         self.osc_map = osc_map
-        self.osc_in_route = ANGUILLA_ROUTES['map']
-        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
-        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
+        self.osc_in_route = ANGUILLA_ROUTES["map"]
+        self.osc_map.receive_list_inline(
+            self.osc_in_route,
+            self.update,
+            kwargs["size"][0],
+            count=kwargs.get("update_rate", 10),
+        )
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]["updater"]
         self.outvecs = outvecs
         self.name = name
         super().__init__(**kwargs)
@@ -968,11 +1002,12 @@ class IMLOSC2Fun(IMLBase):
             print('outvec', vector)
 
         tv.iml.test2fun = {
-            'size': (4, 8), 
+            'size': (4, 8),
             'io': ('in_vec', outfun),
         }
         ```
     """
+
     def __init__(self, osc_map, **kwargs) -> None:
         """Initialise IMLOSC2Fun
 
@@ -990,9 +1025,14 @@ class IMLOSC2Fun(IMLBase):
             kwargs["io"][1]
         ), f"IMLOSC2Fun 'io[1]' is not callable, got {type(kwargs['io'][1])}."
         self.osc_map = osc_map
-        self.osc_in_route = ANGUILLA_ROUTES['map']
-        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
-        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
+        self.osc_in_route = ANGUILLA_ROUTES["map"]
+        self.osc_map.receive_list_inline(
+            self.osc_in_route,
+            self.update,
+            kwargs["size"][0],
+            count=kwargs.get("update_rate", 10),
+        )
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]["updater"]
         self.outfun = kwargs["io"][1]
         self.outfun_params = inspect.signature(self.outfun).parameters
         super().__init__(**kwargs)
@@ -1019,11 +1059,12 @@ class IMLOSC2OSC(IMLBase):
 
         ```py
         tv.iml.test2fun = {
-            'size': (4, 8), 
+            'size': (4, 8),
             'io': ('in_vec', 'out_vec'),
         }
         ```
     """
+
     def __init__(self, osc_map: OSCMap, osc: iiOSC, **kwargs) -> None:
         """Initialise IMLOSC2OSC
 
@@ -1043,10 +1084,15 @@ class IMLOSC2OSC(IMLBase):
         ), f"IMLOSC2OSC 'io[1]' is not str, got {type(kwargs['io'][1])}."
         self.osc = osc
         self.osc_map = osc_map
-        self.osc_in_route = ANGUILLA_ROUTES['map']
-        self.osc_map.receive_list_inline(self.osc_in_route, self.update, kwargs["size"][0], count=kwargs.get("update_rate", 10))
-        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]['updater']
-        self.out_osc_route = '/return'+ANGUILLA_ROUTES['map']
+        self.osc_in_route = ANGUILLA_ROUTES["map"]
+        self.osc_map.receive_list_inline(
+            self.osc_in_route,
+            self.update,
+            kwargs["size"][0],
+            count=kwargs.get("update_rate", 10),
+        )
+        kwargs["updater"] = self.osc_map.dict["receive"][self.osc_in_route]["updater"]
+        self.out_osc_route = "/return" + ANGUILLA_ROUTES["map"]
         super().__init__(**kwargs)
 
     def update(self, vector: list[float]) -> list[float]:

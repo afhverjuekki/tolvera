@@ -1,7 +1,9 @@
 import os
-import taichi as ti
 from datetime import datetime
+
+import taichi as ti
 from tqdm import tqdm
+
 from .pixels import Pixel
 
 """
@@ -24,10 +26,11 @@ TODO: headless/offline mode
 
 DT_FMT = "%Y-%m-%d_%H%M%S"
 
+
 @ti.data_oriented
 class VideoRecorder:
     """Video Recorder (WIP)
-    
+
     Example:
         from tolvera import Tolvera, run, VideoRecorder
         def main(**kwargs):
@@ -44,6 +47,7 @@ class VideoRecorder:
                 tv.px.particles(tv.p, tv.s.species())
                 return tv.px
     """
+
     def __init__(self, tolvera, **kwargs) -> None:
         """Initialise a video recorder for a Tölvera program.
 
@@ -62,22 +66,33 @@ class VideoRecorder:
             clean_frames (bool): Clean frames. Defaults to True.
         """
         self.tv = tolvera
-        self.f = kwargs.get('f', 16) # number of frames to record
-        self.r = kwargs.get('r', 4) # ratio of frames to record (tv.ti.fps/r)
-        self.c = kwargs.get('c', 0) # frame counter
-        self.w = kwargs.get('w', self.tv.x) # width
-        self.h = kwargs.get('h', self.tv.y) # height
-        self.output_dir = kwargs.get('', './output')
-        self.filename = f"{datetime.now().strftime(DT_FMT)}_{kwargs.get('filename', 'output')}"
-        self.automatic_build = kwargs.get('automatic_build', True)
-        self.build_mp4 = kwargs.get('build_mp4', True)
-        self.build_gif = kwargs.get('build_gif', False)
-        self.clean_frames = kwargs.get('clean_frames', True)
-        self.framerate = kwargs.get('framerate', 24)
-        self.video_manager = ti.tools.VideoManager(output_dir=self.output_dir, video_filename=self.filename, width=self.w, height=self.h, framerate=self.framerate, automatic_build=False)
+        self.f = kwargs.get("f", 16)  # number of frames to record
+        self.r = kwargs.get("r", 4)  # ratio of frames to record (tv.ti.fps/r)
+        self.c = kwargs.get("c", 0)  # frame counter
+        self.w = kwargs.get("w", self.tv.x)  # width
+        self.h = kwargs.get("h", self.tv.y)  # height
+        self.output_dir = kwargs.get("", "./output")
+        self.filename = (
+            f"{datetime.now().strftime(DT_FMT)}_{kwargs.get('filename', 'output')}"
+        )
+        self.automatic_build = kwargs.get("automatic_build", True)
+        self.build_mp4 = kwargs.get("build_mp4", True)
+        self.build_gif = kwargs.get("build_gif", False)
+        self.clean_frames = kwargs.get("clean_frames", True)
+        self.framerate = kwargs.get("framerate", 24)
+        self.video_manager = ti.tools.VideoManager(
+            output_dir=self.output_dir,
+            video_filename=self.filename,
+            width=self.w,
+            height=self.h,
+            framerate=self.framerate,
+            automatic_build=False,
+        )
         self.vid = Pixel.field(shape=(self.tv.x, self.tv.y, self.f))
         self.px = Pixel.field(shape=(self.tv.x, self.tv.y))
-        print(f"[VideoRecorder] {self.w}x{self.h} every {self.r} frames {self.f} times to {self.output_dir}/{self.filename}.")
+        print(
+            f"[VideoRecorder] {self.w}x{self.h} every {self.r} frames {self.f} times to {self.output_dir}/{self.filename}."
+        )
 
     @ti.kernel
     def rec(self, i: ti.i32):
@@ -88,7 +103,7 @@ class VideoRecorder:
         """
         for x, y in ti.ndrange(self.tv.x, self.tv.y):
             self.vid[x, y, i].rgba = self.tv.px.px.rgba[x, y]
-    
+
     @ti.kernel
     def dump(self, i: ti.i32):
         """Dump the current frame to the video.
@@ -114,7 +129,9 @@ class VideoRecorder:
         for i in tqdm(range(self.f)):
             self.write_frame(i)
         if self.automatic_build:
-            print(f"[VideoRecorder] Building {self.filename} with mp4={self.build_mp4} and gif={self.build_gif}")
+            print(
+                f"[VideoRecorder] Building {self.filename} with mp4={self.build_mp4} and gif={self.build_gif}"
+            )
             self.video_manager.make_video(mp4=self.build_mp4, gif=self.build_gif)
         if self.clean_frames:
             print(f"[VideoRecorder] Cleaning {self.filename} frames")
@@ -122,7 +139,7 @@ class VideoRecorder:
 
     def clean(self):
         """Delete all previous image files in the saved directory.
-        
+
         Fixed version, see https://github.com/taichi-dev/taichi/issues/8533
         """
         for fn in os.listdir(self.video_manager.frame_directory):
@@ -135,7 +152,7 @@ class VideoRecorder:
         if i % self.r == 0:
             self.rec(self.c)
             self.c += 1
-        if i == self.f*self.r:
+        if i == self.f * self.r:
             self.tv.ctx.stop()
 
     def __call__(self, *args, **kwds):

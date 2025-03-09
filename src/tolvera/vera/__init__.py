@@ -2,18 +2,20 @@
 
 from . import forces
 from .flock import Flock
+from .gol import GOL
+from .particle_life import ParticleLife
 from .reaction_diffusion import ReactionDiffusion
 from .slime import Slime
-from .particle_life import ParticleLife
 from .swarmalators import Swarmalators
-from .gol import GOL
+
 
 class Vera:
     """The Vera class provides a wrapper for all available forces and behaviours,
     that can be applied to a Tolvera entities such as the Particle system."""
+
     def __init__(self, tolvera, **kwargs) -> None:
         """Initialise the Vera class.
-        
+
         Args:
             tolvera (Tolvera): A Tolvera instance.
             **kwargs: Keyword arguments passed to the Vera.

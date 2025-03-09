@@ -8,12 +8,13 @@ import taichi as ti
 
 class Taichi:
     """Taichi class for initialising Taichi and UI.
-    
+
     This class provides a show method for showing the Taichi canvas.
     It is used by the TolveraContext class to display a window."""
+
     def __init__(self, context, **kwargs) -> None:
         """Initialise Taichi
-        
+
         Args:
             context (TolveraContext): global TolveraContext instance.
             **kwargs: Keyword arguments:

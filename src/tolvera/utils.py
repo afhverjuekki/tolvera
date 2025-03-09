@@ -237,6 +237,7 @@ def validate_json_path(path: str) -> bool:
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
@@ -290,6 +291,7 @@ class Lag:
         else:
             raise TypeError(f"Unsupported Lag type: '{type(old)}'.")
 
+
 @ti.data_oriented
 class LagVec2:
     def __init__(self, coef: ti.f32 = 0.5):
@@ -304,6 +306,7 @@ class LagVec2:
 
     def __call__(self, new: ti.math.vec2):
         self.val_prev = self._update_val(new)
+
 
 def create_and_validate_slice(
     arg: Union[int, tuple[int, ...], slice], target_array: np.ndarray
@@ -443,6 +446,7 @@ def npall_are_multiples(arr, tolerance=100):
 
 def map_range(arr, in_min, in_max, out_min, out_max):
     return out_min + ((arr - in_min) * (out_max - out_min)) / (in_max - in_min)
+
 
 @ti.func
 def ti_map_range(val, in_min, in_max, out_min, out_max):

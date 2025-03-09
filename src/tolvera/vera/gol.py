@@ -17,8 +17,10 @@ TODO: torus mode?
 """
 
 import taichi as ti
+
 # from tolvera.utils import CONSTS
 from ..pixels import Pixels
+
 
 @ti.data_oriented
 class GOL:
@@ -39,35 +41,35 @@ class GOL:
         self.tv = tolvera
         self.kwargs = kwargs
         # self.CONSTS = CONSTS({"C": (ti.f32, 300.0)})
-        self.n = kwargs.get('gol_n', 64)
+        self.n = kwargs.get("gol_n", 64)
         self.speed = ti.field(ti.f32, shape=())
-        self.speed[None] = kwargs.get('gol_speed', 1)
+        self.speed[None] = kwargs.get("gol_speed", 1)
         self.substep = ti.field(ti.i32, shape=())
-        self.cell_size = kwargs.get('gol_cell_size', 8)
+        self.cell_size = kwargs.get("gol_cell_size", 8)
         self.img_size = self.n * self.cell_size
         self.w = self.h = self.img_size
         self.tv.s.gol_cells = {
-            'state': {
-                'alive': (ti.i32, 0, 1),
-                'count': (ti.i32, 0, 8),
-            }, 
-            'shape': (self.n, self.n),
-            'randomise': True
+            "state": {
+                "alive": (ti.i32, 0, 1),
+                "count": (ti.i32, 0, 8),
+            },
+            "shape": (self.n, self.n),
+            "randomise": True,
         }
         self.px = Pixels(self.tv, x=self.img_size, y=self.img_size)
         # https://www.conwaylife.com/wiki/Cellular_automaton#Rules
-        self.B = kwargs.get('gol_B', [3]) # [2]
-        self.S = kwargs.get('gol_S', [2, 3]) # [0]
+        self.B = kwargs.get("gol_B", [3])  # [2]
+        self.S = kwargs.get("gol_S", [2, 3])  # [0]
         # self.tv.s.gol_rules = {
         #     "state": {
         #         "birth": (ti.i32, 0, 10),
         #         "survival": (ti.i32, 0, 10),
         #     }, "shape": 1,
         # }
-        self.alive_c = kwargs.get('gol_alive_c', [1.0, 1.0, 1.0, 1.0])
-        self.dead_c = kwargs.get('gol_dead_c', [0.0, 0.0, 0.0, 1.0])
+        self.alive_c = kwargs.get("gol_alive_c", [1.0, 1.0, 1.0, 1.0])
+        self.dead_c = kwargs.get("gol_dead_c", [0.0, 0.0, 0.0, 1.0])
         self.random = ti.field(ti.f32, shape=())
-        self.random[None] = kwargs.get('gol_random', 0.8)
+        self.random[None] = kwargs.get("gol_random", 0.8)
         self.init()
 
     def init(self):
@@ -91,7 +93,7 @@ class GOL:
 
     @ti.func
     def get_alive(self, i, j):
-        alive = self.tv.s.gol_cells.field[i,j].alive
+        alive = self.tv.s.gol_cells.field[i, j].alive
         return alive if 0 <= i < self.n and 0 <= j < self.n else 0
 
     @ti.func
@@ -123,13 +125,15 @@ class GOL:
     @ti.func
     def count_neighbours(self):
         for i, j in self.tv.s.gol_cells.field:
-            self.tv.s.gol_cells.field[i,j].count = self.get_count(i, j)
+            self.tv.s.gol_cells.field[i, j].count = self.get_count(i, j)
 
     @ti.func
     def update_alive(self):
         for i, j in self.tv.s.gol_cells.field:
-            cell = self.tv.s.gol_cells.field[i,j]
-            self.tv.s.gol_cells.field[i,j].alive = self.calc_rule(cell.alive, cell.count)
+            cell = self.tv.s.gol_cells.field[i, j]
+            self.tv.s.gol_cells.field[i, j].alive = self.calc_rule(
+                cell.alive, cell.count
+            )
 
     @ti.func
     def cell_from_point(pos: ti.math.vec2):
@@ -153,12 +157,18 @@ class GOL:
     def draw(self):
         c = ti.Vector(self.dead_c)
         for i, j in self.tv.s.gol_cells.field:
-            cell = self.tv.s.gol_cells.field[i,j]
+            cell = self.tv.s.gol_cells.field[i, j]
             if cell.alive == 1:
                 c = ti.Vector(self.alive_c)
             else:
                 c = ti.Vector(self.dead_c)
-            self.px.rect(i * self.cell_size, j * self.cell_size, self.cell_size, self.cell_size, c)
+            self.px.rect(
+                i * self.cell_size,
+                j * self.cell_size,
+                self.cell_size,
+                self.cell_size,
+                c,
+            )
 
     def step(self):
         self.px.clear()

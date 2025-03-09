@@ -1,23 +1,28 @@
-import mediapipe as mp
-import taichi as ti
-import numpy as np
 import enum
+
+import mediapipe as mp
+import numpy as np
+import taichi as ti
 
 from ..osc.update import Updater
 
+
 class FaceKeyPoint(enum.IntEnum):
-  """The enum type of the six face detection key points."""
-  RIGHT_EYE = 0
-  LEFT_EYE = 1
-  NOSE_TIP = 2
-  MOUTH_CENTER = 3
-  RIGHT_EAR_TRAGION = 4
-  LEFT_EAR_TRAGION = 5
+    """The enum type of the six face detection key points."""
+
+    RIGHT_EYE = 0
+    LEFT_EYE = 1
+    NOSE_TIP = 2
+    MOUTH_CENTER = 3
+    RIGHT_EAR_TRAGION = 4
+    LEFT_EAR_TRAGION = 5
+
 
 @ti.dataclass
 class FaceConnection:
     a: ti.i32
     b: ti.i32
+
 
 @ti.data_oriented
 class MPFace:
@@ -25,11 +30,11 @@ class MPFace:
         self.ctx = context
         self.kwargs = kwargs
         self.n_points = 6
-        self.max_faces = kwargs.get('max_faces', 4)
+        self.max_faces = kwargs.get("max_faces", 4)
 
         self.config = {
-            'min_detection_confidence': kwargs.get('detection_con', .5),
-            'model_selection': kwargs.get('model_selection', 0),
+            "min_detection_confidence": kwargs.get("detection_con", 0.5),
+            "model_selection": kwargs.get("model_selection", 0),
         }
 
         """
@@ -44,43 +49,44 @@ class MPFace:
         """
 
         self.faces_np = {
-            'pxnorm':np.zeros((self.max_faces, self.n_points, 2), np.float32),
-            'px':np.zeros((self.max_faces, self.n_points, 2), np.float32),
+            "pxnorm": np.zeros((self.max_faces, self.n_points, 2), np.float32),
+            "px": np.zeros((self.max_faces, self.n_points, 2), np.float32),
         }
         self.ctx.s.faces = {
-            'state': {
-                'pxnorm': (ti.math.vec2, 0.0, 1.0),
-                'px': (ti.math.vec2, 0.0, 1.0),
+            "state": {
+                "pxnorm": (ti.math.vec2, 0.0, 1.0),
+                "px": (ti.math.vec2, 0.0, 1.0),
                 # 'metres': (ti.math.vec3, 0.0, 1.0), # face_world_landmarks
             },
-            'shape': (self.max_faces, self.n_points)
+            "shape": (self.max_faces, self.n_points),
         }
 
         self.mpFace = mp.solutions.face_detection
         self.face = self.mpFace.FaceDetection(**self.config)
         self.detected = ti.field(ti.i32, shape=())
 
-        self.updater = Updater(self.detect, kwargs.get('face_detect_rate', 10))
+        self.updater = Updater(self.detect, kwargs.get("face_detect_rate", 10))
 
     def detect(self, frame=None):
-        if frame is None: return
+        if frame is None:
+            return
         self.results = self.face.process(frame)
         if self.results.detections is None:
-            self.ctx.s.faces.fill(0.)
+            self.ctx.s.faces.fill(0.0)
             self.detected[None] = -1
             return
 
         if self.results.detections:
             for i, face in enumerate(self.results.detections):
                 for j, lm in enumerate(face.location_data.relative_keypoints):
-                    pxnorm = np.array([1-lm.x, 1-lm.y])
-                    px = np.array([self.ctx.x*(1-lm.x), self.ctx.y*(1-lm.y)])
-                    self.faces_np['pxnorm'][i, j] = pxnorm
-                    self.faces_np['px'][i, j] = px
+                    pxnorm = np.array([1 - lm.x, 1 - lm.y])
+                    px = np.array([self.ctx.x * (1 - lm.x), self.ctx.y * (1 - lm.y)])
+                    self.faces_np["pxnorm"][i, j] = pxnorm
+                    self.faces_np["px"][i, j] = px
         self.ctx.s.faces.set_from_nddict(self.faces_np)
-        
+
         self.detected[None] = len(self.results.detections)
-    
+
     @ti.kernel
     def draw(self):
         if self.detected[None] > 0:
@@ -97,10 +103,10 @@ class MPFace:
         cx = ti.cast(px.x, ti.i32)
         cy = ti.cast(px.y, ti.i32)
         self.px.circle(cx, cy, r, rgba)
-    
+
     def landmark_name_from_index(self, index):
         return FaceKeyPoint(index).name
-    
+
     def landmark_index_from_name(self, name):
         return FaceKeyPoint[name].value
 

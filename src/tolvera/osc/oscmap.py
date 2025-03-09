@@ -221,8 +221,25 @@ class OSCMap:
         f = self.dict["send"][func["name"]]
         self.patcher.send_list_func(f)
 
-    def send_list_inline(self, name: str, sender_func, length: int, send_mode="broadcast", count=1, **kwargs):
-        kwargs = {**kwargs, **{"name": name, "vector": (0.0,0.0,1.0), "length": length, "send_mode": send_mode, "count": count}}
+    def send_list_inline(
+        self,
+        name: str,
+        sender_func,
+        length: int,
+        send_mode="broadcast",
+        count=1,
+        **kwargs,
+    ):
+        kwargs = {
+            **kwargs,
+            **{
+                "name": name,
+                "vector": (0.0, 0.0, 1.0),
+                "length": length,
+                "send_mode": send_mode,
+                "count": count,
+            },
+        }
         self.send_list(**kwargs)(sender_func)
 
     """
@@ -327,8 +344,13 @@ class OSCMap:
         f = self.dict["receive"][func["name"]]
         self.patcher.receive_list_func(f)
 
-    def receive_list_inline(self, name: str, receiver_func, length: int, count=1, **kwargs):
-        kwargs = {**kwargs, **{"name": name, "length": length, "count": count, "vector": (0, 0, 1)}}
+    def receive_list_inline(
+        self, name: str, receiver_func, length: int, count=1, **kwargs
+    ):
+        kwargs = {
+            **kwargs,
+            **{"name": name, "length": length, "count": count, "vector": (0, 0, 1)},
+        }
         self.receive_list(**kwargs)(receiver_func)
 
     def receive_list_with_idx(

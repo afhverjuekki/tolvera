@@ -56,6 +56,7 @@ def attract(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: t
             continue
         particles.field[i].vel += attract_particle(p, pos, mass, radius)
 
+
 @ti.func
 def _attract(particles: ti.template(), pos: ti.math.vec2, mass: ti.f32, radius: ti.f32):
     """Attract the particles to a position.
@@ -98,6 +99,7 @@ def attract_species(
             continue
         particles.field[i].vel += attract_particle(p, pos, mass, radius)
 
+
 @ti.func
 def _attract_species(
     particles: ti.template(),
@@ -122,6 +124,7 @@ def _attract_species(
         if p.species != species:
             continue
         particles.field[i].vel += attract_particle(p, pos, mass, radius)
+
 
 @ti.func
 def attract_particle(
@@ -287,11 +290,16 @@ def noise(particles: ti.template(), weight: ti.f32):
         p = particles.field[i]
         if p.active == 0:
             continue
-        particles.field[i].vel += (ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * weight)
+        particles.field[i].vel += (
+            ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * weight
+        )
         particles.field[i].pos += p.vel * p.speed * p.active
 
+
 @ti.kernel
-def centripetal(particles: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32):
+def centripetal(
+    particles: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32
+):
     """Apply a centripetal force to the particles.
 
     Args:
@@ -306,8 +314,11 @@ def centripetal(particles: ti.template(), centre: ti.math.vec2, direction: ti.i3
             continue
         particles.field[i].vel += centripetal_particle(p, centre, direction, weight)
 
+
 @ti.func
-def centripetal_particle(p: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32) -> ti.math.vec2:
+def centripetal_particle(
+    p: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32
+) -> ti.math.vec2:
     """Apply a centripetal force to a particle.
 
     Args:

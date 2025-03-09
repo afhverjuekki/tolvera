@@ -10,18 +10,19 @@ class Species:
 
     Species are implemented as a State with attributes for `size`, `speed`, `mass` and
     `colour` (rgba), and with a length determined by the number of species in the
-    Tölvera instance (`tv.sn`). The attributes are normalised and scaled by species the 
+    Tölvera instance (`tv.sn`). The attributes are normalised and scaled by species the
     `species_consts` attribute. They are initialised with random values.
 
     Rather than accessing this class directly, access is typically via the State
     attributes via the Tölvera instance, via e.g. `tv.s.species.field[i].size`.
     """
+
     def __init__(self, tolvera, **kwargs) -> None:
         """Initialise Species
 
         Args:
             tolvera (Tolvera): Tolvera instance.
-            **kwargs: Keyword arguments. 
+            **kwargs: Keyword arguments.
         """
         self.tv = tolvera
         self.kwargs = kwargs

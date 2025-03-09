@@ -8,9 +8,9 @@ from ..utils import CONSTS
 @ti.data_oriented
 class Flock:
     """Flock behaviour.
-    
-    The flock operates via a species rule matrix, which is a 2D matrix of species 
-    rules, such that every species has a separate relationship with every other 
+
+    The flock operates via a species rule matrix, which is a 2D matrix of species
+    rules, such that every species has a separate relationship with every other
     species including itself. As in the Boids algorithm, the rules are:
     - `separate`: how much a particle should separate from its neighbours.
     - `align`: how much a particle should align (match velocity) with its neighbours.
@@ -19,10 +19,11 @@ class Flock:
     Taichi Boids implementation inspired by:
     https://forum.taichi-lang.cn/t/homework0-boids/563
     """
+
     def __init__(self, tolvera, **kwargs):
         """Initialise the Flock behaviour.
 
-        `flock_s` stores the species rule matrix. 
+        `flock_s` stores the species rule matrix.
         `flock_p` stores the rule values per particle, and the number of neighbours.
         `flock_dist` stores the distance between particles.
 
@@ -81,10 +82,10 @@ class Flock:
     def step(self, particles: ti.template(), weight: ti.f32):
         """Step the Flock behaviour.
 
-        Pairwise comparison is made and inactive particles are ignored. 
-        When the distance between two particles is less than the radius 
-        of the species, the particles are considered neighbours. 
-        
+        Pairwise comparison is made and inactive particles are ignored.
+        When the distance between two particles is less than the radius
+        of the species, the particles are considered neighbours.
+
         The separation, alignment and cohesion are calculated for
         each particle and the velocity is updated accordingly.
 
@@ -125,7 +126,7 @@ class Flock:
                 align = align / nearby * p1.active * species.align
                 cohere = (cohere / nearby - p1.pos) * p1.active * species.cohere
                 vel = (separate + align + cohere).normalized()
-                particles[i].vel += vel * weight * p1.speed * p1.active 
+                particles[i].vel += vel * weight * p1.speed * p1.active
                 particles[i].pos += particles[i].vel
             self.tv.s.flock_p[i] = self.tv.s.flock_p.struct(
                 separate, align, cohere, nearby

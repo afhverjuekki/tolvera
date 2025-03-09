@@ -24,7 +24,7 @@ def help():
 
 def demo(**kwargs):
     """Run a simple demo.
-    
+
     Args:
         **kwargs: Keyword arguments for Tölvera.
     """
@@ -42,7 +42,7 @@ def demo(**kwargs):
 
 def main(**kwargs):
     """Run Tölvera with kwargs.
-    
+
     Args:
         **kwargs: Keyword arguments for Tolvera (see help()).
     """

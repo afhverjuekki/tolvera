@@ -142,7 +142,7 @@ class PdPatcher:
         self.connect(packOSC_id, 0, send_id, 0)
         return send_id
 
-    def osc_receive(self, port, x, y):  
+    def osc_receive(self, port, x, y):
         receive_type = (
             f"netreceive -u {port}"
             if self.net_or_udp == "net"
@@ -167,7 +167,7 @@ class PdPatcher:
     def send_args_func(self, f):
         hints = typing.get_type_hints(f["f"])["return"].__args__
         f_p = f["params"]
-        print('send_args_func',hints, f_p.items())
+        print("send_args_func", hints, f_p.items())
         params = []
         if len(f_p) == 0:
             self.osc_receive_msg(self.r_x, self.r_y, f["address"])

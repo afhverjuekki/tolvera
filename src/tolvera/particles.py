@@ -14,9 +14,11 @@ from .species import Species
 from .state import State
 from .utils import CONSTS
 
+
 @ti.dataclass
 class Particle:
     """Particle data structure and methods."""
+
     species: ti.i32
     active: ti.f32
     pos: ti.math.vec2
@@ -71,7 +73,7 @@ class Particle:
             other (Particle): Other particle.
             x (float): Width.
             y (float): Height.
-        
+
         Returns:
             ti.math.vec2: Wrap around distance between the two particles.
         """
@@ -149,6 +151,7 @@ class Particle:
 @ti.data_oriented
 class Particles:
     """Particle system."""
+
     def __init__(self, tolvera, **kwargs):
         """Initialise the particle system.
 
@@ -171,12 +174,12 @@ class Particles:
         # }, shape=(self.n,), osc=('get'), name='particles_pos')
         self.C = CONSTS({"COLL_RAD": (ti.f32, 10.0)})
         self.tv.s.collisions_p = {
-            'state': {
-                'collision': (ti.i32, 0, 1),
-                'dpos': (ti.math.vec2, 0., 1.),
-                'dvel': (ti.math.vec2, 0., 1.),
+            "state": {
+                "collision": (ti.i32, 0, 1),
+                "dpos": (ti.math.vec2, 0.0, 1.0),
+                "dvel": (ti.math.vec2, 0.0, 1.0),
             },
-            'shape': self.n,
+            "shape": self.n,
         }
         self.tmp_pos = ti.Vector.field(2, ti.f32, shape=(self.n))
         self.tmp_vel = ti.Vector.field(2, ti.f32, shape=(self.n))
@@ -238,7 +241,8 @@ class Particles:
         """Update the particle system."""
         j = 0
         for i in range(self.n):
-            if self.field[i] == 0.0: continue
+            if self.field[i] == 0.0:
+                continue
             self.toroidal_wrap(i)
             self.limit_speed(i)
             # self.detect_collisions(i, self.C.COLL_RAD)
@@ -295,7 +299,8 @@ class Particles:
         """
         for j in range(self.n):
             p1, p2 = self.tv.p.field[i], self.tv.p.field[j]
-            if p2.active == 0: continue
+            if p2.active == 0:
+                continue
             dist = p1.pos - p2.pos
             if dist.norm() < radius:
                 pdist = p1.ppos - p2.ppos
@@ -371,7 +376,7 @@ class Particles:
                     self.field[j].active = 0
                 else:
                     self.field[j].active = 1
-    
+
     @ti.kernel
     def set_species_total_active_amount(self, i: ti.i32, total: ti.i32, amount: ti.f32):
         """Set particle activity amount of a species.
@@ -529,7 +534,7 @@ class Particles:
 
         Args:
             speed (float, optional): Speed. Defaults to None.
-        
+
         Returns:
             float: Speed.
         """

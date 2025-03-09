@@ -21,7 +21,7 @@ from .utils import *
 
 class StateDict(dotdict):
     """StateDict class for Tölvera.
-    
+
     This class is a dictionary of State instances, and is accessible via the 's'
     attribute of a Tölvera instance.
 
@@ -36,17 +36,18 @@ class StateDict(dotdict):
                 "id":  (ti.i32, 0, tv.pn - 1),
                 "pos": (ti.math.vec2, -1.0, 1.0),
                 "vel": (ti.math.vec2, -1.0, 1.0),
-            }, 
-            "shape": (tv.pn, 1), 
-            "osc": "get", 
+            },
+            "shape": (tv.pn, 1),
+            "osc": "get",
             "randomise": True
         }
 
         tv.s.mystate.field.pos[0] = 0.5
     """
+
     def __init__(self, tolvera) -> None:
         """Initialise a StateDict for Tölvera.
-        
+
         Args:
             tolvera (Tolvera): Tolvera instance to which this StateDict belongs.
         """
@@ -59,7 +60,7 @@ class StateDict(dotdict):
         Args:
             name (str): Name of the state.
             kwargs (Any): State attributes.
-        
+
         Raises:
             ValueError: If the state is already in the StateDict.
             Exception: If the state cannot be added.
@@ -143,9 +144,9 @@ class StateDict(dotdict):
 @ti.data_oriented
 class State:
     """State class for Tölvera.
-    
+
     This class takes a name, dictionary of state attributes, and a shape, and
-    creates a Taichi struct field and a corresponding dictionary of NumPy arrays 
+    creates a Taichi struct field and a corresponding dictionary of NumPy arrays
     (NpNdarrayDict) for a state.
 
     The Taichi struct field can be used in Taichi scope, and the NpNdarrayDict
@@ -178,6 +179,7 @@ class State:
         }
         ```
     """
+
     def __init__(
         self,
         tolvera,
@@ -278,15 +280,17 @@ class State:
         self.nddict.randomise_attr(attr)
         self.from_nddict()
 
-    def setup_osc(self, osc: tuple|str = None):
+    def setup_osc(self, osc: tuple | str = None):
         """Setup OSC for this state.
 
         Args:
             osc (tuple | str, optional): ("get", "set", "stream"). Defaults to None.
         """
         self.osc = osc is not None
-        if not self.osc: return
-        if isinstance(osc, str): osc = (osc,)
+        if not self.osc:
+            return
+        if isinstance(osc, str):
+            osc = (osc,)
         self.osc_set = "set" in osc if self.osc else False
         self.osc_get = "get" in osc if self.osc else False
         self.osc_stream = "stream" in osc if self.osc else False
@@ -295,7 +299,8 @@ class State:
         self.stream_name = f"{self.tv.name_clean}_stream_{self.name}"
         if self.tv.osc is not False and self.osc:
             self.osc = self.tv.osc
-            if self.osc_set: self.add_osc_setters()
+            if self.osc_set:
+                self.add_osc_setters()
             # if self.osc_get: self.add_osc_getters()
             # if self.osc_stream: self.add_osc_streams()
 
@@ -343,7 +348,7 @@ class State:
 
     def from_nddict(self):
         """Copy data from NpNdarrayDict to Taichi field.
-        
+
         Raises:
             Exception: If data cannot be copied.
         """
@@ -364,7 +369,7 @@ class State:
             self.nddict.set_data(data)
         except Exception as e:
             raise Exception(f"[tolvera.state.to_nddict] {e}") from e
-    
+
     def set_from_nddict(self, data: dict):
         """Copy data from NumPy array dict to Taichi field.
 
@@ -430,7 +435,7 @@ class State:
     def attr_size(self, attr: str) -> int:
         """Return the size of the attribute."""
         return self.nddict.data[attr].size
-    
+
     """
     misc
     """
@@ -442,7 +447,7 @@ class State:
     @ti.func
     def __getitem__(self, index: ti.i32):
         """Return the Taichi field attribute.
-        
+
         Args:
             index (ti.i32): Attribute index.
         """

@@ -48,15 +48,16 @@ from sys import exit
 
 from iipyper.state import _lock
 
-from .taichi_ import Taichi
 from .cv import CV
-from .mp import *
 from .iml import IMLDict
+from .mp import *
 from .osc.osc import OSC
 from .patches import *
 from .pixels import *
-from .utils import *
 from .state import StateDict
+from .taichi_ import Taichi
+from .utils import *
+
 
 class TolveraContext:
     """
@@ -157,7 +158,7 @@ class TolveraContext:
             #     w.text("text")
             with _lock:
                 self.step(f, **kwargs)
-    
+
     def step(self, f, **kwargs):
         [t.p() for t in self.tolveras.values()]
         if f is not None:

@@ -25,11 +25,12 @@ Example:
     ```
 """
 
-import taichi as ti
 from typing import Any
+
+import taichi as ti
+from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
 from taichi.lang.struct import StructField
-from taichi.lang.field import ScalarField
 
 from .utils import CONSTS
 
@@ -55,6 +56,7 @@ class Pixels:
 
     It tries to follow a similar API to the Processing library.
     """
+
     def __init__(self, tolvera, **kwargs):
         """Initialise Pixels
 
@@ -62,7 +64,7 @@ class Pixels:
             tolvera (Tolvera): Tölvera instance.
             **kwargs: Keyword arguments.
                 polygon_mode (str): Polygon mode. Defaults to "crossing".
-                brightness (float): Brightness. Defaults to 1.0. 
+                brightness (float): Brightness. Defaults to 1.0.
         """
         self.tv = tolvera
         self.kwargs = kwargs
@@ -85,7 +87,6 @@ class Pixels:
             "polygon": 5,
         }
 
-    
     def set(self, px: Any):
         """Set pixels.
 
@@ -115,18 +116,21 @@ class Pixels:
         """
         for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
             p = px.px.rgba[i, j]
-            if p[0]+p[1]+p[2] > 0: # transparency
+            if p[0] + p[1] + p[2] > 0:  # transparency
                 self.px.rgba[x + i, y + j] = p
 
     @ti.kernel
     def from_numpy(self, img: ti.template()):
         for x, y in ti.ndrange(self.x, self.y):
-            if img[x, y, 0]+img[x, y, 1]+img[x, y, 2] > 0.:
-                self.px.rgba[x, y] = ti.Vector([
-                    img[x, y, 0]/255.,
-                    img[x, y, 1]/255.,
-                    img[x, y, 2]/255.,
-                    img[x, y, 3]/255.])
+            if img[x, y, 0] + img[x, y, 1] + img[x, y, 2] > 0.0:
+                self.px.rgba[x, y] = ti.Vector(
+                    [
+                        img[x, y, 0] / 255.0,
+                        img[x, y, 1] / 255.0,
+                        img[x, y, 2] / 255.0,
+                        img[x, y, 3] / 255.0,
+                    ]
+                )
 
     def from_img(self, path: str):
         img = ti.tools.imread(path)
@@ -147,7 +151,7 @@ class Pixels:
     @ti.kernel
     def diffuse(self, evaporate: ti.f32):
         """Diffuse pixels.
-        
+
         Args:
             evaporate (float): Evaporation rate.
         """
@@ -234,7 +238,7 @@ class Pixels:
         """
         for i, j in ti.ndrange(px.px.shape[0], px.px.shape[1]):
             p = px.px.rgba[i, j]
-            if p[0]+p[1]+p[2] > 0: # transparency
+            if p[0] + p[1] + p[2] > 0:  # transparency
                 self.px.rgba[x + i, y + j] = p
 
     @ti.func
@@ -360,7 +364,9 @@ class Pixels:
             rgba (vec4): Colour.
         """
         for i in range(points.shape[0] - 1):
-            self.line(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], rgba)
+            self.line(
+                points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], rgba
+            )
 
     @ti.func
     def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4):
@@ -413,8 +419,8 @@ class Pixels:
     @ti.func
     def polygon(self, x: ti.template(), y: ti.template(), rgba: vec4):
         """Draw a filled polygon.
-        
-        Polygons are drawn according to the polygon mode, which can be "crossing" 
+
+        Polygons are drawn according to the polygon mode, which can be "crossing"
         (default) or "winding". First, the bounding box of the polygon is calculated.
         Then, we check if each pixel in the bounding box is inside the polygon. If it
         is, we draw it (along with each neighbour pixel).
@@ -426,7 +432,7 @@ class Pixels:
             x (ti.template): X positions.
             y (ti.template): Y positions.
             rgba (vec4): Colour.
-        
+
         TODO: fill arg
         """
         x_min, x_max = ti.cast(x.min(), ti.i32), ti.cast(x.max(), ti.i32)
@@ -475,7 +481,9 @@ class Pixels:
         return is_inside
 
     @ti.func
-    def _is_inside_crossing(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
+    def _is_inside_crossing(
+        self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32
+    ):
         """Check if point is inside polygon using crossing number algorithm.
 
         Args:
@@ -499,7 +507,9 @@ class Pixels:
         return n % 2
 
     @ti.func
-    def _is_inside_winding(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
+    def _is_inside_winding(
+        self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32
+    ):
         """Check if point is inside polygon using winding number algorithm.
 
         Args:

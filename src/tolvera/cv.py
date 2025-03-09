@@ -75,9 +75,7 @@ class CV:
 
     def find_contours(self, thresh):
         img = cv.cvtColor(thresh, cv.COLOR_BGR2GRAY)
-        contours, hierarchy = cv.findContours(
-            img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE
-        )
+        contours, hierarchy = cv.findContours(img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
         self.contours = contours
         return contours
 
@@ -124,9 +122,9 @@ class CV:
 
     def abs_diff(self, a, b):
         self.diff = cv.absdiff(a, b)
-        diff = self.diff#.astype(np.uint8)
+        diff = self.diff  # .astype(np.uint8)
         self.diff_p = (np.count_nonzero(diff) * 100) / diff.size
-        print('diff', self.diff_p)
+        print("diff", self.diff_p)
         return self.diff_p
 
     @ti.kernel

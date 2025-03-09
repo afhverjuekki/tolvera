@@ -57,11 +57,12 @@ from .pixels import *
 from .utils import *
 from .vera import Vera
 
+
 class Tolvera:
     """Tolvera main class.
 
     Attributes:
-        `name` (str): Name of Tölvera instance. 
+        `name` (str): Name of Tölvera instance.
         `ctx` (TolveraContext): Shared TolveraContext.
         `speed` (float): Global timebase speed.
         `pn` (int): Number of particles.

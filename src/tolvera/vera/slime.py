@@ -9,27 +9,28 @@ from ..utils import CONSTS
 @ti.data_oriented
 class Slime:
     """Slime behaviour based on the Physarum polycephalum slime mould.
-    
+
     The slime mould is a single-celled organism that exhibits complex behaviour
     such as foraging, migration, and decision-making. It is a popular model for
     emergent behaviour in nature-inspired computing.
-    
+
     The slime mould is simulated by a set of particles that move around the
     simulation space. The particles sense their environment and move in response
     to the sensed information. The particles leave a "pheromone trail" behind them,
-    which evaporates over time. The particles can be of different species, which 
+    which evaporates over time. The particles can be of different species, which
     have different sensing and moving parameters.
-    
+
     Taichi Physarum implementation inspired by:
     https://github.com/taichi-dev/taichi/blob/master/python/taichi/examples/simulation/physarum.py
     """
+
     def __init__(self, tolvera, **kwargs):
         """Initialise the Slime behaviour.
 
         `slime_p` stores the particle state.
         `slime_s` stores the species state.
         `trail` is a Pixels instance that stores the pheromone trail.
-        
+
         Args:
             tolvera (Tolvera): A Tolvera instance.
             evaporate (ti.f32, optional): Evaporation rate. Defaults to 0.99.
@@ -85,9 +86,9 @@ class Slime:
     def move(self, field: ti.template(), weight: ti.f32):
         """Move the particles based on the sensed environment.
 
-        Each particle senses the trail to its left, centre and right. Depending on the 
+        Each particle senses the trail to its left, centre and right. Depending on the
         strength of the sensed trail in each direction, and the species parameters,
-        a movement angle is calculated. The particle moves in this direction by a 
+        a movement angle is calculated. The particle moves in this direction by a
         distance proportional to its active state and the weight parameter.
 
         Args:
@@ -151,7 +152,9 @@ class Slime:
         return pixel
 
     @ti.func
-    def sense_rgba(self, pos: ti.math.vec2, ang: ti.f32, dist: ti.f32, rgba: ti.math.vec4) -> ti.math.vec4:
+    def sense_rgba(
+        self, pos: ti.math.vec2, ang: ti.f32, dist: ti.f32, rgba: ti.math.vec4
+    ) -> ti.math.vec4:
         """Sense the trail at a given position and angle and return a weighted RGBA value.
 
         Args:
@@ -159,7 +162,7 @@ class Slime:
             ang (ti.f32): Angle.
             dist (ti.f32): Distance.
             rgba (ti.math.vec4): RGBA value.
-        
+
         Returns:
             ti.math.vec4: Weighted RGBA value.
         """

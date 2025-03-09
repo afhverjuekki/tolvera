@@ -330,9 +330,7 @@ class MaxPatcher:
         y_off += 30
 
         # sliders
-        slider_ids, slider_float_ids, _y_off = self.sliders(
-            x, y + y_off, parameters
-        )
+        slider_ids, slider_float_ids, _y_off = self.sliders(x, y + y_off, parameters)
         y_off += _y_off + 25
         # [pak $1 $2 $3 ...]
         pack_id = self.object(
@@ -402,9 +400,7 @@ class MaxPatcher:
             y + y_off,
         )
         unpack_width = self.get_box_by_id(unpack_id)["box"]["patching_rect"][2]
-        print_id = self.object(
-            "print " + path, 1, 0, x + unpack_width + 10, y + y_off
-        )
+        print_id = self.object("print " + path, 1, 0, x + unpack_width + 10, y + y_off)
 
         # sliders
         y_off += 10
@@ -513,7 +509,9 @@ class MaxPatcher:
         y_off += 15
         self.comment(f"l {l[1][1]} {l[1][2]}", x, y + y_off)
         y_off += self.h
-        receive_id = self.object(f"r {self.path_to_snakecase(path)}", 0, 1, x, y + y_off)
+        receive_id = self.object(
+            f"r {self.path_to_snakecase(path)}", 0, 1, x, y + y_off
+        )
         y_off += self.h + 3
         prepend_id = self.object(f"prepend {path}", 1, 1, x, y + y_off)
         y_off += self.h + 3
