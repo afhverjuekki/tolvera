@@ -53,6 +53,17 @@ cd tolvera
 poetry install
 ```
 
+### Code Formatting
+
+We use `black` and `isort` for code formatting. To ensure consistent code style, we recommend setting up pre-commit hooks:
+
+```sh
+pip install pre-commit
+pre-commit install
+```
+
+This will automatically format your code using black and isort when you commit changes.
+
 ## Documentation
 
 Documentation is written using [MkDocs](https://www.mkdocs.org/).
