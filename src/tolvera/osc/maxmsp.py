@@ -191,7 +191,8 @@ class MaxPatcher:
     """
 
     def osc_send(self, ip, port, x, y, print=True, print_label=None):
-        box_id_0 = self.object("r send", 0, 1, x, y)
+        scale_id = self.object("scale 0 1 0 1", x, y)  #Adding scaling
+        box_id_0 = self.object("r send", 0, 1, x, y+25)
         box_id = self.object("udpsend " + ip + " " + str(port), 1, 0, x, y + 25)
         if print:
             text = "print" if print_label is None else "print " + print_label
@@ -296,6 +297,7 @@ class MaxPatcher:
     """
 
     def osc_send_with_controls(self, x, y, path, parameters):
+
         # TODO: add default param value and a loadbang
         """
         [comment path]
