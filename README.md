@@ -52,6 +52,25 @@ git clone https://github.com/Intelligent-Instruments-Lab/tolvera # (or clone you
 cd tolvera
 poetry install
 ```
+After installing, you can activate the virtual environment:
+
+If you're using Poetry <2.0, simply run:
+```sh
+poetry shell
+```
+If you're using Poetry ≥2.0, the `poetry shell` command may not be installed by default.
+
+To manually activate the virtual environment, run:
+
+```sh
+poetry env info --path
+```
+
+This gives you the path to the virtual environment. Then activate it with:
+
+```sh
+source <your-env-path>/bin/activate
+```
 
 ## Documentation
 
