@@ -42,6 +42,14 @@ Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be in
 pip install tolvera
 ```
 
+### Optional Dependencies
+
+To install optional dependencies, use the following command: 
+
+```sh
+pip install tolvera[opencv-python, iipyper, anguilla-iml, mediapipe, dualsense-controller]
+```
+
 ## Develop
 
 For development, we use [`poetry`](https://python-poetry.org/).

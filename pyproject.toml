@@ -13,14 +13,9 @@ documentation = "https://intelligent-instruments-lab.github.io/tolvera/"
 python = ">=3.10, <3.13"
 taichi = "^1.7.0"
 jsons = "^1.6.3"
-opencv-python = "^4.8.1.78"
-iipyper = "^0.1.0b1"
-anguilla-iml = "0.3.0"
 sardine = "^0.0.0b3"
-mediapipe = "0.10.20"
 torch = "^2.2.2"
 tqdm = "^4.66.4"
-dualsense-controller = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
@@ -35,6 +30,13 @@ mkdocs-awesome-pages-plugin = "^2.9.2"
 pytest = "^7.4.3"
 black = "^23.11.0"
 isort = "^5.12.0"
+
+[tool.poetry.extras]
+opencv-python = ["opencv-python ^4.8.1.78"]
+iipyper = ["iipyper ^0.1.0b1"]
+anguilla-iml = ["anguilla-iml 0.3.0"]
+mediapipe = ["mediapipe 0.10.20"]
+dualsense-controller = ["dualsense-controller ^0.2.0"]
 
 [build-system]
 requires = ["poetry-core"]
