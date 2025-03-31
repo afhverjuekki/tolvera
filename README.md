@@ -2,7 +2,8 @@
 
 > ⭐️ Tölvera has been selected for Mozilla's first Builders Accelerator! [Read the announcement](https://blog.mozilla.org/en/mozilla/14-ai-projects-to-watch-mozillas-first-builders-accelerator-cohort-kicks-off/) and join our [Discord](https://discord.gg/ER7tWds9vM)!
 
-![type:video](https://www.youtube.com/embed/BmoinLR8Otc)
+[![type:video](https://img.youtube.com/vi/BmoinLR8Otc/hqdefault.jpg)](https://www.youtube.com/watch?v=BmoinLR8Otc)
+
 
 [Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems. 
 It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
@@ -27,7 +28,7 @@ See also the [guide](https://afhverjuekki.github.io/tolvera/guide), [reference](
 
 [Visit the YouTube Playlist](https://www.youtube.com/embed/ahSXjnYHZLU?&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x) (if you'd like to add a video, please get in touch).
 
-![type:video](https://www.youtube.com/embed/ahSXjnYHZLU?&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x)
+[![Watch the video](https://img.youtube.com/vi/ahSXjnYHZLU/hqdefault.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x)
 
 <!-- [![](assets/images/tolvera.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB) -->
 
