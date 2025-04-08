@@ -71,6 +71,7 @@ mkdocs gh-deploy # deploy via github pages
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 - Sonification via [SignalFlow](https://signalflow.dev) does not work on Windows.
+- On Windows, 'hidapi.dll' might need to be installed from [hidapi](https://github.com/libusb/hidapi).
 - Mediapipe versions [may need to be downgraded](https://github.com/google/mediapipe/issues/5168) in order to work on macOS and Windows.
 - `OSError: Could not find any hidapi library`: this is due to the DualSense (PS5 controller) class. On macOS you can `brew install hidapi` and it should work. 
 
