@@ -288,7 +288,7 @@ def noise(particles: ti.template(), weight: ti.f32):
         if p.active == 0:
             continue
         particles.field[i].vel += (ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * weight)
-        particles.field[i].pos += p.vel * p.speed * p.active
+
 
 @ti.kernel
 def centripetal(particles: ti.template(), centre: ti.math.vec2, direction: ti.i32, weight: ti.f32):
