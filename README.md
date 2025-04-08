@@ -84,6 +84,24 @@ We welcome [Pull Requests](https://github.com/Intelligent-Instruments-Lab/tolver
 - [Tests](https://github.com/afhverjuekki/tolvera)
 - [Documentation](https://afhverjuekki.github.io/tolvera/)
 
+We format our code with `black` and `isort`.
+To ensure code formatting consistency we use `pre-commit` with `black` and `isort`.
+
+### Setting Up Pre-commit (One-time Setup)
+Before making commits, install pre-commit and enable it in your local repository:
+
+```bash
+poetry run pre-commit install # install pre-commit hook locally
+```
+Once installed, pre-commit will automatically run before each commit to format the code and sort imports.
+
+### Running Pre-commit Manually
+If you want to run the hooks manually before committing:
+
+```bash
+poetry run pre-commit run # run pre-commit before run
+```
+
 ## Community
 
 To discuss Tölvera with developers and other users:
