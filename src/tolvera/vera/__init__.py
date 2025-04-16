@@ -7,6 +7,7 @@ from .slime import Slime
 from .particle_life import ParticleLife
 from .swarmalators import Swarmalators
 from .gol import GOL
+from .hraun import Hraun
 
 class Vera:
     """The Vera class provides a wrapper for all available forces and behaviours,
@@ -26,6 +27,7 @@ class Vera:
         self.plife = ParticleLife(tolvera, **kwargs)
         self.swarm = Swarmalators(tolvera, **kwargs)
         self.gol = GOL(tolvera, **kwargs)
+        self.hraun = Hraun(tolvera, **kwargs)
 
     def add_forces_to_self(self):
         """Add all forces to the Vera instance."""
