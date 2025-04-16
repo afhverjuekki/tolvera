@@ -37,6 +37,7 @@ class ReactionDiffusion:
             kwargs.get("kill", 0.062),
             kwargs.get("substep", 18),
         )
+        self.time_step = 0
         self.init()
 
     def init(self):
@@ -114,7 +115,8 @@ class ReactionDiffusion:
     def process(self):
         # for _ in range(self.substep[None]):
         for _ in range(self.tv.s.rd.field[0].substep):
-            self.compute(self.tv.ctx.i[None] % 2)
+            self.compute(self.time_step % 2)
+            self.time_step += 1
 
     def __call__(self):
         self.process()

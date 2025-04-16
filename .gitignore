@@ -1,5 +1,9 @@
 .DS_Store
 
+# files generated when running tolvera applications
+pd
+imgui.ini
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

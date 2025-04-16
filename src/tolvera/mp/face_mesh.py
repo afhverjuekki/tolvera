@@ -1,3 +1,10 @@
+"""Face mesh detection and visualization.
+
+The MPFaceMesh class uses MediaPipe's face_mesh solution to detect and track facial
+landmarks in video frames. It provides methods for detecting face meshes, drawing
+the landmarks and connections, and updating the detected facial features in real-time.
+"""
+
 import mediapipe as mp
 import taichi as ti
 import numpy as np
@@ -15,6 +22,18 @@ class FaceMeshConnection:
 @ti.data_oriented
 class MPFaceMesh:
     def __init__(self, context, **kwargs) -> None:
+        """Initialize the face mesh detection system.
+        
+        Args:
+            context: The application context.
+            **kwargs: Keyword arguments for configuring the face mesh.
+                static_mode (bool): Whether to process static images. Defaults to False.
+                max_faces (int): Maximum number of faces to detect. Defaults to 1.
+                refine_landmarks (bool): Whether to refine landmarks. Defaults to False.
+                detection_con (float): Minimum detection confidence. Defaults to 0.5.
+                tracking_con (float): Minimum tracking confidence. Defaults to 0.5.
+                face_detect_rate (int): How often to run face detection. Defaults to 10.
+        """
         self.ctx = context
         self.kwargs = kwargs
         # self.n_conns = len(FACEMESH_TESSELATION)
@@ -52,6 +71,11 @@ class MPFaceMesh:
         self.updater = Updater(self.detect, kwargs.get('face_detect_rate', 10))
 
     def setup_connections(self):
+        """Set up the connections between facial landmarks.
+        
+        Creates fields for different parts of the face (lips, eyes, eyebrows, etc.)
+        and initializes them with the corresponding connection information.
+        """
         self.lips_conns = FaceMeshConnection.field(shape=(len(FACEMESH_LIPS)))
         self.left_eye_conns = FaceMeshConnection.field(shape=(len(FACEMESH_LEFT_EYE)))
         self.left_iris_conns = FaceMeshConnection.field(shape=(len(FACEMESH_LEFT_IRIS)))
@@ -90,6 +114,17 @@ class MPFaceMesh:
         #     self.tesselation_conns[i] = FaceMeshConnection(j[0], j[1])
 
     def detect(self, frame=None):
+        """Detect facial landmarks in a video frame.
+        
+        Processes the input frame using MediaPipe's face_mesh and updates 
+        the internal state with the detected landmarks.
+        
+        Args:
+            frame: Video frame to process. If None, no detection is performed.
+            
+        Returns:
+            None
+        """
         if frame is None: return
         self.results = self.face_mesh.process(frame)
         if not self.results.multi_face_landmarks:
@@ -109,22 +144,44 @@ class MPFaceMesh:
 
     @ti.kernel
     def draw(self):
+        """Draw the detected face landmarks and connections.
+        
+        Only draws if faces have been detected.
+        """
         if self.detected[None] > 0:
             self.draw_face_lms(5, ti.Vector([1, 1, 1, 1]))
             self.draw_face_conns(ti.Vector([1, 1, 1, 1]))
     
     @ti.func
     def draw_face_lms(self, r, rgba):
+        """Draw all landmarks for detected faces.
+        
+        Args:
+            r (int): Radius of the landmarks to draw.
+            rgba (ti.math.vec4): Color to use for drawing.
+        """
         for i, lm in ti.ndrange(self.detected[None], self.n_points):
             self.draw_lm(i, lm, r, rgba)
 
     @ti.func
     def draw_face_conns(self, rgba):
+        """Draw connections between landmarks for detected faces.
+        
+        Args:
+            rgba (ti.math.vec4): Color to use for drawing.
+        """
         for i, lm in ti.ndrange(self.detected[None], self.n_points):
             self.draw_conn(i, lm, rgba)
 
     @ti.func
     def draw_conn(self, face, conn, rgba):
+        """Draw a single connection between landmarks.
+        
+        Args:
+            face (int): Face index.
+            conn (int): Connection index.
+            rgba (ti.math.vec4): Color to use for drawing.
+        """
         c = self.contours_conns[conn]
         a = self.ctx.s.face_mesh[face, c.a].px
         b = self.ctx.s.face_mesh[face, c.b].px
@@ -134,10 +191,23 @@ class MPFaceMesh:
 
     @ti.func
     def draw_lm(self, face: ti.i32, lm: ti.i32, r: ti.i32, rgba: ti.math.vec4):
+        """Draw a single landmark.
+        
+        Args:
+            face (ti.i32): Face index.
+            lm (ti.i32): Landmark index.
+            r (ti.i32): Radius of the landmark to draw.
+            rgba (ti.math.vec4): Color to use for drawing.
+        """
         px = self.ctx.s.face_mesh[face, lm].px
         cx = ti.cast(px.x, ti.i32)
         cy = ti.cast(px.y, ti.i32)
         self.px.circle(cx, cy, r, rgba)
 
     def __call__(self, frame):
+        """Process a video frame to detect and update face landmarks.
+        
+        Args:
+            frame: Video frame to process.
+        """
         self.updater(frame)

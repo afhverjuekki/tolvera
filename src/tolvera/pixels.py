@@ -99,7 +99,7 @@ class Pixels:
         for x, y in ti.ndrange(self.x, self.y):
             self.px.rgba[x, y] = px.px.rgba[x, y]
 
-    @ti.kernel
+    @ti.func
     def f_set(self, px: ti.template()):
         for x, y in ti.ndrange(self.x, self.y):
             self.px.rgba[x, y] = px.px.rgba[x, y]
@@ -197,8 +197,8 @@ class Pixels:
             self.point(x[i], y[i], rgba)
 
     @ti.func
-    def rect(self, x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: vec4):
-        """Draw a filled rectangle.
+    def rect(self, x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: vec4, fill: ti.i32 = 1):
+        """Draw a rectangle.
 
         Args:
             x (ti.i32): X position.
@@ -206,11 +206,19 @@ class Pixels:
             w (ti.i32): Width.
             h (ti.i32): Height.
             rgba (vec4): Colour.
+            fill (ti.i32, optional): Whether to fill the rectangle. Defaults to 1 (True).
         """
-        # TODO: fill arg
         # TODO: gradients, lerp with ti.math.mix(x, y, a)
-        for i, j in ti.ndrange(w, h):
-            self.px.rgba[x + i, y + j] = rgba
+        if fill != 0:
+            for i, j in ti.ndrange(w, h):
+                self.px.rgba[x + i, y + j] = rgba
+        else:
+            for i in ti.ndrange((0, w)):
+                self.px.rgba[x + i, y] = rgba
+                self.px.rgba[x + i, y + h - 1] = rgba
+            for j in ti.ndrange((0, h)):
+                self.px.rgba[x, y + j] = rgba
+                self.px.rgba[x + w - 1, y + j] = rgba
 
     @ti.kernel
     def stamp(self, x: ti.i32, y: ti.i32, px: ti.template()):
@@ -363,27 +371,44 @@ class Pixels:
             self.line(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], rgba)
 
     @ti.func
-    def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4):
-        """Draw a filled circle.
+    def circle(self, x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4, fill: ti.i32 = 1):
+        """Draw a circle.
 
         Args:
             x (ti.i32): X position.
             y (ti.i32): Y position.
             r (ti.i32): Radius.
             rgba (vec4): Colour.
+            fill (ti.i32, optional): Whether to fill the circle. Defaults to 1 (True).
         """
-        for i in range(r + 1):
-            d = ti.sqrt(r**2 - i**2)
-            d_int = ti.cast(d, ti.i32)
-            # TODO: parallelise ?
-            for j in range(d_int):
-                self.px.rgba[x + i, y + j] = rgba
-                self.px.rgba[x + i, y - j] = rgba
-                self.px.rgba[x - i, y - j] = rgba
-                self.px.rgba[x - i, y + j] = rgba
+        if fill != 0:
+            for i in range(r + 1):
+                d = ti.sqrt(r**2 - i**2)
+                d_int = ti.cast(d, ti.i32)
+                # TODO: parallelise ?
+                for j in range(d_int):
+                    self.px.rgba[x + i, y + j] = rgba
+                    self.px.rgba[x + i, y - j] = rgba
+                    self.px.rgba[x - i, y - j] = rgba
+                    self.px.rgba[x - i, y + j] = rgba
+        else:
+            for i in range(r + 1):
+                d = ti.sqrt(r**2 - i**2)
+                d_int = ti.cast(d, ti.i32)
+
+                self.px.rgba[x + i, y + d_int] = rgba
+                self.px.rgba[x + i, y - d_int] = rgba
+                self.px.rgba[x - i, y - d_int] = rgba
+                self.px.rgba[x - i, y + d_int] = rgba
+
+                self.px.rgba[x + d_int, y + i] = rgba
+                self.px.rgba[x + d_int, y - i] = rgba
+                self.px.rgba[x - d_int, y - i] = rgba
+                self.px.rgba[x - d_int, y + i] = rgba
+
 
     @ti.func
-    def circles(self, x: ti.template(), y: ti.template(), r: ti.template(), rgba: vec4):
+    def circles(self, x: ti.template(), y: ti.template(), r: ti.template(), rgba: vec4, fill: ti.i32 = 1):
         """Draw circles with the same colour.
 
         Args:
@@ -391,28 +416,29 @@ class Pixels:
             y (ti.template): Y positions.
             r (ti.template): Radii.
             rgba (vec4): Colour.
+            fill (ti.i32, optional): Whether to fill the circles. Defaults to 1 (True).
         """
         for i in ti.static(range(len(x))):
-            self.circle(x[i], y[i], r[i], rgba)
+            self.circle(x[i], y[i], r[i], rgba, fill)
 
     @ti.func
-    def triangle(self, a, b, c, rgba: vec4):
-        """Draw a filled triangle.
+    def triangle(self, a: vec2, b: vec2, c: vec2, rgba: vec4, fill: ti.i32 = 1):
+        """Draw a triangle.
 
         Args:
             a (vec2): Point A.
             b (vec2): Point B.
             c (vec2): Point C.
             rgba (vec4): Colour.
+            fill (ti.i32, optional): Whether to fill the triangle. Defaults to 1 (True).
         """
-        # TODO: fill arg
         x = ti.Vector([a[0], b[0], c[0]])
         y = ti.Vector([a[1], b[1], c[1]])
-        self.polygon(x, y, rgba)
+        self.polygon(x, y, rgba, fill)
 
     @ti.func
-    def polygon(self, x: ti.template(), y: ti.template(), rgba: vec4):
-        """Draw a filled polygon.
+    def polygon(self, x: ti.template(), y: ti.template(), rgba: vec4, fill: ti.i32 = 1):
+        """Draw a polygon.
         
         Polygons are drawn according to the polygon mode, which can be "crossing" 
         (default) or "winding". First, the bounding box of the polygon is calculated.
@@ -426,33 +452,38 @@ class Pixels:
             x (ti.template): X positions.
             y (ti.template): Y positions.
             rgba (vec4): Colour.
-        
-        TODO: fill arg
+            fill (ti.i32, optional): Whether to fill the polygon. Defaults to 1 (True).
         """
         x_min, x_max = ti.cast(x.min(), ti.i32), ti.cast(x.max(), ti.i32)
         y_min, y_max = ti.cast(y.min(), ti.i32), ti.cast(y.max(), ti.i32)
         l = len(x)
-        for i, j in ti.ndrange(x_max - x_min, y_max - y_min):
-            p = ti.Vector([x_min + i, y_min + j])
-            if self._is_inside(p, x, y, l) != 0:
-                # TODO: abstract out, weight?
-                """
-                x-1,y-1  x,y-1  x+1,y-1
-                x-1,y    x,y    x+1,y
-                x-1,y+1  x,y+1  x+1,y+1
-                """
-                _x, _y = p[0], p[1]
-                self.px.rgba[_x - 1, _y - 1] = rgba
-                self.px.rgba[_x - 1, _y] = rgba
-                self.px.rgba[_x - 1, _y + 1] = rgba
 
-                self.px.rgba[_x, _y - 1] = rgba
-                self.px.rgba[_x, _y] = rgba
-                self.px.rgba[_x, _y + 1] = rgba
+        if fill != 0: 
+            for i, j in ti.ndrange(x_max - x_min, y_max - y_min):
+                p = ti.Vector([x_min + i, y_min + j])
+                if self._is_inside(p, x, y, l) != 0:
+                    # TODO: abstract out, weight?
+                    """
+                    x-1,y-1  x,y-1  x+1,y-1
+                    x-1,y    x,y    x+1,y
+                    x-1,y+1  x,y+1  x+1,y+1
+                    """
+                    _x, _y = p[0], p[1]
+                    self.px.rgba[_x - 1, _y - 1] = rgba
+                    self.px.rgba[_x - 1, _y] = rgba
+                    self.px.rgba[_x - 1, _y + 1] = rgba
 
-                self.px.rgba[_x + 1, _y - 1] = rgba
-                self.px.rgba[_x + 1, _y] = rgba
-                self.px.rgba[_x + 1, _y + 1] = rgba
+                    self.px.rgba[_x, _y - 1] = rgba
+                    self.px.rgba[_x, _y] = rgba
+                    self.px.rgba[_x, _y + 1] = rgba
+
+                    self.px.rgba[_x + 1, _y - 1] = rgba
+                    self.px.rgba[_x + 1, _y] = rgba
+                    self.px.rgba[_x + 1, _y + 1] = rgba
+        else:
+            for i in range(l):
+                j = (i + 1) % l
+                self.line(x[i], y[i], x[j], y[j], rgba)        
 
     @ti.func
     def _is_inside(self, p: vec2, x: ti.template(), y: ti.template(), l: ti.i32):
