@@ -158,8 +158,8 @@ class Particles:
         """
         self.tv = tolvera
         self.kwargs = kwargs
-        self.n = self.tv.pn
-        self.p_per_s = self.tv.p_per_s
+        self.n = kwargs.get('n', self.tv.pn)
+        self.p_per_s = kwargs.get('p_per_s', self.tv.p_per_s)
         self._speed = ti.field(ti.f32, shape=())
         self._speed[None] = 1.0
         self.substep = self.tv.substep
@@ -170,14 +170,14 @@ class Particles:
         #     'y': (0., self.tv.y),
         # }, shape=(self.n,), osc=('get'), name='particles_pos')
         self.C = CONSTS({"COLL_RAD": (ti.f32, 10.0)})
-        self.tv.s.collisions_p = {
-            'state': {
-                'collision': (ti.i32, 0, 1),
-                'dpos': (ti.math.vec2, 0., 1.),
-                'dvel': (ti.math.vec2, 0., 1.),
-            },
-            'shape': self.n,
-        }
+        # self.tv.s.collisions_p = {
+        #     'state': {
+        #         'collision': (ti.i32, 0, 1),
+        #         'dpos': (ti.math.vec2, 0., 1.),
+        #         'dvel': (ti.math.vec2, 0., 1.),
+        #     },
+        #     'shape': self.n,
+        # }
         self.tmp_pos = ti.Vector.field(2, ti.f32, shape=(self.n))
         self.tmp_vel = ti.Vector.field(2, ti.f32, shape=(self.n))
         self.tmp_pos_species = ti.Vector.field(2, ti.f32, shape=(self.p_per_s))
@@ -281,32 +281,32 @@ class Particles:
         if p.vel.norm() > s.speed:
             self.field[i].vel = p.vel.normalized() * sp * self._speed[None]
 
-    @ti.func
-    def detect_collisions(self, i: ti.i32, radius: ti.f32):
-        """Detect collisions between particles.
+    # @ti.func
+    # def detect_collisions(self, i: ti.i32, radius: ti.f32):
+    #     """Detect collisions between particles.
 
-        TODO: Merge deltas into @ti.dataclass, or reimplement Particle.field as tv.s?
-        TODO: Multiple collision states? Collided, Colliding, etc.
-        TODO: Detect collisions between external objects.
+    #     TODO: Merge deltas into @ti.dataclass, or reimplement Particle.field as tv.s?
+    #     TODO: Multiple collision states? Collided, Colliding, etc.
+    #     TODO: Detect collisions between external objects.
 
-        Args:
-            i (ti.i32): Particle index.
-            radius (ti.f32): Collision radius.
-        """
-        for j in range(self.n):
-            p1, p2 = self.tv.p.field[i], self.tv.p.field[j]
-            if p2.active == 0: continue
-            dist = p1.pos - p2.pos
-            if dist.norm() < radius:
-                pdist = p1.ppos - p2.ppos
-                dpos = ti.abs(pdist - dist)
-                dvel = ti.abs((p1.pvel - p2.pvel) - (p1.vel - p2.vel))
-                self.tv.s.collisions_p[i].dpos = dpos
-                self.tv.s.collisions_p[i].dvel = dvel
-                if pdist.norm() > radius:
-                    self.tv.s.collisions_p[i].collision = 1
-                else:
-                    self.tv.s.collisions_p[i].collision = 0
+    #     Args:
+    #         i (ti.i32): Particle index.
+    #         radius (ti.f32): Collision radius.
+    #     """
+    #     for j in range(self.n):
+    #         p1, p2 = self.tv.p.field[i], self.tv.p.field[j]
+    #         if p2.active == 0: continue
+    #         dist = p1.pos - p2.pos
+    #         if dist.norm() < radius:
+    #             pdist = p1.ppos - p2.ppos
+    #             dpos = ti.abs(pdist - dist)
+    #             dvel = ti.abs((p1.pvel - p2.pvel) - (p1.vel - p2.vel))
+    #             self.tv.s.collisions_p[i].dpos = dpos
+    #             self.tv.s.collisions_p[i].dvel = dvel
+    #             if pdist.norm() > radius:
+    #                 self.tv.s.collisions_p[i].collision = 1
+    #             else:
+    #                 self.tv.s.collisions_p[i].collision = 0
 
     @ti.func
     def update_prev(self, i: ti.i32):
