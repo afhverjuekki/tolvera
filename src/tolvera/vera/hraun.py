@@ -12,6 +12,10 @@ class Hraun:
         self.tv = tolvera
         self.kwargs = kwargs
 
+        # Add a 0D field for delta time
+        self.dt = ti.field(dtype=ti.f32, shape=())
+        self.dt[None] = kwargs.get('hraun_dt', 1.0) # Default to 1.0 if not provided
+
         vents = kwargs.get('vents', 1)
 
         self.CONSTS = CONSTS({
@@ -21,14 +25,15 @@ class Hraun:
             "MAX_EMISSION_RATE": (ti.f32, 1.0),
             "MIN_VISCOSITY": (ti.f32, 1.0),
             "MAX_VISCOSITY": (ti.f32, 10000.0),
-            "MIN_TEMPERATURE": (ti.f32, 20.0),
+            "MIN_TEMPERATURE": (ti.f32, 20.0), 
             "MAX_TEMPERATURE": (ti.f32, 1200.0),
             "SOLIDIFICATION_TEMP": (ti.f32, 800.0),
             "MIN_HEIGHT": (ti.f32, 0.0),
             "MAX_HEIGHT": (ti.f32, 1000.0),
             "CRITICAL_FLOW_THICKNESS": (ti.f32, 0.01),
             "MAX_OUTFLOW_FRACTION": (ti.f32, 0.25),
-            "FLOW_STABILITY_FACTOR": (ti.f32, 0.5)
+            "FLOW_STABILITY_FACTOR": (ti.f32, 0.5),
+            "COOLING_RATE": (ti.f32, 0.005)
         })
 
         self.tv.s.hraun_vents = {
@@ -76,6 +81,10 @@ class Hraun:
         self.max_thickness_color = tm.vec4(kwargs.get('lava_max_c', [1.0, 0.5, 0.0, 1.0])) # Orange/Red for hot lava
         self.min_thickness_color = tm.vec4(kwargs.get('lava_min_c', [0.2, 0.1, 0.1, 1.0])) # Dark grey for cool/thin lava
         self.background_color = tm.vec4(kwargs.get('lava_bg_c', [0.0, 0.0, 0.0, 1.0])) # Black background
+        # Colors for temperature visualization
+        self.cool_temp_color = tm.vec4(kwargs.get('temp_cool_c', [0.1, 0.1, 0.3, 1.0])) # Cool (ambient) color - Dark Blue/Purple
+        self.hot_temp_color = tm.vec4(kwargs.get('temp_hot_c', [1.0, 1.0, 0.8, 1.0]))   # Hot (max temp) color - Bright Yellow/White
+
 
         self.init()
 
@@ -83,20 +92,27 @@ class Hraun:
     def init(self):
         """Initialise the lava flow simulation.
         """
-        self.set_vent(0, tm.vec2(self.tv.x // 2, self.tv.y // 2), 1.0)
+        self.set_vent(0, tm.vec2(self.tv.x // 2, self.tv.y // 2), 1.0, self.CONSTS.MAX_TEMPERATURE)
+        # Initialize temperature to ambient everywhere initially
+        for x, y in ti.ndrange(self.tv.x, self.tv.y):
+            self.tv.s.hraun_grid.field.lava_temperature[x, y, 0] = self.CONSTS.MIN_TEMPERATURE
+            self.tv.s.hraun_grid.field.lava_temperature[x, y, 1] = self.CONSTS.MIN_TEMPERATURE
+
 
     @ti.func
-    def set_vent(self, i: ti.i32, pos: tm.vec2, rate: ti.f32):
-        """Set a vent.
+    def set_vent(self, i: ti.i32, pos: tm.vec2, rate: ti.f32, temp: ti.f32):
+        """Set a vent's properties.
 
         Args:
             i (ti.i32): The index of the vent.
             pos (tm.vec2): The position of the vent.
             rate (ti.f32): The rate of lava emission.
+            temp (ti.f32): The temperature of emitted lava.
         """
         self.vents.field[i].active = 1
         self.vents.field[i].pos = pos
         self.tv.s.hraun_vents.field.rate[i] = rate
+        self.tv.s.hraun_vents.field.temperature[i] = temp
 
     def set_dem(self, dem: ti.template()):
         """Set the DEM heightmap.
@@ -254,42 +270,77 @@ class Hraun:
 
     @ti.func
     def emit(self, current_buf: ti.i32, next_buf: ti.i32):
-        """Emit lava from active vents.
+        """Phase 1: Emit lava and heat from active vents.
 
-        Reads `lava_thickness` from `self.tv.s.hraun_grid.field` in the next buffer
-        (which already contains the result of the flow calculation).
-        Adds the emission rate to this value and writes it back to `next_buf`.
+        Updates thickness and temperature in the next buffer based on vent emission.
+        Temperature is set directly to vent temperature.
 
         Args:
-            current_buf (ti.i32): The current buffer index (not used for reads here).
-            next_buf (ti.i32): The next buffer index.
+            current_buf (ti.i32): The current buffer index (not directly used).
+            next_buf (ti.i32): The next buffer index for reading/writing.
         """
         for i in self.vents.field:
             if self.vents.field[i].active == 1:
                 pos = self.vents.field[i].pos
                 x = ti.cast(pos[0], ti.i32) % self.tv.x
                 y = ti.cast(pos[1], ti.i32) % self.tv.y
-                v_rate = self.tv.s.hraun_vents.field.rate[i]
-                # v_temp = self.tv.s.hraun_vents.field.temperature[i] # Temperature emission will be handled later
+                
+                v_rate = self.tv.s.hraun_vents.field.rate[i] * self.dt[None] # Scale rate by dt
+                v_temp = self.tv.s.hraun_vents.field.temperature[i]
+                
+                # Read existing thickness from next_buf (post-flow)
+                h_existing = self.tv.s.hraun_grid.field.lava_thickness[x, y, next_buf]
 
-                # Read current thickness in next_buf (post-flow), add emission, write back
-                current_thickness_post_flow = self.tv.s.hraun_grid.field.lava_thickness[x, y, next_buf]
-                self.tv.s.hraun_grid.field.lava_thickness[x, y, next_buf] = current_thickness_post_flow + v_rate
+                # Calculate new thickness
+                h_new = h_existing + v_rate
+
+                # Set temperature directly to vent temperature
+                T_new = v_temp
+                
+                # Ensure temperature reverts to ambient if thickness becomes negligible
+                # (though h_new should be > 0 if v_rate > 0)
+                if h_new <= self.CONSTS.CRITICAL_FLOW_THICKNESS:
+                    T_new = self.CONSTS.MIN_TEMPERATURE
+                
+                # Write updated thickness and temperature back to next_buf
+                self.tv.s.hraun_grid.field.lava_thickness[x, y, next_buf] = h_new
+                self.tv.s.hraun_grid.field.lava_temperature[x, y, next_buf] = T_new
+
+    @ti.func
+    def calculate_cooling(self, current_buf: ti.i32, next_buf: ti.i32):
+        """Phase 3.1: Calculate temperature decrease due to cooling.
+        Reads thickness from current_buf, temp from next_buf (already copied).
+        Writes updated temperature to next_buf ONLY if thickness is sufficient.
+        """
+        for x, y in ti.ndrange(self.tv.x, self.tv.y):
+            # Use thickness from *before* flow/emit (current_buf) to determine if cooling applies
+            h_lava = self.tv.s.hraun_grid.field.lava_thickness[x, y, current_buf]
+            
+            # Only apply cooling if there was significant lava in the previous step
+            if h_lava > self.CONSTS.CRITICAL_FLOW_THICKNESS: 
+                current_temp = self.tv.s.hraun_grid.field.lava_temperature[x, y, next_buf] # Read temp from next_buf
+                if current_temp > self.CONSTS.MIN_TEMPERATURE:
+                    # Simple cooling model: proportional to temp difference with ambient
+                    temp_diff = current_temp - self.CONSTS.MIN_TEMPERATURE
+                    cooling_amount = self.CONSTS.COOLING_RATE * temp_diff * self.dt[None] 
+                    
+                    new_temp = current_temp - cooling_amount
+                    # Clamp to minimum temperature
+                    new_temp = ti.max(self.CONSTS.MIN_TEMPERATURE, new_temp)
+                    
+                    # Write cooled temperature to next_buf
+                    self.tv.s.hraun_grid.field.lava_temperature[x, y, next_buf] = new_temp
+            # If h_lava was <= CRITICAL_FLOW_THICKNESS, do nothing to temperature in next_buf.
+            # It retains its copied value unless overwritten by emit or affected by flow later? (Flow doesn't affect temp yet).
+
 
     @ti.func
     def cool(self, current_buf: ti.i32, next_buf: ti.i32):
         """Phase 3: Apply cooling to the lava.
-
-        Reads `lava_thickness` and `lava_temperature` from `self.tv.s.hraun_grid.field`.
-        Decreases `lava_temperature` based on a cooling rate.
-        Ensures temperature does not drop below `MIN_TEMPERATURE` (ambient).
-
-        Phase 6 Enhancement: Cooling rate will depend on `lava_thickness` and temperature
-                             (surface vs. interior cooling).
+        Wrapper function for cooling calculations.
         """
-        # Implementation for cooling calculation goes here
-        # Reads from current_buf/next_buf(?), writes to next_buf
-        pass
+        self.calculate_cooling(current_buf, next_buf)
+
 
     @ti.func
     def solidify(self, current_buf: ti.i32, next_buf: ti.i32):
@@ -309,68 +360,94 @@ class Hraun:
 
     @ti.kernel
     def draw(self):
+        """Main draw kernel."""
         self.draw_grid()
-        self.draw_lava()
+        # self.draw_lava_temp() # Visualize temperature by default
+        self.draw_lava_thickness() # Keep for debugging if needed
         self.draw_vents()
 
     @ti.func
     def draw_grid(self):
-        # Get the index for the current state buffer
+        """Draw the underlying terrain height."""
         current_buf = self.current_buffer[None]
-        # Iterate only over the spatial dimensions
         for i, j in ti.ndrange(self.tv.x, self.tv.y):
             # Read terrain height from the current buffer
-            # Terrain height is static, so reading from buffer 0 is also fine
-            # if initialized correctly, but using current_buf is consistent.
-            h = self.tv.s.hraun_grid.field[i, j, current_buf].terrain_height
-            self.grid.px.rgba[i, j] = tm.vec4(h, h, h, 1.0)
+            h = self.tv.s.hraun_grid.field.terrain_height[i, j, current_buf]
+            # Normalize terrain height assuming input DEM provides values mostly in 0-1 range.
+            # Clamp to ensure it's visually representable as grayscale.
+            norm_h = tm.clamp(h, 0.0, 1.0) 
+            self.grid.px.rgba[i, j] = tm.vec4(norm_h, norm_h, norm_h, 1.0)
     
     @ti.func
     def draw_vents(self):
+        """Draw markers for active vents."""
         for i in self.vents.field:
-            pos = self.vents.field[i].pos
-            self.grid.circle(pos[0], pos[1], 10, tm.vec4(1.0, 0.0, 0.0, 1.0), 0)
+             if self.vents.field[i].active == 1:
+                pos = self.vents.field[i].pos
+                # Ensure pos is within grid bounds for drawing
+                x_pos = ti.cast(pos[0], ti.i32) % self.tv.x
+                y_pos = ti.cast(pos[1], ti.i32) % self.tv.y
+                # Use a distinct color for vents, e.g., bright red
+                self.grid.circle(x_pos, y_pos, 5, tm.vec4(1.0, 0.0, 0.0, 1.0), 0)
     
     @ti.func
-    def draw_lava(self):
-        # Get the index for the current state buffer
+    def draw_lava_thickness(self):
+        """Draw lava thickness."""
         current_buf = self.current_buffer[None]
-        # Iterate only over the spatial dimensions
         for i, j in ti.ndrange(self.tv.x, self.tv.y):
-            # Read lava thickness from the current buffer
-            lava_thickness = self.tv.s.hraun_grid.field[i, j, current_buf].lava_thickness
-            if lava_thickness > 0.0:
-                # Normalize thickness for color mapping (e.g., clamp to 0-1 range for visualization)
-                # Adjust the upper limit (1.0 here) as needed for better visual range
+            lava_thickness = self.tv.s.hraun_grid.field.lava_thickness[i, j, current_buf]
+            if lava_thickness > self.CONSTS.CRITICAL_FLOW_THICKNESS: # Use critical thickness for visibility
+                # Normalize thickness using a smaller divisor (e.g., 1.0) for better visibility.
                 normalized_thickness = ti.min(lava_thickness / 1.0, 1.0) 
-                
-                # Interpolate between min and max colors
                 lava_color = tm.mix(self.min_thickness_color, self.max_thickness_color, normalized_thickness)
-                
-                # Assuming draw_grid already drew the terrain, only overwrite if lava exists
                 self.grid.px.rgba[i, j] = lava_color
-            # Note: The old commented-out complex drawing logic would also read from current_buf
+            # Pixels with thickness <= CRITICAL_FLOW_THICKNESS retain the grid color drawn by draw_grid
+
+    @ti.func
+    def draw_lava_temp(self):
+        """Draw lava temperature (Diagnostic: Reading Buffer 0)."""
+        # current_buf = self.current_buffer[None] # Previous logic
+        read_buf = 0 # Explicitly read buffer 0 for diagnosis
+        for i, j in ti.ndrange(self.tv.x, self.tv.y):
+            lava_thickness = self.tv.s.hraun_grid.field.lava_thickness[i, j, read_buf]
+            if lava_thickness > self.CONSTS.CRITICAL_FLOW_THICKNESS:
+                lava_temp = self.tv.s.hraun_grid.field.lava_temperature[i, j, read_buf]
+
+                temp_color = tm.vec4(0.1, 0.1, 0.3, 1.0) # Default cool blue
+                if lava_temp > self.CONSTS.SOLIDIFICATION_TEMP: # Check if above solidification temp
+                     temp_color = tm.vec4(1.0, 0.0, 0.0, 1.0) # Set to pure red if hot
+
+                self.grid.px.rgba[i, j] = temp_color
+            # else: keep background terrain color (drawn by draw_grid)
 
     @ti.kernel
     def step(self, current_buf: ti.i32, next_buf: ti.i32):
         """Step the lava flow simulation calculations."""
-        # Phase 2: Flow is now handled by these two kernels
+        # Phase 3: Cooling (apply *before* flow/emission temperature updates)
+        # Note: Reads thickness from current_buf, temp from next_buf, writes cooled temp to next_buf
+        self.cool(current_buf, next_buf) 
+
+        # Phase 2: Flow 
+        # Note: Reads current_buf state, writes updated thickness to next_buf
         self.flow(current_buf, next_buf)
         
         # Phase 1: Emission
-        self.emit(current_buf, next_buf)
-        
-        # Phase 3: Cooling (Placeholder)
-        self.cool(current_buf, next_buf)
-        
+        # Note: Reads next_buf state (post-flow, post-cool), writes updated thickness & temp to next_buf
+        self.emit(current_buf, next_buf) # Pass current_buf for consistency, though unused
+                
         # Phase 4: Solidification (Placeholder)
+        # Note: Reads next_buf state (post-flow/emit/cool), writes updates to next_buf
         self.solidify(current_buf, next_buf)
 
     def __call__(self):
         current_buf = self.current_buffer[None]
         next_buf = 1 - current_buf
-        self.copy_state_to_next_buffer(current_buf, next_buf)
-        self.step(current_buf, next_buf)
-        self.current_buffer[None] = next_buf
-        self.draw()
+        # Copy state first, including temperature from previous step
+        self.copy_state_to_next_buffer(current_buf, next_buf) 
+        # Run simulation steps, operating primarily on next_buf
+        self.step(current_buf, next_buf) 
+        # Swap buffers for next iteration
+        self.current_buffer[None] = next_buf 
+        # Draw the state from the *new* current buffer
+        self.draw() 
         return self.grid
