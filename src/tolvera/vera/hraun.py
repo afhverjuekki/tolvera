@@ -12,11 +12,10 @@ class Hraun:
         self.tv = tolvera
         self.kwargs = kwargs
 
-        # Add a 0D field for delta time
         self.dt = ti.field(dtype=ti.f32, shape=())
-        self.dt[None] = kwargs.get('hraun_dt', 1.0) # Default to 1.0 if not provided
+        self.dt[None] = kwargs.get('hraun_dt', 10)
 
-        vents = kwargs.get('vents', 1)
+        vents = kwargs.get('hraun_vents', 1)
 
         self.CONSTS = CONSTS({
             "MIN_THICKNESS": (ti.f32, 0.0),
@@ -88,18 +87,22 @@ class Hraun:
 
         self.init()
 
-    @ti.kernel
     def init(self):
         """Initialise the lava flow simulation.
         """
-        self.set_vent(0, tm.vec2(self.tv.x // 2, self.tv.y // 2), 1.0, self.CONSTS.MAX_TEMPERATURE)
-        # Initialize temperature to ambient everywhere initially
+        vent_loc = tm.vec2(self.tv.x // 2, self.tv.y // 2)
+        self.set_vent(0, vent_loc, 1.0, self.CONSTS.MAX_TEMPERATURE)
+        self.init_lava_temp()
+
+    @ti.kernel
+    def init_lava_temp(self):
+        """Initialise the lava temperature.
+        """
         for x, y in ti.ndrange(self.tv.x, self.tv.y):
             self.tv.s.hraun_grid.field.lava_temperature[x, y, 0] = self.CONSTS.MIN_TEMPERATURE
             self.tv.s.hraun_grid.field.lava_temperature[x, y, 1] = self.CONSTS.MIN_TEMPERATURE
 
-
-    @ti.func
+    @ti.kernel
     def set_vent(self, i: ti.i32, pos: tm.vec2, rate: ti.f32, temp: ti.f32):
         """Set a vent's properties.
 
@@ -136,7 +139,7 @@ class Hraun:
             self.tv.s.hraun_grid.field.terrain_height[x, y, 0] = dem_height
             self.tv.s.hraun_grid.field.terrain_height[x, y, 1] = dem_height
 
-    @ti.func
+    @ti.kernel
     def deactivate_vent(self, i: ti.i32):
         """Deactivate a vent.
 
@@ -362,9 +365,9 @@ class Hraun:
     def draw(self):
         """Main draw kernel."""
         self.draw_grid()
-        # self.draw_lava_temp() # Visualize temperature by default
-        self.draw_lava_thickness() # Keep for debugging if needed
-        self.draw_vents()
+        self.draw_lava_temp() # Visualize temperature by default
+        # self.draw_lava_thickness() # Keep for debugging if needed
+        # self.draw_vents()
 
     @ti.func
     def draw_grid(self):
@@ -405,17 +408,27 @@ class Hraun:
 
     @ti.func
     def draw_lava_temp(self):
-        """Draw lava temperature (Diagnostic: Reading Buffer 0)."""
-        # current_buf = self.current_buffer[None] # Previous logic
-        read_buf = 0 # Explicitly read buffer 0 for diagnosis
+        """Draw lava temperature."""
+        current_buf = self.current_buffer[None] # Read the correct current buffer
         for i, j in ti.ndrange(self.tv.x, self.tv.y):
-            lava_thickness = self.tv.s.hraun_grid.field.lava_thickness[i, j, read_buf]
+            # Read from current_buf now
+            lava_thickness = self.tv.s.hraun_grid.field.lava_thickness[i, j, current_buf] 
             if lava_thickness > self.CONSTS.CRITICAL_FLOW_THICKNESS:
-                lava_temp = self.tv.s.hraun_grid.field.lava_temperature[i, j, read_buf]
+                # Read from current_buf now
+                lava_temp = self.tv.s.hraun_grid.field.lava_temperature[i, j, current_buf]
 
-                temp_color = tm.vec4(0.1, 0.1, 0.3, 1.0) # Default cool blue
+                temp_color = self.cool_temp_color # Default cool color
                 if lava_temp > self.CONSTS.SOLIDIFICATION_TEMP: # Check if above solidification temp
-                     temp_color = tm.vec4(1.0, 0.0, 0.0, 1.0) # Set to pure red if hot
+                    # Simple threshold visualization
+                    # temp_color = tm.vec4(1.0, 0.0, 0.0, 1.0) # Set to pure red if hot
+                    # Interpolated visualization
+                    normalized_temp = (lava_temp - self.CONSTS.SOLIDIFICATION_TEMP) / (self.CONSTS.MAX_TEMPERATURE - self.CONSTS.SOLIDIFICATION_TEMP)
+                    normalized_temp = tm.clamp(normalized_temp, 0.0, 1.0)
+                    # Use SOLIDIFICATION_TEMP color as the low end, hot_temp_color as high end
+                    # Let's define a solidification temp color, maybe dark red?
+                    solid_color = tm.vec4(0.5, 0.0, 0.0, 1.0) 
+                    temp_color = tm.mix(solid_color, self.hot_temp_color, normalized_temp)
+
 
                 self.grid.px.rgba[i, j] = temp_color
             # else: keep background terrain color (drawn by draw_grid)
