@@ -44,11 +44,49 @@ pip install tolvera
 
 ### Optional Dependencies
 
-To install optional dependencies, use the following command: 
+To install all optional dependencies at once, use the following command: 
 
 ```sh
-pip install tolvera[opencv-python, iipyper, anguilla-iml, mediapipe, dualsense-controller]
+pip install tolvera[all]
+
 ```
+
+
+To install optional dependencies individually, use the following commands:
+
+opencv: Enables to use computer vision features using OpenCV.
+
+```sh
+pip install tolvera[opencv]
+
+```
+
+iipyper: Enables real-time interaction and communication features via iipyper.
+
+```sh
+pip install tolvera[iipyper]
+```
+
+iml: Integrates Machine Learning with anguilla-iml.
+
+```sh
+pip install tolvera[iml]
+```
+
+mediapipe: Adds gesture tracking, and more using MediaPipe.
+
+```sh
+pip install tolvera[mediapipe]
+
+```
+
+dualsense: Provides support for the DualSense Controller (PS5).
+
+```sh
+pip install tolvera[dualsense]
+
+```
+
 
 ## Develop
 
