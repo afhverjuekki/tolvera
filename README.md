@@ -42,6 +42,52 @@ Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be in
 pip install tolvera
 ```
 
+### Optional Dependencies
+
+To install all optional dependencies at once, use the following command: 
+
+```sh
+pip install tolvera[all]
+
+```
+
+
+To install optional dependencies individually, use the following commands:
+
+opencv: Enables to use computer vision features using OpenCV.
+
+```sh
+pip install tolvera[opencv]
+
+```
+
+iipyper: Enables real-time interaction and communication features via iipyper.
+
+```sh
+pip install tolvera[iipyper]
+```
+
+iml: Integrates Machine Learning with anguilla-iml.
+
+```sh
+pip install tolvera[iml]
+```
+
+mediapipe: Adds gesture tracking, and more using MediaPipe.
+
+```sh
+pip install tolvera[mediapipe]
+
+```
+
+dualsense: Provides support for the DualSense Controller (PS5).
+
+```sh
+pip install tolvera[dualsense]
+
+```
+
+
 ## Develop
 
 For development, we use [`poetry`](https://python-poetry.org/).

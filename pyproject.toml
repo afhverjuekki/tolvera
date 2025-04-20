@@ -13,14 +13,14 @@ documentation = "https://afhverjuekki.github.io/tolvera/"
 python = ">=3.10, <3.13"
 taichi = "^1.7.0"
 jsons = "^1.6.3"
-opencv-python = "^4.8.1.78"
-iipyper = "^0.1.0b1"
-anguilla-iml = "0.3.0"
 sardine = "^0.0.0b3"
-mediapipe = "0.10.20"
 torch = "^2.2.2"
 tqdm = "^4.66.4"
-dualsense-controller = "^0.2.0"
+opencv-python = {version = "^4.8.1.78", optional = true}
+iipyper = {version = "^0.1.0b1", optional = true}
+anguilla-iml = {version = "0.3.0", optional = true}
+mediapipe = {version = "0.10.20", optional = true}
+dualsense-controller = {version = "^0.2.0", optional = true}
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
@@ -35,6 +35,14 @@ mkdocs-awesome-pages-plugin = "^2.9.2"
 pytest = "^7.4.3"
 black = "^23.11.0"
 isort = "^5.12.0"
+
+[tool.poetry.extras]
+opencv = ["opencv-python"]
+iipyper = ["iipyper"]
+iml = ["anguilla-iml"]
+mediapipe = ["mediapipe"]
+dualsense = ["dualsense-controller"]
+all = ["opencv-python", "iipyper", "anguilla-iml", "mediapipe", "dualsense-controller"]
 
 [build-system]
 requires = ["poetry-core"]
