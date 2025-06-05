@@ -1,0 +1,139 @@
+--- FLOCKING EXAMPLES ---
+
+--- EXAMPLE F1 (Color & Count) ---
+Request: "Flock sketch 'blue_vs_red', 500 particles, 2 species. Species 0 blue, species 1 red."
+JSON Output:
+{
+  "sketch_name": "blue_vs_red",
+  "sketch_type": "flock",
+  "particle_count": 500,
+  "species_count": 2,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": {
+    "module_name": "flock",
+    "rules": null
+  },
+  "slime_config": null,
+  "species_configs": [
+    { "species_index": 0, "color": "blue" },
+    { "species_index": 1, "color": "red" }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE F1 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Flock sketch 'blue_vs_red', 500 particles, 2 species. Species 0 blue, species 1 red."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "blue_vs_red",                  // ❌ WRONG: should be "sketch_name"
+  "sketch_type": "flock",
+  "particles": 500,                       // ❌ WRONG: should be "particle_count"
+  "species_count": 2,
+  "species": [                            // ❌ WRONG: should be "species_configs"
+    { "id": 0, "color": "#0000FF" },      // ❌ WRONG: should be "species_index" and color as name string
+    { "id": 1, "color": "#FF0000" }       // ❌ WRONG: should be "species_index" and color as name string
+  ],
+  "particle_shape": "circle",             // ❌ WRONG: should be inside "render_config"
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95
+  }
+}
+
+--- EXAMPLE F2 (Rules) ---
+Request: "Flocking, 2 species, 200 particles, name 'rule_test'. Species 0 avoid species 1 with separation 0.8 radius 0.1."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "rule_test",                  // ❌ WRONG: should be "sketch_name"
+  "sketch_type": "flock",
+  "particles": 200,                     // ❌ WRONG: should be "particle_count"
+  "flock_config": {
+    "module_name": "flock",
+    "rules": [
+      { "species_from": 0, "species_to": 1, "separate": 0.8, "radius": 0.1 }
+    ]
+  },
+  "species": [                         // ❌ WRONG: should be "species_configs"
+     { "id": 0, "count": 100, "color": { "r": 0.5, "g": 0.5, "b": 0.5 } },  // ❌ WRONG: should use string color names
+     { "id": 1, "count": 100, "color": "#FFFFFF" }  // ❌ WRONG: should use string color names
+  ]
+}
+
+--- EXAMPLE F3 (Render Change) ---
+Request: "Flock sketch 'clear_flock', 3 species, 800 particles. Clear the background."
+JSON Output:
+{
+  "sketch_name": "clear_flock",
+  "sketch_type": "flock",
+  "particle_count": 800,
+  "species_count": 3,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": {
+    "module_name": "flock",
+    "rules": null
+  },
+  "slime_config": null,
+  "species_configs": [
+     { "species_index": 0, "color": "orange" },
+     { "species_index": 1, "color": "yellow" },
+     { "species_index": 2, "color": "pink" }
+  ],
+  "render_config": {
+    "background_behavior": "clear",
+    "diffuse_rate": null,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE F3 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Flock sketch 'clear_flock', 3 species, 800 particles. Clear the background."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "clear_flock",               // ❌ WRONG: should be "sketch_name"
+  "type": "flock",                     // ❌ WRONG: should be "sketch_type"
+  "particles": 800,                    // ❌ WRONG: should be "particle_count"
+  "species": [                         // ❌ WRONG: should be "species_configs"
+     { "id": 0, "color": "#FFA500" },  // ❌ WRONG: should be "species_index" and use color names
+     { "id": 1, "color": "#FFFF00" },  // ❌ WRONG: should use "yellow" instead of hex code
+     { "id": 2, "color": "#FFC0CB" }   // ❌ WRONG: should use "pink" instead of hex code
+  ],
+  "background": "clear",               // ❌ WRONG: should be in render_config as background_behavior
+  "particle_shape": "circle"           // ❌ WRONG: should be inside render_config
+}0 avoid species 1 with separation 0.8 radius 0.1."
+JSON Output:
+{
+  "sketch_name": "rule_test",
+  "sketch_type": "flock",
+  "particle_count": 200,
+  "species_count": 2,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": {
+    "module_name": "flock",
+    "rules": [
+      { "species_from": 0, "species_to": 1, "separate": 0.8, "radius": 0.1, "align": null, "cohere": null }
+    ]
+  },
+  "slime_config": null,
+  "species_configs": [
+     { "species_index": 0, "color": "grey" },
+     { "species_index": 1, "color": "white" }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "circle"
+  }
+}

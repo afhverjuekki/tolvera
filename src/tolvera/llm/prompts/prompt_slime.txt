@@ -1,0 +1,362 @@
+--- SLIME MOLD EXAMPLES ---
+
+--- EXAMPLE S1 (Basic Params) ---
+Request: "Slime sketch 'phy_basic', 1500 particles, 1 species. Evaporate rate 0.92."
+JSON Output:
+{
+  "sketch_name": "phy_basic",
+  "sketch_type": "slime",
+  "particle_count": 1500,
+  "species_count": 1,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.92,
+    "trail_brightness": 1.0
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": null,
+      "slime_sense_angle": null,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE S1 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Slime sketch 'phy_basic', 1500 particles, 1 species. Evaporate rate 0.92."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "phy_basic",               // ❌ WRONG: should be "sketch_name"
+  "sketch_type": "slime",
+  "particles": 1500,                 // ❌ WRONG: should be "particle_count"
+  "species_count": 1,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.92           // ❌ WRONG: Missing trail_brightness
+  },
+  "species": [                       // ❌ WRONG: should be "species_configs"
+    {
+      "id": 0,                       // ❌ WRONG: should be "species_index"
+      "color": "#FFFFFF"             // ❌ WRONG: should use null or color name "white"
+    }
+  ]
+  // ❌ WRONG: Missing required "render_config" object
+}
+
+--- EXAMPLE S2 (Species Params) ---
+Request: "Slime sim 'species_diff', 2 species, 2000 particles. Make species 1 sense distance 25 and move step 0.8. Use evaporate 0.99.  Make species 0 yellow and species 1 blue."
+JSON Output:
+{
+  "sketch_name": "species_diff",
+  "sketch_type": "slime",
+  "particle_count": 2000,
+  "species_count": 2,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.99,
+    "trail_brightness": 1.0
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": "yellow",
+      "slime_sense_angle": null,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    },
+    {
+      "species_index": 1,
+      "color": "blue"",
+      "slime_sense_angle": null,
+      "slime_sense_dist": 25.0,
+      "slime_move_angle": null,
+      "slime_move_step": 0.8
+    }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE S2 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Slime sim 'species_diff', 2 species, 2000 particles. Make species 1 sense distance 25 and move step 0.8. Use evaporate 0.99"
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "species_diff",            // ❌ WRONG: should be "sketch_name"
+  "sketch_type": "slime",
+  "particles": 2000,                 // ❌ WRONG: should be "particle_count"
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate": 0.99                // ❌ WRONG: should be "evaporate_rate"
+  },
+  "species": [                       // ❌ WRONG: should be "species_configs"
+    {
+      "id": 0                        // ❌ WRONG: should be "species_index"
+    },
+    {
+      "id": 1,                       // ❌ WRONG: should be "species_index"
+      "sense_distance": 25.0,        // ❌ WRONG: should be "slime_sense_dist"
+      "move_step": 0.8               // ❌ WRONG: should be "slime_move_step"
+    }
+  ],
+  "diffuse_rate": 0.95               // ❌ WRONG: should be inside render_config
+  // ❌ WRONG: Missing render_config object entirely
+}
+
+--- EXAMPLE S3 (Species Color & Render) ---
+Request: "Slime 'dark_trail', 1 species, 1200 particles. Make species 0 magenta. Use diffuse background rate 0.99."
+JSON Output:
+{
+  "sketch_name": "dark_trail",
+  "sketch_type": "slime",
+  "particle_count": 1200,
+  "species_count": 1,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.95,
+    "trail_brightness": 1.0
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": "magenta",
+      "slime_sense_angle": null,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.99,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE S3 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Slime 'dark_trail', 1 species, 1200 particles. Make species 0 magenta. Use diffuse background rate 0.99."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "name": "dark_trail",              // ❌ WRONG: should be "sketch_name"
+  "type": "slime",                   // ❌ WRONG: should be "sketch_type"
+  "particles": 1200,                 // ❌ WRONG: should be "particle_count"
+  "species_count": 1,
+  "slime_config": {
+    "module_name": "slime"
+    // ❌ WRONG: Missing "evaporate_rate" and "trail_brightness"
+  },
+  "species": [                       // ❌ WRONG: should be "species_configs"
+    {
+      "id": 0,                       // ❌ WRONG: should be "species_index"
+      "color": "#FF00FF"             // ❌ WRONG: should use "magenta" instead of hex code
+    }
+  ],
+  "background": {                    // ❌ WRONG: should be "render_config"
+    "type": "diffuse",               // ❌ WRONG: should be "background_behavior"
+    "rate": 0.99                     // ❌ WRONG: should be "diffuse_rate"
+    // ❌ WRONG: Missing particle_shape
+  }
+}
+
+--- EXAMPLE S4 (Multi-Species Color & Slime Params) ---
+Request: "Create a slime mold simulation with 2000 particles and 2 species. Make species 0 yellow with a sense distance of 20 and move step of 0.5. Set species 1 to teal with a wider sense angle of 1.2. Use an evaporation rate of 0.97 for a more persistent trail and set the trail brightness to 1.2 for higher visibility. Name the sketch 'multi_species_slime'."
+JSON Output:
+{
+  "sketch_name": "multi_species_slime",
+  "sketch_type": "slime",
+  "particle_count": 2000,
+  "species_count": 2,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.97,
+    "trail_brightness": 1.2
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": "yellow",
+      "slime_sense_angle": null,
+      "slime_sense_dist": 20.0,
+      "slime_move_angle": null,
+      "slime_move_step": 0.5
+    },
+    {
+      "species_index": 1,
+      "color": "teal",
+      "slime_sense_angle": 1.2,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE S4 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Create a slime mold simulation with 2000 particles and 2 species. Make species 0 yellow with a sense distance of 20 and move step of 0.5. Set species 1 to teal with a wider sense angle of 1.2. Use an evaporation rate of 0.97 for a more persistent trail and set the trail brightness to 1.2 for higher visibility. Name the sketch 'multi_species_slime'."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "sketch_name": "multi_species_slime",
+  "type": "slime",                   // ❌ WRONG: should be "sketch_type"
+  "particle_count": 2000,
+  "species_count": 2,
+  "slime": {                         // ❌ WRONG: should be "slime_config"
+    "evaporate": 0.97,               // ❌ WRONG: should be "evaporate_rate"
+    "brightness": 1.2                // ❌ WRONG: should be "trail_brightness"
+  },
+  "species_configs": [
+    {
+      "species_index": 1,            // ❌ WRONG: should be 0 (1-based index error)
+      "color": "rgba(255,255,0,1)",  // ❌ WRONG: should be "yellow"
+      "sense_dist": 20.0,            // ❌ WRONG: should be "slime_sense_dist"
+      "move_step": 0.5               // ❌ WRONG: should be "slime_move_step"
+    },
+    {
+      "species_index": 2,            // ❌ WRONG: should be 1 (1-based index error)
+      "color": "008080",             // ❌ WRONG: should be "teal"
+      "sense_angle": 1.2             // ❌ WRONG: should be "slime_sense_angle"
+    }
+  ],
+  "render_config": {
+    // ❌ WRONG: Missing background_behavior, diffuse_rate, particle_shape
+  }
+}
+
+--- EXAMPLE S5 (Three Species & Clear Background) ---
+Request: "Create a 3-species slime sketch named 'triple_threat_slime' with 3000 particles. Species 0 is orange with move step 1.5. Species 1 is lime with sense distance 30. Species 2 is purple with sense distance 10 and move step 0.4. Use a clear background."
+JSON Output:
+{
+  "sketch_name": "triple_threat_slime",
+  "sketch_type": "slime",
+  "particle_count": 3000,
+  "species_count": 3,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.95,
+    "trail_brightness": 1.0
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": "orange",
+      "slime_sense_angle": null,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": 1.5
+    },
+    {
+      "species_index": 1,
+      "color": "lime",
+      "slime_sense_angle": null,
+      "slime_sense_dist": 30.0,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    },
+    {
+      "species_index": 2,
+      "color": "purple",
+      "slime_sense_angle": null,
+      "slime_sense_dist": 10.0,
+      "slime_move_angle": null,
+      "slime_move_step": 0.4
+    }
+  ],
+  "render_config": {
+    "background_behavior": "clear",
+    "diffuse_rate": null,
+    "particle_shape": "circle"
+  }
+}
+
+--- NEGATIVE EXAMPLE S5 (INCORRECT FORMAT - DO NOT DO THIS) ---
+Request: "Create a 3-species slime sketch named 'triple_threat_slime' with 3000 particles. Species 0 is orange with move step 1.5. Species 1 is lime with sense distance 30. Species 2 is purple with sense distance 10 and move step 0.4. Use a clear background."
+INCORRECT JSON (DO NOT OUTPUT THIS FORMAT):
+{
+  "sketchName": "triple_threat_slime",// ❌ WRONG: field name casing / should be "sketch_name"
+  "sketch_type": "slime",
+  "particleCount": 3000,             // ❌ WRONG: field name casing / should be "particle_count"
+  "speciesCount": 3,                 // ❌ WRONG: field name casing / should be "species_count"
+  "background": "clear",             // ❌ WRONG: should be inside render_config as background_behavior
+  "species": [                       // ❌ WRONG: should be "species_configs"
+    { "id": 0, "colour": "orange", "moveStep": 1.5 }, // ❌ WRONG: "id", "colour", "moveStep" fields / casing
+    { "id": 1, "colour": "lime", "senseDist": 30.0 },  // ❌ WRONG: "id", "colour", "senseDist" fields / casing
+    { "id": 2, "colour": "purple", "senseDist": 10.0, "moveStep": 0.4 } // ❌ WRONG: "id", "colour", etc.
+  ]
+  // ❌ WRONG: Missing slime_config and render_config objects
+  // ❌ WRONG: Slime params have wrong names and are not prefixed with "slime_"
+}
+
+--- EXAMPLE S6 (Minimal Slime with Point Particles) ---
+Request: "Minimal slime 'minimal_points', 1 species, 500 particles. Color white, use point particles. Low evaporation rate 0.85."
+JSON Output:
+{
+  "sketch_name": "minimal_points",
+  "sketch_type": "slime",
+  "particle_count": 500,
+  "species_count": 1,
+  "window_width": 1920,
+  "window_height": 1080,
+  "global_speed": 1.0,
+  "num_substeps": 1,
+  "flock_config": null,
+  "slime_config": {
+    "module_name": "slime",
+    "evaporate_rate": 0.85,
+    "trail_brightness": 1.0
+  },
+  "species_configs": [
+    {
+      "species_index": 0,
+      "color": "white",
+      "slime_sense_angle": null,
+      "slime_sense_dist": null,
+      "slime_move_angle": null,
+      "slime_move_step": null
+    }
+  ],
+  "render_config": {
+    "background_behavior": "diffuse",
+    "diffuse_rate": 0.95,
+    "particle_shape": "point"
+  }
+}

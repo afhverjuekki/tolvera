@@ -21,6 +21,9 @@ mediapipe = "0.10.20"
 torch = "^2.2.2"
 tqdm = "^4.66.4"
 dualsense-controller = "^0.2.0"
+pydantic = "^2.11.2"
+ollama = "^0.4.7"
+jinja2 = "^3.1.6"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
