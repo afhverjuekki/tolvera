@@ -56,7 +56,11 @@ from .patches import *
 from .pixels import *
 from .utils import *
 from .vera import Vera
-from .llm import LLM
+# Legacy LLM import (optional for backward compatibility)
+try:
+    from .llm import LLM
+except ImportError:
+    LLM = None
 
 class Tolvera:
     """Tolvera main class.
