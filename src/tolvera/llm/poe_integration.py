@@ -1,448 +1,256 @@
-"""Integration layer connecting PoE system with Tölvera.
+"""
+Fixed integration layer between PoE behavior system and Tölvera.
 
-This module provides the TolveraBehaviorAgent class that integrates the
-PoE behavior system with Tölvera's particle system and render loop.
+This module provides the glue between the PoE expert system and Tölvera's
+particle system, handling force application and state management.
 """
 
 import taichi as ti
 import numpy as np
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 import logging
 import asyncio
 
-from .poe_core import PoEBehaviorSystem, SimpleProgrammaticExpert
+from .poe_core import PoEBehaviorSystemV2, SimpleProgrammaticExpert
 
 logger = logging.getLogger(__name__)
 
 
-class TolveraBehaviorAgent:
-    """Integrates PoE behavior system with Tölvera's update cycle.
+class TolveraBehaviorAgentFixed:
+    """
+    Fixed integration of PoE behavior system with Tölvera particle system.
     
-    This class manages the connection between the abstract PoE expert
-    system and Tölvera's concrete particle implementation.
+    This version properly executes dynamically generated expert code
+    instead of routing to templates.
     """
     
     def __init__(self, tolvera_instance):
-        """Initialize the behavior agent.
-        
-        Args:
-            tolvera_instance: Tölvera instance to attach to
-        """
         self.tv = tolvera_instance
-        self.poe_system = PoEBehaviorSystem(tolvera_instance)
+        self.poe_system = PoEBehaviorSystemV2(tolvera_instance)
         
-        # Runtime context for experts
+        # Context for experts
         self.context = {
             "mouse_x": 0.0,
             "mouse_y": 0.0,
-            "mouse_pressed": False,
-            "time": 0.0,
-            "dt": 0.016,
             "world_width": float(tolvera_instance.x),
             "world_height": float(tolvera_instance.y),
+            "time": 0.0,
+            "dt": 0.016
         }
         
-        # Create behavior state in Tölvera
-        self._create_behavior_state()
+        # Track update time
+        self.last_update_time = 0.0
         
-        # Setup integration kernels
-        self._setup_kernels()
-        
-        # Track if we need to recompile combined kernel
-        self._needs_recompile = True
-        
-        # Initialize builtin expert flags
-        self._enable_mouse_attraction = False
-        self._enable_boundary = False
-        self._enable_separation = False
-        self._mouse_attraction_weight = 1.0
-        self._boundary_weight = 1.0
-        self._separation_weight = 1.0
-        
-        logger.info("Initialized TolveraBehaviorAgent")
+        logger.info(f"Initialized TolveraBehaviorAgentFixed with {tolvera_instance.pn} particles")
     
-    def _create_behavior_state(self):
-        """Create behavior-specific state in Tölvera's state system."""
-        try:
-            self.tv.s.behavior = {
-                "state": {
-                    "mouse_x": (ti.f32, 0.0, self.context["world_width"]),
-                    "mouse_y": (ti.f32, 0.0, self.context["world_height"]),
-                    "time": (ti.f32, 0.0, 1000000.0),
-                    "active": (ti.i32, 0, 1)
-                },
-                "shape": 1,
-                "osc": ("set", "get"),
-                "randomise": False
-            }
-            logger.debug("Created behavior state")
-        except Exception as e:
-            logger.error(f"Failed to create behavior state: {e}")
-            raise
+    def add_expert(self, expert: SimpleProgrammaticExpert):
+        """Add a pre-compiled expert to the system."""
+        self.poe_system.add_expert(expert)
     
-    def _setup_kernels(self):
-        """Setup Taichi kernels for force application."""
-        
-        @ti.kernel
-        def apply_mouse_attraction(
-            particles: ti.template(),
-            forces: ti.template(),
-            mouse_x: ti.f32,
-            mouse_y: ti.f32,
-            strength: ti.f32,
-            radius: ti.f32
-        ):
-            """Apply mouse attraction force to particles."""
-            mouse_pos = ti.Vector([mouse_x, mouse_y])
-            
-            for i in particles:
-                if particles[i].active == 0:
-                    continue
-                    
-                pos = particles[i].pos
-                to_mouse = mouse_pos - pos
-                dist = to_mouse.norm()
-                
-                if dist > 1.0 and dist < radius:
-                    # Linear attraction force
-                    force = to_mouse.normalized() * (strength / dist)
-                    forces[i] += force
-        
-        @ti.kernel
-        def apply_boundary_repulsion(
-            particles: ti.template(),
-            forces: ti.template(),
-            world_width: ti.f32,
-            world_height: ti.f32,
-            margin: ti.f32,
-            strength: ti.f32
-        ):
-            """Apply boundary repulsion to keep particles in bounds."""
-            for i in particles:
-                if particles[i].active == 0:
-                    continue
-                    
-                pos = particles[i].pos
-                force = ti.Vector([0.0, 0.0])
-                
-                # Left/right boundaries
-                if pos[0] < margin:
-                    force[0] += strength * (margin - pos[0]) / margin
-                elif pos[0] > world_width - margin:
-                    force[0] -= strength * (pos[0] - (world_width - margin)) / margin
-                
-                # Top/bottom boundaries
-                if pos[1] < margin:
-                    force[1] += strength * (margin - pos[1]) / margin
-                elif pos[1] > world_height - margin:
-                    force[1] -= strength * (pos[1] - (world_height - margin)) / margin
-                    
-                forces[i] += force
-        
-        @ti.kernel
-        def apply_particle_separation(
-            particles: ti.template(),
-            forces: ti.template(),
-            separation_dist: ti.f32,
-            strength: ti.f32
-        ):
-            """Apply separation force between particles."""
-            for i in particles:
-                if particles[i].active == 0:
-                    continue
-                    
-                pos_i = particles[i].pos
-                
-                for j in range(i + 1, particles.shape[0]):
-                    if particles[j].active == 0:
-                        continue
-                        
-                    pos_j = particles[j].pos
-                    diff = pos_i - pos_j
-                    dist = diff.norm()
-                    
-                    if 0 < dist < separation_dist:
-                        # Repulsion force
-                        force = diff.normalized() * (strength / dist)
-                        forces[i] += force
-                        forces[j] -= force  # Newton's third law
-        
-        # Store kernel references
-        self.kernel_mouse_attraction = apply_mouse_attraction
-        self.kernel_boundary_repulsion = apply_boundary_repulsion
-        self.kernel_particle_separation = apply_particle_separation
-        
-        @ti.kernel
-        def update_particle_positions(particles: ti.template(), dt: ti.f32):
-            """Update particle positions based on their velocities."""
-            for i in particles:
-                if particles[i].active > 0:
-                    particles[i].pos += particles[i].vel * dt
-        
-        self.kernel_update_positions = update_particle_positions
-    
-    def add_expert_from_code(self, name: str, code: str, weight: float = 1.0) -> bool:
-        """Add an expert from code string.
-        
-        Args:
-            name: Expert name
-            code: Python code defining the expert
-            weight: Expert weight
-            
-        Returns:
-            True if expert was added successfully
-        """
+    def add_expert_from_code(self, name: str, code: str, weight: float = 1.0):
+        """Add an expert from raw code string."""
         expert = SimpleProgrammaticExpert(name, code, weight)
-        if expert.compile(self.poe_system.namespace):
-            if self.poe_system.add_expert(expert):
-                self._needs_recompile = True
-                return True
-        return False
+        self.add_expert(expert)
     
-    def add_builtin_expert(self, expert_type: str, weight: float = 1.0) -> bool:
-        """Add a built-in expert type.
+    async def add_expert_from_description(self, description: str, synthesizer, weight: float = 1.0):
+        """Generate and add expert from natural language description."""
+        # Use the synthesizer to generate code
+        code = await synthesizer.synthesize_expert(description)
         
-        Args:
-            expert_type: Type of expert ("mouse_attraction", "boundary", "separation")
-            weight: Expert weight
-            
-        Returns:
-            True if expert was added
-        """
-        # For now, we'll use a flag-based approach since dynamic kernel
-        # compilation is challenging in Taichi
-        if expert_type == "mouse_attraction":
-            self._enable_mouse_attraction = True
-            self._mouse_attraction_weight = weight
-            logger.info(f"Enabled mouse attraction (weight: {weight})")
-            return True
-        elif expert_type == "boundary":
-            self._enable_boundary = True
-            self._boundary_weight = weight
-            logger.info(f"Enabled boundary repulsion (weight: {weight})")
-            return True
-        elif expert_type == "separation":
-            self._enable_separation = True
-            self._separation_weight = weight
-            logger.info(f"Enabled particle separation (weight: {weight})")
-            return True
-        else:
-            logger.warning(f"Unknown expert type: {expert_type}")
-            return False
+        # Extract function name from code
+        import re
+        match = re.search(r'def\s+(\w+)', code)
+        name = match.group(1) if match else f"expert_{len(self.poe_system.experts)}"
+        
+        # Create and add expert
+        expert = SimpleProgrammaticExpert(name, code, weight)
+        self.add_expert(expert)
+        
+        logger.info(f"Added synthesized expert: {name}")
+        return expert
     
-    def update_context(self):
-        """Update the runtime context for experts."""
-        # Update mouse position
-        if hasattr(self.tv.ctx, 'i') and hasattr(self.tv.ctx, 'gui'):
-            try:
-                # Get mouse position from Tölvera context (already in pixel coordinates)
-                mouse_x = self.tv.ctx.i.field[0].x
-                mouse_y = self.tv.ctx.i.field[0].y
-                
-                # Only update if we have valid mouse coordinates
-                if mouse_x >= 0 and mouse_y >= 0:
-                    self.context["mouse_x"] = float(mouse_x)
-                    self.context["mouse_y"] = float(mouse_y)
-                
-                # Check mouse button press
-                self.context["mouse_pressed"] = self.tv.ctx.i.field[0].s == 1
-                
-                # Debug logging
-                if hasattr(self, '_debug_counter'):
-                    self._debug_counter += 1
-                else:
-                    self._debug_counter = 0
-                    
-                if self._debug_counter % 60 == 0:  # Log every second at 60fps
-                    logger.debug(f"Mouse pos: ({self.context['mouse_x']:.1f}, {self.context['mouse_y']:.1f})")
-            except Exception as e:
-                # Try alternate method using Taichi window
-                try:
-                    if hasattr(self.tv, 'ti') and hasattr(self.tv.ti, 'window'):
-                        mouse_pos = self.tv.ti.window.get_cursor_pos()
-                        # Taichi's get_cursor_pos() returns normalized coordinates (0-1)
-                        self.context["mouse_x"] = mouse_pos[0] * self.tv.x
-                        self.context["mouse_y"] = mouse_pos[1] * self.tv.y  # Don't invert Y
-                        self.context["mouse_pressed"] = self.tv.ti.window.is_pressed(ti.ui.LMB)
-                except Exception as e2:
-                    # Fallback - just keep previous values
-                    pass
+    def update_context(self, dt: float = 0.016):
+        """Update context with current state."""
+        self.context["dt"] = dt
+        self.context["time"] += dt
         
-        # Update time
-        self.context["time"] += self.context["dt"]
-        
-        # Update behavior state
-        if hasattr(self.tv.s, 'behavior'):
-            self.tv.s.behavior.field[0].mouse_x = self.context["mouse_x"]
-            self.tv.s.behavior.field[0].mouse_y = self.context["mouse_y"]
-            self.tv.s.behavior.field[0].time = self.context["time"]
-    
-    def apply_expert_forces(self):
-        """Apply all active expert forces to particles.
-        
-        This is the main method called during the render loop to
-        compute and apply behavior forces.
-        """
-        # Clear force accumulator
-        self.poe_system.clear_forces()
-        
-        # Apply built-in experts (simplified approach for now)
-        if hasattr(self, '_enable_mouse_attraction') and self._enable_mouse_attraction:
-            # Log only occasionally to avoid spam
-            if hasattr(self, '_debug_counter') and self._debug_counter % 120 == 0:
-                logger.debug(f"Applying mouse attraction at ({self.context['mouse_x']:.1f}, {self.context['mouse_y']:.1f})")
-            
-            self.kernel_mouse_attraction(
-                self.tv.p.field,
-                self.poe_system.force_accumulator,
-                self.context["mouse_x"],
-                self.context["mouse_y"],
-                strength=5.0 * self._mouse_attraction_weight,  # Reasonable strength
-                radius=300.0  # Reasonable radius
-            )
-        
-        if hasattr(self, '_enable_boundary') and self._enable_boundary:
-            self.kernel_boundary_repulsion(
-                self.tv.p.field,
-                self.poe_system.force_accumulator,
-                self.context["world_width"],
-                self.context["world_height"],
-                margin=50.0,
-                strength=0.5 * self._boundary_weight
-            )
-        
-        if hasattr(self, '_enable_separation') and self._enable_separation:
-            self.kernel_particle_separation(
-                self.tv.p.field,
-                self.poe_system.force_accumulator,
-                separation_dist=30.0,
-                strength=0.1 * self._separation_weight
-            )
-        
-        # Apply custom experts
-        # Note: This is where we apply dynamically generated experts
-        if len(self.poe_system.experts) > 0:
-            logger.debug(f"Applying {len(self.poe_system.experts)} custom experts")
-            self.poe_system.compute_expert_forces(self.context)
+        # Update mouse position if available
+        if hasattr(self.tv, 'mouse'):
+            self.context["mouse_x"] = float(self.tv.mouse.x)
+            self.context["mouse_y"] = float(self.tv.mouse.y)
     
     def update(self, dt: float = 0.016):
-        """Main update method called in Tölvera render loop.
-        
-        Args:
-            dt: Time step
-        """
+        """Main update method called in render loop."""
         # Update context
-        self.context["dt"] = dt
-        self.update_context()
+        self.update_context(dt)
         
-        # Apply expert forces
-        self.apply_expert_forces()
-        
-        # Apply forces to particles
-        self.poe_system.apply_forces_to_particles(dt, damping=0.98)
-        
-        # Update positions based on velocities
-        self.kernel_update_positions(self.tv.p.field, dt)
-        
-        # Debug: Check if any forces were applied (only occasionally)
-        if hasattr(self, '_debug_counter') and self._debug_counter % 300 == 0:  # Every 5 seconds at 60fps
-            # Sample a few particles to check their velocities
-            vel_sum = 0.0
-            for i in range(min(10, self.tv.pn)):
-                if self.tv.p.field[i].active > 0:
-                    vel = self.tv.p.field[i].vel
-                    vel_sum += (vel[0]**2 + vel[1]**2)**0.5
-            if vel_sum > 0.01:
-                logger.debug(f"Particles moving! Avg velocity: {vel_sum/10:.4f}")
-        
-        # NOTE: Don't call tv.p.update() as it may override our force applications
-        # Let the render loop handle position updates
+        # Compute and apply forces from all experts
+        self.poe_system.compute_and_apply_forces(self.context, dt)
     
-    def get_status(self) -> Dict[str, Any]:
-        """Get current agent status.
-        
-        Returns:
-            Status dictionary
+    def set_expert_weight(self, expert_name: str, weight: float):
+        """Update the weight of a specific expert."""
+        for expert in self.poe_system.experts:
+            if expert.name == expert_name:
+                expert.weight = weight
+                # Update in Taichi field
+                idx = self.poe_system.experts.index(expert)
+                self.poe_system.expert_weights[idx] = weight
+                logger.info(f"Updated weight for {expert_name} to {weight}")
+                return
+        logger.warning(f"Expert {expert_name} not found")
+    
+    def get_expert_info(self) -> List[Dict[str, Any]]:
+        """Get information about all experts."""
+        info = []
+        for i, expert in enumerate(self.poe_system.experts):
+            info.append({
+                "name": expert.name,
+                "weight": expert.weight,
+                "index": i,
+                "code_preview": expert.code[:100] + "..." if len(expert.code) > 100 else expert.code
+            })
+        return info
+    
+    def optimize_weights(self, target_behavior_data: np.ndarray, learning_rate: float = 0.01):
         """
-        status = {
-            "context": self.context,
-            "poe_system": self.poe_system.get_status(),
-            "builtin_experts": {
-                "mouse_attraction": getattr(self, '_enable_mouse_attraction', False),
-                "boundary": getattr(self, '_enable_boundary', False),
-                "separation": getattr(self, '_enable_separation', False),
-            }
-        }
-        return status
+        Optimize expert weights based on target behavior data.
+        
+        This is a simplified gradient descent approach. In practice,
+        you'd use more sophisticated optimization like L-BFGS.
+        """
+        # Get current particle positions
+        current_positions = self.tv.p.field.pos.to_numpy()
+        
+        # Compute loss (simplified - just MSE of positions)
+        loss = np.mean((current_positions - target_behavior_data) ** 2)
+        
+        # Gradient descent on weights (simplified)
+        for i, expert in enumerate(self.poe_system.experts):
+            # Numerical gradient estimation
+            eps = 0.001
+            
+            # Forward difference
+            original_weight = expert.weight
+            expert.weight = original_weight + eps
+            self.poe_system.expert_weights[i] = expert.weight
+            
+            # Recompute with perturbed weight
+            self.update(0.016)
+            new_positions = self.tv.p.field.pos.to_numpy()
+            new_loss = np.mean((new_positions - target_behavior_data) ** 2)
+            
+            # Compute gradient
+            gradient = (new_loss - loss) / eps
+            
+            # Update weight
+            expert.weight = original_weight - learning_rate * gradient
+            expert.weight = max(0.0, min(1.0, expert.weight))  # Clamp to [0, 1]
+            self.poe_system.expert_weights[i] = expert.weight
+        
+        logger.info(f"Optimization step complete. Loss: {loss}")
+        return loss
 
 
-class AsyncTolveraBehaviorAgent(TolveraBehaviorAgent):
-    """Async version of behavior agent for LLM integration.
-    
-    This version supports async operations for expert synthesis
-    and other LLM-based features.
-    """
+class AsyncTolveraBehaviorAgent(TolveraBehaviorAgentFixed):
+    """Async version of the behavior agent for use with async synthesizers."""
     
     def __init__(self, tolvera_instance):
-        """Initialize async behavior agent."""
         super().__init__(tolvera_instance)
-        self.synthesis_queue = asyncio.Queue()
-        self.synthesis_task = None
+        self._synthesis_queue = asyncio.Queue()
+        self._synthesis_task = None
     
-    async def add_expert_from_description(
-        self, 
-        description: str, 
-        synthesizer,
-        weight: float = 1.0
-    ) -> bool:
-        """Add an expert from natural language description.
-        
-        Args:
-            description: Natural language behavior description
-            synthesizer: Expert synthesizer instance
-            weight: Expert weight
-            
-        Returns:
-            True if expert was added successfully
-        """
-        try:
-            # Generate expert code
-            expert = await synthesizer.synthesize_expert(description)
-            
-            if expert:
-                expert.weight = weight
-                if self.poe_system.add_expert(expert):
-                    self._needs_recompile = True
-                    logger.info(f"Added expert from description: {expert.name}")
-                    return True
-                    
-        except Exception as e:
-            logger.error(f"Failed to add expert from description: {e}")
-            
-        return False
+    async def start_synthesis_worker(self):
+        """Start background worker for expert synthesis."""
+        self._synthesis_task = asyncio.create_task(self._synthesis_worker())
     
-    async def batch_add_experts(
-        self,
-        descriptions: List[str],
-        synthesizer,
-        weights: Optional[List[float]] = None
-    ) -> List[bool]:
-        """Add multiple experts from descriptions.
-        
-        Args:
-            descriptions: List of behavior descriptions
-            synthesizer: Expert synthesizer instance
-            weights: Optional list of weights
-            
-        Returns:
-            List of success flags
-        """
-        if weights is None:
-            weights = [1.0] * len(descriptions)
-            
-        results = []
-        for desc, weight in zip(descriptions, weights):
-            success = await self.add_expert_from_description(desc, synthesizer, weight)
-            results.append(success)
-            
-        return results
+    async def _synthesis_worker(self):
+        """Background worker that processes synthesis requests."""
+        while True:
+            try:
+                description, synthesizer, weight = await self._synthesis_queue.get()
+                await self.add_expert_from_description(description, synthesizer, weight)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Synthesis worker error: {e}")
+    
+    async def queue_expert_synthesis(self, description: str, synthesizer, weight: float = 1.0):
+        """Queue an expert for background synthesis."""
+        await self._synthesis_queue.put((description, synthesizer, weight))
+    
+    def stop(self):
+        """Stop the synthesis worker."""
+        if self._synthesis_task:
+            self._synthesis_task.cancel()
+
+
+# Convenience functions for common expert patterns
+
+def create_attract_expert(name: str, target_x: float, target_y: float, 
+                         strength: float = 50.0, max_distance: float = 200.0) -> SimpleProgrammaticExpert:
+    """Create an attraction expert to a fixed point."""
+    code = f"""@ti.func
+def {name}(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    pos = tv.p.field[i].pos
+    target = ti.Vector([{target_x}, {target_y}])
+    diff = target - pos
+    dist = diff.norm()
+    
+    force = ti.Vector([0.0, 0.0])
+    if 1.0 < dist < {max_distance}:
+        force = diff.normalized() * ({strength} / dist)
+    
+    return force
+"""
+    return SimpleProgrammaticExpert(name, code)
+
+
+def create_repel_expert(name: str, center_x: float, center_y: float,
+                       strength: float = 30.0, min_distance: float = 150.0) -> SimpleProgrammaticExpert:
+    """Create a repulsion expert from a fixed point."""
+    code = f"""@ti.func
+def {name}(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    pos = tv.p.field[i].pos
+    center = ti.Vector([{center_x}, {center_y}])
+    diff = pos - center
+    dist = diff.norm()
+    
+    force = ti.Vector([0.0, 0.0])
+    if 1.0 < dist < {min_distance}:
+        force = diff.normalized() * ({strength} / (dist * 0.1))
+    
+    return force
+"""
+    return SimpleProgrammaticExpert(name, code)
+
+
+def create_gravity_expert(name: str, gravity_strength: float = 9.8) -> SimpleProgrammaticExpert:
+    """Create a gravity expert that pulls particles downward."""
+    code = f"""@ti.func
+def {name}(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    # Simple downward gravity
+    return ti.Vector([0.0, {gravity_strength}])
+"""
+    return SimpleProgrammaticExpert(name, code)
+
+
+def create_vortex_expert(name: str, center_x: float, center_y: float,
+                        strength: float = 0.5, clockwise: bool = True) -> SimpleProgrammaticExpert:
+    """Create a vortex/swirl expert around a point."""
+    direction = -1.0 if clockwise else 1.0
+    code = f"""@ti.func
+def {name}(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    pos = tv.p.field[i].pos
+    center = ti.Vector([{center_x}, {center_y}])
+    diff = pos - center
+    dist = diff.norm()
+    
+    force = ti.Vector([0.0, 0.0])
+    if 10.0 < dist < 300.0:
+        # Perpendicular to radial direction
+        tangent = ti.Vector([-diff[1], diff[0]]).normalized()
+        force = tangent * ({strength} * {direction})
+    
+    return force
+"""
+    return SimpleProgrammaticExpert(name, code)
