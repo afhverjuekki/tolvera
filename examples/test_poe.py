@@ -10,8 +10,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import taichi as ti
 from tolvera import Tolvera
-from src.tolvera.llm.poe_core_fixed import PoEBehaviorSystemV2, SimpleProgrammaticExpert
-from src.tolvera.llm.poe_integration_fixed import TolveraBehaviorAgentFixed
+from tolvera.llm.poe_core import PoEBehaviorSystemV2, SimpleProgrammaticExpert
+from tolvera.llm.poe_integration import TolveraBehaviorAgentFixed
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
