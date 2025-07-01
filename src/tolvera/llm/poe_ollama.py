@@ -1,16 +1,14 @@
 """
 Ollama integration for PoE expert synthesis.
 
-This module provides the LLM integration for generating Taichi-compatible
+This module provides LLM integration for generating Taichi-compatible
 expert functions from natural language descriptions.
 """
 
 import logging
 import re
-import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 import subprocess
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -190,45 +188,55 @@ class PoEExpertSynthesizer:
         
         return len(errors) == 0, errors
     
-    async def synthesize_expert(self, description: str, context: Dict[str, Any] = {}) -> Dict[str, Any]:
+    async def synthesize_expert(self, description: str) -> Dict[str, Any]:
         """Synthesize a single expert from description."""
         
-        prompt = f"""Generate a Taichi kernel function that implements this particle behavior:
+        # Log the synthesis request
+        logger.info(f"Synthesizing expert for: '{description}'")
+        
+        prompt = f"""Generate a Taichi function that implements this particle behavior:
 "{description}"
-
-Context:
-- Window dimensions: {context.get('width', 800)}x{context.get('height', 600)}
-- Number of particles: {context.get('particle_count', 1000)}
 
 Rules:
 1. Use @ti.func decorator
-2. Function signature: def expert_NAME(particles: ti.template(), i: ti.i32, context: ti.template()) -> ti.math.vec2:
-3. Access particle state via particles[i].pos and particles[i].vel
+2. Function signature: def expert_NAME(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+3. Access particle state via tv.p.field[i].pos and tv.p.field[i].vel
 4. Return a 2D force vector using ti.Vector([fx, fy])
 5. Keep the implementation focused on ONE specific behavior
 6. Use Taichi math functions (ti.sqrt, ti.sin, etc.) not Python math
 7. Avoid division by zero with small epsilon values
 
+Available particle properties:
+- tv.p.field[i].pos - particle position (vec2)
+- tv.p.field[i].vel - particle velocity (vec2)
+- tv.p.field[i].mass - particle mass (float)
+- tv.p.field[i].size - particle size (float)
+- tv.p.field[i].species_id - particle type (int)
+- tv.x, tv.y - screen dimensions
+- tv.pn - total particle count
+
 Example structure:
 @ti.func
-def expert_attraction_to_center(particles: ti.template(), i: ti.i32, context: ti.template()) -> ti.math.vec2:
-    pos = particles[i].pos
-    center = ti.Vector([context[0], context[1]])  # Window center
-    
-    to_center = center - pos
-    dist = to_center.norm()
-    
-    if dist > 1.0:  # Avoid singularity
-        force = to_center.normalized() * (100.0 / dist)
-        return force
-    
-    return ti.Vector([0.0, 0.0])
+def expert_gravity(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    # Downward gravity force
+    gravity_strength = 9.8
+    return ti.Vector([0.0, gravity_strength])
 
 Generate ONLY the function code, no explanations:"""
 
+        # Log the prompt
+        logger.debug(f"LLM Prompt:\n{prompt}")
+
         try:
             response = await self.client.generate(prompt, temperature=0.7)
+            
+            # Log raw LLM response
+            logger.info(f"Raw LLM Response:\n{response}")
+            
             code = self.extract_code(response)
+            
+            # Log extracted code
+            logger.info(f"Extracted Code:\n{code}")
             
             # Validate code
             is_valid, errors = self.validate_expert_code(code)
@@ -237,7 +245,9 @@ Generate ONLY the function code, no explanations:"""
                 return {
                     "success": False,
                     "code": code,
-                    "errors": errors
+                    "errors": errors,
+                    "raw_response": response,
+                    "prompt": prompt
                 }
             
             # Extract function name
@@ -246,7 +256,9 @@ Generate ONLY the function code, no explanations:"""
                 return {
                     "success": False,
                     "code": code,
-                    "errors": ["Could not extract function name"]
+                    "errors": ["Could not extract function name"],
+                    "raw_response": response,
+                    "prompt": prompt
                 }
             
             name = name_match.group(1)
@@ -256,7 +268,9 @@ Generate ONLY the function code, no explanations:"""
                 "name": name,
                 "code": code,
                 "description": description,
-                "errors": []
+                "errors": [],
+                "raw_response": response,
+                "prompt": prompt
             }
             
         except Exception as e:
@@ -264,106 +278,125 @@ Generate ONLY the function code, no explanations:"""
             return {
                 "success": False,
                 "code": "",
-                "errors": [str(e)]
+                "errors": [str(e)],
+                "raw_response": "",
+                "prompt": prompt if 'prompt' in locals() else ""
             }
     
-    async def synthesize_multiple_experts(self, description: str, context: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
-        """Synthesize multiple experts from a complex description."""
+    async def synthesize_integration_kernel(self, expert_info: list) -> dict:
+        """Synthesize a Taichi kernel that integrates all active experts."""
         
-        # First, analyze the description to identify sub-behaviors
-        analysis_prompt = f"""Analyze this particle behavior description and identify the individual force components:
-"{description}"
+        logger.info(f"Synthesizing integration kernel for {len(expert_info)} experts")
+        
+        # Build expert descriptions for the prompt
+        expert_descriptions = []
+        for expert in expert_info:
+            expert_descriptions.append(f"  - {expert['name']}(tv, i) with weight {expert['weight']}")
+        
+        expert_list = "\n".join(expert_descriptions)
+        
+        prompt = f"""Generate a Taichi kernel that calls all these expert functions and applies their forces:
 
-Break it down into simple, independent behaviors. For each behavior, provide:
-1. A short name (e.g., "mouse_attraction", "edge_avoidance")
-2. A one-line description
+{expert_list}
 
-Output as a JSON list:
-[
-    {{"name": "behavior_name", "description": "what it does"}},
-    ...
-]
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
 
-Focus on atomic behaviors that can be combined. Output ONLY the JSON:"""
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:"""
 
         try:
-            response = await self.client.generate(analysis_prompt, temperature=0.3)
+            response = await self.client.generate(prompt, temperature=0.7)
             
-            # Extract JSON
-            json_match = re.search(r'\[.*\]', response, re.DOTALL)
-            if not json_match:
-                # Fallback to single expert
-                logger.warning("Could not parse behavior breakdown, creating single expert")
-                expert = await self.synthesize_expert(description, context)
-                return [expert] if expert["success"] else []
+            logger.info(f"Raw kernel response:\n{response}")
             
-            behaviors = json.loads(json_match.group(0))
+            code = self.extract_code(response)
             
-            # Synthesize each behavior
-            experts = []
-            for behavior in behaviors[:5]:  # Limit to 5 experts
-                expert = await self.synthesize_expert(
-                    behavior["description"], 
-                    context
-                )
-                if expert["success"]:
-                    # Override name with analyzed name
-                    expert["name"] = f"expert_{behavior['name']}"
-                    experts.append(expert)
+            logger.info(f"Extracted kernel code:\n{code}")
             
-            return experts
+            # Basic validation for kernel
+            is_valid, errors = self._validate_kernel_code(code)
+            if not is_valid:
+                logger.warning(f"Generated invalid kernel: {errors}")
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": errors,
+                    "raw_response": response,
+                    "prompt": prompt
+                }
+            
+            # Extract function name
+            name_match = re.search(r'def\s+(\w+)', code)
+            if not name_match:
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": ["Could not extract kernel function name"],
+                    "raw_response": response,
+                    "prompt": prompt
+                }
+            
+            name = name_match.group(1)
+            
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "errors": [],
+                "raw_response": response,
+                "prompt": prompt
+            }
             
         except Exception as e:
-            logger.error(f"Multiple expert synthesis failed: {e}")
-            # Fallback to single expert
-            expert = await self.synthesize_expert(description, context)
-            return [expert] if expert["success"] else []
+            logger.error(f"Kernel synthesis failed: {e}")
+            return {
+                "success": False,
+                "code": "",
+                "errors": [str(e)],
+                "raw_response": "",
+                "prompt": prompt if 'prompt' in locals() else ""
+            }
     
-    def synthesize_expert_sync(self, description: str, context: Dict[str, Any] = {}) -> Dict[str, Any]:
-        """Synchronous version of synthesize_expert."""
-        return asyncio.run(self.synthesize_expert(description, context))
-    
-    def synthesize_multiple_experts_sync(self, description: str, context: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
-        """Synchronous version of synthesize_multiple_experts."""
-        return asyncio.run(self.synthesize_multiple_experts(description, context))
-
-
-# Example usage
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test_synthesis():
-        synthesizer = PoEExpertSynthesizer()
+    def _validate_kernel_code(self, code: str) -> tuple:
+        """Validate kernel code for Taichi compatibility."""
+        errors = []
         
-        # Test single expert
-        print("Testing single expert synthesis...")
-        result = await synthesizer.synthesize_expert(
-            "particles should be attracted to the mouse position"
-        )
-        print(f"Success: {result['success']}")
-        if result['success']:
-            print(f"Name: {result['name']}")
-            print(f"Code:\n{result['code']}")
-        else:
-            print(f"Errors: {result['errors']}")
+        # Check for required structure
+        if "@ti.kernel" not in code:
+            errors.append("Missing @ti.kernel decorator")
         
-        print("\n" + "="*50 + "\n")
+        if "def " not in code:
+            errors.append("Missing function definition")
         
-        # Test multiple experts
-        print("Testing multiple expert synthesis...")
-        results = await synthesizer.synthesize_multiple_experts(
-            "particles should swarm towards the mouse but avoid getting too close, "
-            "while also avoiding the edges of the screen"
-        )
-        print(f"Generated {len(results)} experts:")
-        for i, expert in enumerate(results):
-            if expert['success']:
-                print(f"\n{i+1}. {expert['name']}:")
-                print(f"   Description: {expert['description']}")
-                print(f"   Code preview: {expert['code'][:100]}...")
-            else:
-                print(f"\n{i+1}. Failed: {expert['errors']}")
-    
-    # Run test
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(test_synthesis())
+        # Check for unsafe operations (same as expert validation)
+        unsafe_patterns = [
+            (r'exec\s*\(', "exec() is not allowed"),
+            (r'eval\s*\(', "eval() is not allowed"),
+            (r'__import__', "__import__ is not allowed"),
+            (r'open\s*\(', "file operations not allowed"),
+            (r'subprocess', "subprocess operations not allowed")
+        ]
+        
+        for pattern, message in unsafe_patterns:
+            if re.search(pattern, code):
+                errors.append(message)
+        
+        return len(errors) == 0, errors

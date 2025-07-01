@@ -1,0 +1,1235 @@
+timestamp,user_description,llm_prompt,raw_llm_response,extracted_code,success,errors,model_name,expert_name,synthesis_time_ms
+2025-06-30T22:24:25.221641,kernel,Integration kernel for 1 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_fall(tv, i) with weight 1.0
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            expert_fall_result = ti.Vector([0.0, 0.0])
+            
+            # Assuming each expert function is defined as expert_fall(i), with weight 1.0
+            for j in range(len(tv.p.field[i].force)):
+                expert_fall_result += tv.p.field[j].force[j] * 1.0
+            
+            combined_forces[i] += expert_fall_result
+            
+            # Apply damping and update position
+            tv.p.field[i].vel = (tv.p.field[i].vel + expert_fall_result) * 0.98
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt
+```
+
+Note: The `expert_fall` function call is a placeholder for the actual expert functions, which should be replaced with the respective force calculations as needed. Also, ensure that each particle's forces are correctly accumulated and applied in the loop where `combined_forces[i] += expert_fall_result`.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            expert_fall_result = ti.Vector([0.0, 0.0])
+            
+            # Assuming each expert function is defined as expert_fall(i), with weight 1.0
+            for j in range(len(tv.p.field[i].force)):
+                expert_fall_result += tv.p.field[j].force[j] * 1.0
+            
+            combined_forces[i] += expert_fall_result
+            
+            # Apply damping and update position
+            tv.p.field[i].vel = (tv.p.field[i].vel + expert_fall_result) * 0.98
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,5183.65
+2025-06-30T22:27:01.575066,kernel,Integration kernel for 1 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Call each expert function and accumulate forces with their weights
+            expert_gravity(ti.static(i), combined_forces[i])
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[0] += combined_forces[i][0]
+            tv.p.field[i].vel[1] += combined_forces[i][1]
+
+            # Damping
+            tv.p.field[i].vel[0] *= 0.98
+            tv.p.field[i].vel[1] *= 0.98
+
+            # Update position
+            tv.p.field[i].pos[0] += dt * (tv.p.field[i].vel[0])
+            tv.p.field[i].pos[1] += dt * (tv.p.field[i].vel[1])
+
+# Clear combined_forces at start of each particle
+for i in range(tv.pn):
+    combined_forces[i] = ti.Vector([0.0, 0.0])
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Call each expert function and accumulate forces with their weights
+            expert_gravity(ti.static(i), combined_forces[i])
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[0] += combined_forces[i][0]
+            tv.p.field[i].vel[1] += combined_forces[i][1]
+
+            # Damping
+            tv.p.field[i].vel[0] *= 0.98
+            tv.p.field[i].vel[1] *= 0.98
+
+            # Update position
+            tv.p.field[i].pos[0] += dt * (tv.p.field[i].vel[0])
+            tv.p.field[i].pos[1] += dt * (tv.p.field[i].vel[1])
+
+# Clear combined_forces at start of each particle
+for i in range(tv.pn):
+    combined_forces[i] = ti.Vector([0.0, 0.0])",True,,qwen2.5:3b,apply_all_experts,5142.62
+2025-06-30T22:27:01.577480,kernel,Integration kernel for 1 experts,,,,False,name 'combined_forces' is not defined,unknown,,5145.01
+2025-06-30T22:27:08.803036,kernel,Integration kernel for 2 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Expert Gravity
+            gravity_force = expert_gravity(ti.Field.vec(tv), i)
+            combined_forces[i] += gravity_force * 1.0
+            
+            # Expert Drift Right
+            drift_right_force = expert_drift_right(ti.Field.vec(tv), i)
+            combined_forces[i] += drift_right_force * 0.8
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[None] += combined_forces[i]
+            tv.p.field[i].vel[None] *= 0.98
+            tv.p.field[i].pos[None] += tv.p.field[i].vel[None] * dt
+```
+
+Note: The actual `expert_gravity` and `expert_drift_right` functions need to be defined elsewhere, as they are not provided in the prompt. These placeholders assume that these functions return a vector representing the force applied by each expert function.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Expert Gravity
+            gravity_force = expert_gravity(ti.Field.vec(tv), i)
+            combined_forces[i] += gravity_force * 1.0
+            
+            # Expert Drift Right
+            drift_right_force = expert_drift_right(ti.Field.vec(tv), i)
+            combined_forces[i] += drift_right_force * 0.8
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[None] += combined_forces[i]
+            tv.p.field[i].vel[None] *= 0.98
+            tv.p.field[i].pos[None] += tv.p.field[i].vel[None] * dt",True,,qwen2.5:3b,apply_all_experts,5003.15
+2025-06-30T22:27:17.970705,kernel,Integration kernel for 3 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert gravity
+            if tv.p.field[i].active > 0:
+                force = expert_gravity(ti.Field(i), i)
+                combined_forces[i] += force * dt
+            
+            # Apply expert drift right
+            if tv.p.field[i].active > 0:
+                force = expert_drift_right(ti.Field(i), i)
+                combined_forces[i] += force * dt * 0.8
+            
+            # Apply expert moving upwards
+            if tv.p.field[i].active > 0:
+                force = expert_moving_upwards(ti.Field(i), i)
+                combined_forces[i] += force * dt * 0.8
+
+            # Apply forces to velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt
+```
+
+Note: The `expert_gravity`, `expert_drift_right`, and `expert_moving_upwards` functions are not provided in this snippet, as per the rules. These would need to be defined elsewhere in your code for this kernel function to work correctly.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert gravity
+            if tv.p.field[i].active > 0:
+                force = expert_gravity(ti.Field(i), i)
+                combined_forces[i] += force * dt
+            
+            # Apply expert drift right
+            if tv.p.field[i].active > 0:
+                force = expert_drift_right(ti.Field(i), i)
+                combined_forces[i] += force * dt * 0.8
+            
+            # Apply expert moving upwards
+            if tv.p.field[i].active > 0:
+                force = expert_moving_upwards(ti.Field(i), i)
+                combined_forces[i] += force * dt * 0.8
+
+            # Apply forces to velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,6218.61
+2025-06-30T22:27:30.127510,kernel,Integration kernel for 4 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Initialize combined forces to zero vectors
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert forces with their weights
+            if i % 2 == 0:  # Example condition for gravity, can be replaced
+                combined_forces[i] += ti.expert_gravity(tv, i) * 1.0
+                
+            if i % 3 == 0:  # Example condition for drift_right, can be replaced
+                combined_forces[i] += ti.expert_drift_right(tv, i) * 0.8
+                
+            if i % 4 == 0:  # Example condition for moving_upwards, can be replaced
+                combined_forces[i] += ti.expert_moving_upwards(tv, i) * 0.8
+                
+            if i % 5 == 0:  # Example condition for attract_center, can be replaced
+                combined_forces[i] += ti.expert_attract_center(tv, i) * 0.5
+
+            # Apply accumulated force to particle velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position with new velocity
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+
+            # Clear combined forces for the next particle
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+```
+
+Note: The example conditions (e.g., `i % 2 == 0`, `i % 3 == 0`) are placeholders to demonstrate how expert function calls and weights could be applied. In a real scenario, these would need to be replaced with actual logic based on particle properties or other criteria.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Initialize combined forces to zero vectors
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert forces with their weights
+            if i % 2 == 0:  # Example condition for gravity, can be replaced
+                combined_forces[i] += ti.expert_gravity(tv, i) * 1.0
+                
+            if i % 3 == 0:  # Example condition for drift_right, can be replaced
+                combined_forces[i] += ti.expert_drift_right(tv, i) * 0.8
+                
+            if i % 4 == 0:  # Example condition for moving_upwards, can be replaced
+                combined_forces[i] += ti.expert_moving_upwards(tv, i) * 0.8
+                
+            if i % 5 == 0:  # Example condition for attract_center, can be replaced
+                combined_forces[i] += ti.expert_attract_center(tv, i) * 0.5
+
+            # Apply accumulated force to particle velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position with new velocity
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+
+            # Clear combined forces for the next particle
+            combined_forces[i] = ti.Vector([0.0, 0.0])",True,,qwen2.5:3b,apply_all_experts,8167.63
+2025-06-30T22:27:44.061242,kernel,Integration kernel for 5 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            if tv.p.field[i].id == 1:  # Assuming expert_gravity is called with id=1
+                gravity_force = ti.Vector([-tv.p.field[i].vel[1], tv.p.field[i].vel[0]])
+                combined_forces[i] += expert_gravity(tv, i) * dt * 1.0
+            
+            # Drift right
+            if tv.p.field[i].id == 2:  # Assuming expert_drift_right is called with id=2
+                drift_force = ti.Vector([dt * 0.8, 0])
+                combined_forces[i] += expert_drift_right(tv, i) * dt * 0.8
+            
+            # Moving upwards
+            if tv.p.field[i].id == 3:  # Assuming expert_moving_upwards is called with id=3
+                up_force = ti.Vector([0, -dt * 0.8])
+                combined_forces[i] += expert_moving_upwards(tv, i) * dt * 0.8
+            
+            # Attract center
+            if tv.p.field[i].id == 4:  # Assuming expert_attract_center is called with id=4
+                center_force = ti.Vector([-tv.p.field[i].pos[1], -tv.p.pos[0]])
+                combined_forces[i] += expert_attract_center(tv, i) * dt * 0.5
+            
+            # Repel center
+            if tv.p.field[i].id == 5:  # Assuming expert_repulsion is called with id=5
+                repel_force = ti.Vector([tv.p.pos[1], -tv.p.pos[0]])
+                combined_forces[i] += expert_repulsion(tv, i) * dt * 0.5
+
+            # Apply forces and update velocity
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].vel += combined_forces[i]
+            
+            # Update position with damping
+            tv.p.field[i].pos += (tv.p.field[i].vel + ti.Vector([0, 1e-2])) * dt
+```
+
+Note: The `id` values in the expert functions are assumed placeholders and would need to be replaced with actual logic or IDs specific to your implementation. Additionally, the `ti.pos` and `ti.vel` should be correctly defined based on how forces are applied within your simulation setup.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            if tv.p.field[i].id == 1:  # Assuming expert_gravity is called with id=1
+                gravity_force = ti.Vector([-tv.p.field[i].vel[1], tv.p.field[i].vel[0]])
+                combined_forces[i] += expert_gravity(tv, i) * dt * 1.0
+            
+            # Drift right
+            if tv.p.field[i].id == 2:  # Assuming expert_drift_right is called with id=2
+                drift_force = ti.Vector([dt * 0.8, 0])
+                combined_forces[i] += expert_drift_right(tv, i) * dt * 0.8
+            
+            # Moving upwards
+            if tv.p.field[i].id == 3:  # Assuming expert_moving_upwards is called with id=3
+                up_force = ti.Vector([0, -dt * 0.8])
+                combined_forces[i] += expert_moving_upwards(tv, i) * dt * 0.8
+            
+            # Attract center
+            if tv.p.field[i].id == 4:  # Assuming expert_attract_center is called with id=4
+                center_force = ti.Vector([-tv.p.field[i].pos[1], -tv.p.pos[0]])
+                combined_forces[i] += expert_attract_center(tv, i) * dt * 0.5
+            
+            # Repel center
+            if tv.p.field[i].id == 5:  # Assuming expert_repulsion is called with id=5
+                repel_force = ti.Vector([tv.p.pos[1], -tv.p.pos[0]])
+                combined_forces[i] += expert_repulsion(tv, i) * dt * 0.5
+
+            # Apply forces and update velocity
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].vel += combined_forces[i]
+            
+            # Update position with damping
+            tv.p.field[i].pos += (tv.p.field[i].vel + ti.Vector([0, 1e-2])) * dt",True,,qwen2.5:3b,apply_all_experts,11036.63
+2025-06-30T22:27:54.283708,kernel,Integration kernel for 6 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            gravity_force = expert_gravity(ti.Field(float3)(tv), i)
+            combined_forces[i] += gravity_force * 1.0
+            
+            # Drift right
+            drift_right_force = expert_drift_right(ti.Field(float3)(tv), i)
+            combined_forces[i] += drift_right_force * 0.8
+            
+            # Moving upwards
+            moving_upwards_force = expert_moving_upwards(ti.Field(float3)(tv), i)
+            combined_forces[i] += moving_upwards_force * 0.8
+            
+            # Attract center
+            attract_center_force = expert_attract_center(ti.Field(float3)(tv), i)
+            combined_forces[i] += attract_center_force * 0.5
+            
+            # Repulsion from center
+            repulsion_from_center_force = expert_repulsion(ti.Field(float3)(tv), i)
+            combined_forces[i] += repulsion_from_center_force * 0.5
+            
+            # Friction
+            friction_force = expert_friction(ti.Field(float3)(tv), i)
+            combined_forces[i] += friction_force * 0.5
+
+            tv.p.field[i].vel = combined_forces[i]
+            
+            # Apply damping
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            gravity_force = expert_gravity(ti.Field(float3)(tv), i)
+            combined_forces[i] += gravity_force * 1.0
+            
+            # Drift right
+            drift_right_force = expert_drift_right(ti.Field(float3)(tv), i)
+            combined_forces[i] += drift_right_force * 0.8
+            
+            # Moving upwards
+            moving_upwards_force = expert_moving_upwards(ti.Field(float3)(tv), i)
+            combined_forces[i] += moving_upwards_force * 0.8
+            
+            # Attract center
+            attract_center_force = expert_attract_center(ti.Field(float3)(tv), i)
+            combined_forces[i] += attract_center_force * 0.5
+            
+            # Repulsion from center
+            repulsion_from_center_force = expert_repulsion(ti.Field(float3)(tv), i)
+            combined_forces[i] += repulsion_from_center_force * 0.5
+            
+            # Friction
+            friction_force = expert_friction(ti.Field(float3)(tv), i)
+            combined_forces[i] += friction_force * 0.5
+
+            tv.p.field[i].vel = combined_forces[i]
+            
+            # Apply damping
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position
+            tv.p.field[i].pos[None] += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,7143.75
+2025-06-30T22:28:05.778182,kernel,Integration kernel for 7 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert forces
+            gravity_force = ti.expert_gravity(ti.static(i), i)
+            drift_right_force = ti.expert_drift_right(ti.static(i), i)
+            moving_upwards_force = ti.expert_moving_upwards(ti.static(i), i)
+            attract_center_force = ti.expert_attract_center(ti.static(i), i)
+            repulsion_force = ti.expert_repulsion(ti.static(i), i)
+            friction_force = ti.expert_friction(ti.static(i), i)
+            spiral_force = ti.expert_spiral(ti.static(i), i)
+
+            # Accumulate forces
+            combined_forces[i] += gravity_force * 1.0
+            combined_forces[i] += drift_right_force * 0.8
+            combined_forces[i] += moving_upwards_force * 0.8
+            combined_forces[i] += attract_center_force * 0.5
+            combined_forces[i] += repulsion_force * 0.5
+            combined_forces[i] -= friction_force * 0.5
+            combined_forces[i] += spiral_force * 0.3
+
+            # Apply forces to velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```
+
+Note: The above code assumes that the expert functions `expert_gravity`, `expert_drift_right`, etc., are defined elsewhere and correctly return a vector force. It also assumes that `tv.p.field` is an array of particles with active status, velocity, position, and other fields.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert forces
+            gravity_force = ti.expert_gravity(ti.static(i), i)
+            drift_right_force = ti.expert_drift_right(ti.static(i), i)
+            moving_upwards_force = ti.expert_moving_upwards(ti.static(i), i)
+            attract_center_force = ti.expert_attract_center(ti.static(i), i)
+            repulsion_force = ti.expert_repulsion(ti.static(i), i)
+            friction_force = ti.expert_friction(ti.static(i), i)
+            spiral_force = ti.expert_spiral(ti.static(i), i)
+
+            # Accumulate forces
+            combined_forces[i] += gravity_force * 1.0
+            combined_forces[i] += drift_right_force * 0.8
+            combined_forces[i] += moving_upwards_force * 0.8
+            combined_forces[i] += attract_center_force * 0.5
+            combined_forces[i] += repulsion_force * 0.5
+            combined_forces[i] -= friction_force * 0.5
+            combined_forces[i] += spiral_force * 0.3
+
+            # Apply forces to velocity and apply damping
+            tv.p.field[i].vel = combined_forces[i]
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,8230.62
+2025-06-30T22:28:19.244458,kernel,Integration kernel for 8 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+  - expert_orbit(tv, i) with weight 0.3
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Call expert functions
+            expert_gravity_result = ti.Vector([0.0, 0.0])
+            expert_drift_right_result = ti.Vector([0.0, 0.0])
+            expert_moving_upwards_result = ti.Vector([0.0, 0.0])
+            expert_attract_center_result = ti.Vector([0.0, 0.0])
+            expert_repulsion_result = ti.Vector([0.0, 0.0])
+            expert_friction_result = ti.Vector([0.0, 0.0])
+            expert_spiral_result = ti.Vector([0.0, 0.0])
+            expert_orbit_result = ti.Vector([0.0, 0.0])
+
+            combined_forces[i] += expert_gravity(tv.p.field[i], i) * 1.0
+            combined_forces[i] += expert_drift_right(tv.p.field[i], i) * 0.8
+            combined_forces[i] += expert_moving_upwards(tv.p.field[i], i) * 0.8
+            combined_forces[i] += expert_attract_center(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_repulsion(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_friction(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_spiral(tv.p.field[i], i) * 0.3
+            combined_forces[i] += expert_orbit(tv.p.field[i], i) * 0.3
+
+            # Apply forces to velocity
+            tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+            tv.p.field[i].vel += combined_forces[i]
+
+            # Apply damping and update position
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Call expert functions
+            expert_gravity_result = ti.Vector([0.0, 0.0])
+            expert_drift_right_result = ti.Vector([0.0, 0.0])
+            expert_moving_upwards_result = ti.Vector([0.0, 0.0])
+            expert_attract_center_result = ti.Vector([0.0, 0.0])
+            expert_repulsion_result = ti.Vector([0.0, 0.0])
+            expert_friction_result = ti.Vector([0.0, 0.0])
+            expert_spiral_result = ti.Vector([0.0, 0.0])
+            expert_orbit_result = ti.Vector([0.0, 0.0])
+
+            combined_forces[i] += expert_gravity(tv.p.field[i], i) * 1.0
+            combined_forces[i] += expert_drift_right(tv.p.field[i], i) * 0.8
+            combined_forces[i] += expert_moving_upwards(tv.p.field[i], i) * 0.8
+            combined_forces[i] += expert_attract_center(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_repulsion(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_friction(tv.p.field[i], i) * 0.5
+            combined_forces[i] += expert_spiral(tv.p.field[i], i) * 0.3
+            combined_forces[i] += expert_orbit(tv.p.field[i], i) * 0.3
+
+            # Apply forces to velocity
+            tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+            tv.p.field[i].vel += combined_forces[i]
+
+            # Apply damping and update position
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,9508.58
+2025-06-30T22:28:32.538781,kernel,Integration kernel for 9 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+  - expert_orbit(tv, i) with weight 0.3
+  - expert_Flocking(tv, i) with weight 0.3
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            gravity_force = expert_gravity(ti.Field[i], i)
+            combined_forces[i] += (1.0 / 5) * gravity_force
+            
+            # Drift right
+            drift_right_force = expert_drift_right(ti.Field[i], i)
+            combined_forces[i] += (0.8 / 5) * drift_right_force
+            
+            # Move upwards
+            move_upwards_force = expert_moving_upwards(ti.Field[i], i)
+            combined_forces[i] += (0.8 / 5) * move_upwards_force
+            
+            # Attract center
+            attract_center_force = expert_attract_center(ti.Field[i], i)
+            combined_forces[i] += (0.5 / 5) * attract_center_force
+            
+            # Repel center
+            repel_center_force = expert_repulsion(ti.Field[i], i)
+            combined_forces[i] += (0.5 / 5) * repel_center_force
+            
+            # Apply friction
+            friction_force = expert_friction(ti.Field[i], i)
+            combined_forces[i] -= (0.5 / 5) * friction_force
+            
+            # Spiral force
+            spiral_force = expert_spiral(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * spiral_force
+            
+            # Orbit force
+            orbit_force = expert_orbit(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * orbit_force
+            
+            # Flocking force
+            flocking_force = expert_Flocking(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * flocking_force
+
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Gravity
+            gravity_force = expert_gravity(ti.Field[i], i)
+            combined_forces[i] += (1.0 / 5) * gravity_force
+            
+            # Drift right
+            drift_right_force = expert_drift_right(ti.Field[i], i)
+            combined_forces[i] += (0.8 / 5) * drift_right_force
+            
+            # Move upwards
+            move_upwards_force = expert_moving_upwards(ti.Field[i], i)
+            combined_forces[i] += (0.8 / 5) * move_upwards_force
+            
+            # Attract center
+            attract_center_force = expert_attract_center(ti.Field[i], i)
+            combined_forces[i] += (0.5 / 5) * attract_center_force
+            
+            # Repel center
+            repel_center_force = expert_repulsion(ti.Field[i], i)
+            combined_forces[i] += (0.5 / 5) * repel_center_force
+            
+            # Apply friction
+            friction_force = expert_friction(ti.Field[i], i)
+            combined_forces[i] -= (0.5 / 5) * friction_force
+            
+            # Spiral force
+            spiral_force = expert_spiral(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * spiral_force
+            
+            # Orbit force
+            orbit_force = expert_orbit(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * orbit_force
+            
+            # Flocking force
+            flocking_force = expert_Flocking(ti.Field[i], i)
+            combined_forces[i] += (0.3 / 5) * flocking_force
+
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,8969.9
+2025-06-30T22:28:51.976066,kernel,Integration kernel for 10 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+  - expert_orbit(tv, i) with weight 0.3
+  - expert_Flocking(tv, i) with weight 0.3
+  - expert_bounce_walls(tv, i) with weight 0.4
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Expert Gravity
+            g_force = ti.Vector([-1.0, -1.0]) * (tv.p.field[i].mass * dt)
+            combined_forces[i] += expert_gravity(tv, i) * 1.0
+            
+            # Expert Drift Right
+            drift_right = ti.Vector([0.8, 0.0])
+            combined_forces[i] += expert_drift_right(tv, i) * 0.8
+            
+            # Expert Moving Upwards
+            moving_upwards = ti.Vector([0.0, 0.8])
+            combined_forces[i] += expert_moving_upwards(tv, i) * 0.8
+            
+            # Expert Attract Center
+            attract_center = ti.Vector([-1.5, -1.5]) - tv.p.field[i].pos
+            attract_force = attract_center.norm() ** (-2)
+            combined_forces[i] += expert_attract_center(tv, i) * 0.5 + attract_force
+            
+            # Expert Repulsion Center
+            repel_center = ti.Vector([1.5, 1.5]) - tv.p.field[i].pos
+            repel_force = repel_center.norm() ** (-2)
+            combined_forces[i] += expert_repulsion(tv, i) * 0.5 + repel_force
+            
+            # Expert Friction
+            friction = ti.Vector([0.0, 0.0]) - tv.p.field[i].vel
+            combined_forces[i] += expert_friction(tv, i) * 0.5 + friction
+            
+            # Expert Spiral
+            spiral_center = ti.Vector([-1.5, -1.5])
+            spiral_force = (tv.p.field[i].pos - spiral_center).norm() ** (-2)
+            combined_forces[i] += expert_spiral(tv, i) * 0.3 + spiral_force
+            
+            # Expert Orbit
+            orbit_center = ti.Vector([1.5, 1.5])
+            orbit_force = (tv.p.field[i].pos - orbit_center).norm() ** (-2)
+            combined_forces[i] += expert_orbit(tv, i) * 0.3 + orbit_force
+            
+            # Expert Flocking
+            flocking_center = ti.Vector([0.0, 0.0])
+            flocking_force = (tv.p.field[i].pos - flocking_center).norm() ** (-2)
+            combined_forces[i] += expert_Flocking(tv, i) * 0.3 + flocking_force
+            
+            # Expert Bounce
+            bounce_waves = ti.Vector([-1.5, -1.5]) - tv.p.field[i].pos
+            bounce_force = bounce_waves.norm() ** (-2)
+            combined_forces[i] += expert_bounce_wows(tv, i) * 0.4 + bounce_force
+            
+            # Apply accumulated force to particle
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].vel += combined_forces[i]
+            
+            # Update position
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```
+Note: The functions `expert_gravity`, `expert_drift_right`, etc., are not provided and would need to be implemented or replaced with appropriate force calculations based on the specific physics model.","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Expert Gravity
+            g_force = ti.Vector([-1.0, -1.0]) * (tv.p.field[i].mass * dt)
+            combined_forces[i] += expert_gravity(tv, i) * 1.0
+            
+            # Expert Drift Right
+            drift_right = ti.Vector([0.8, 0.0])
+            combined_forces[i] += expert_drift_right(tv, i) * 0.8
+            
+            # Expert Moving Upwards
+            moving_upwards = ti.Vector([0.0, 0.8])
+            combined_forces[i] += expert_moving_upwards(tv, i) * 0.8
+            
+            # Expert Attract Center
+            attract_center = ti.Vector([-1.5, -1.5]) - tv.p.field[i].pos
+            attract_force = attract_center.norm() ** (-2)
+            combined_forces[i] += expert_attract_center(tv, i) * 0.5 + attract_force
+            
+            # Expert Repulsion Center
+            repel_center = ti.Vector([1.5, 1.5]) - tv.p.field[i].pos
+            repel_force = repel_center.norm() ** (-2)
+            combined_forces[i] += expert_repulsion(tv, i) * 0.5 + repel_force
+            
+            # Expert Friction
+            friction = ti.Vector([0.0, 0.0]) - tv.p.field[i].vel
+            combined_forces[i] += expert_friction(tv, i) * 0.5 + friction
+            
+            # Expert Spiral
+            spiral_center = ti.Vector([-1.5, -1.5])
+            spiral_force = (tv.p.field[i].pos - spiral_center).norm() ** (-2)
+            combined_forces[i] += expert_spiral(tv, i) * 0.3 + spiral_force
+            
+            # Expert Orbit
+            orbit_center = ti.Vector([1.5, 1.5])
+            orbit_force = (tv.p.field[i].pos - orbit_center).norm() ** (-2)
+            combined_forces[i] += expert_orbit(tv, i) * 0.3 + orbit_force
+            
+            # Expert Flocking
+            flocking_center = ti.Vector([0.0, 0.0])
+            flocking_force = (tv.p.field[i].pos - flocking_center).norm() ** (-2)
+            combined_forces[i] += expert_Flocking(tv, i) * 0.3 + flocking_force
+            
+            # Expert Bounce
+            bounce_waves = ti.Vector([-1.5, -1.5]) - tv.p.field[i].pos
+            bounce_force = bounce_waves.norm() ** (-2)
+            combined_forces[i] += expert_bounce_wows(tv, i) * 0.4 + bounce_force
+            
+            # Apply accumulated force to particle
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].vel += combined_forces[i]
+            
+            # Update position
+            tv.p.field[i].pos += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,15272.98
+2025-06-30T22:29:03.314148,kernel,Integration kernel for 11 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+  - expert_orbit(tv, i) with weight 0.3
+  - expert_Flocking(tv, i) with weight 0.3
+  - expert_bounce_walls(tv, i) with weight 0.4
+  - expert_accelerate_random(tv, i) with weight 0.4
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Call each expert function and accumulate forces with their weights
+            gravity_force = expert_gravity(ti.Field(), i)
+            drift_right_force = expert_drift_right(ti.Field(), i)
+            moving_upwards_force = expert_moving_upwards(ti.Field(), i)
+            attract_center_force = expert_attract_center(ti.Field(), i)
+            repulsion_force = expert_repulsion(ti.Field(), i)
+            friction_force = expert_friction(ti.Field(), i)
+            spiral_force = expert_spiral(ti.Field(), i)
+            orbit_force = expert_orbit(ti.Field(), i)
+            flocking_force = expert_Flocking(ti.Field(), i)
+            bounce_washes_forces = expert_bounce_wows(ti.Field(), i)
+            accelerate_random_force = expert_accelerate_random(ti.Field(), i)
+
+            combined_forces[i] += gravity_force * 1.0
+            combined_forces[i] += drift_right_force * 0.8
+            combined_forces[i] += moving_upwards_force * 0.8
+            combined_forces[i] += attract_center_force * 0.5
+            combined_forces[i] -= repulsion_force * 0.5
+            combined_forces[i] += friction_force * 0.5
+            combined_forces[i] += spiral_force * 0.3
+            combined_forces[i] += orbit_force * 0.3
+            combined_forces[i] += flocking_force * 0.3
+            combined_forces[i] += bounce_washes_forces * 0.4
+            combined_forces[i] += accelerate_random_force * 0.4
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[None] = combined_forces[i]
+            tv.p.field[i].vel[None] *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Call each expert function and accumulate forces with their weights
+            gravity_force = expert_gravity(ti.Field(), i)
+            drift_right_force = expert_drift_right(ti.Field(), i)
+            moving_upwards_force = expert_moving_upwards(ti.Field(), i)
+            attract_center_force = expert_attract_center(ti.Field(), i)
+            repulsion_force = expert_repulsion(ti.Field(), i)
+            friction_force = expert_friction(ti.Field(), i)
+            spiral_force = expert_spiral(ti.Field(), i)
+            orbit_force = expert_orbit(ti.Field(), i)
+            flocking_force = expert_Flocking(ti.Field(), i)
+            bounce_washes_forces = expert_bounce_wows(ti.Field(), i)
+            accelerate_random_force = expert_accelerate_random(ti.Field(), i)
+
+            combined_forces[i] += gravity_force * 1.0
+            combined_forces[i] += drift_right_force * 0.8
+            combined_forces[i] += moving_upwards_force * 0.8
+            combined_forces[i] += attract_center_force * 0.5
+            combined_forces[i] -= repulsion_force * 0.5
+            combined_forces[i] += friction_force * 0.5
+            combined_forces[i] += spiral_force * 0.3
+            combined_forces[i] += orbit_force * 0.3
+            combined_forces[i] += flocking_force * 0.3
+            combined_forces[i] += bounce_washes_forces * 0.4
+            combined_forces[i] += accelerate_random_force * 0.4
+
+            # Apply accumulated force to particle
+            tv.p.field[i].vel[None] = combined_forces[i]
+            tv.p.field[i].vel[None] *= 0.98
+            tv.p.field[i].pos += tv.p.field[i].vel * dt",True,,qwen2.5:3b,apply_all_experts,9226.89
+2025-06-30T22:29:12.037632,kernel,Integration kernel for 12 experts,"Generate a Taichi kernel that calls all these expert functions and applies their forces:
+
+  - expert_gravity(tv, i) with weight 1.0
+  - expert_drift_right(tv, i) with weight 0.8
+  - expert_moving_upwards(tv, i) with weight 0.8
+  - expert_attract_center(tv, i) with weight 0.5
+  - expert_repulsion(tv, i) with weight 0.5
+  - expert_friction(tv, i) with weight 0.5
+  - expert_spiral(tv, i) with weight 0.3
+  - expert_orbit(tv, i) with weight 0.3
+  - expert_Flocking(tv, i) with weight 0.3
+  - expert_bounce_walls(tv, i) with weight 0.4
+  - expert_accelerate_random(tv, i) with weight 0.4
+  - expert_sine_wave(tv, i) with weight 0.3
+
+Rules:
+1. Use @ti.kernel decorator
+2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+3. For each particle i in range(tv.pn):
+   - Check if tv.p.field[i].active > 0
+   - Call each expert function and accumulate forces with their weights
+   - Apply accumulated force to tv.p.field[i].vel
+   - Apply damping: tv.p.field[i].vel *= 0.98
+   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
+4. Clear combined_forces[i] at start of each particle
+5. Use Taichi math functions (ti.Vector, etc.)
+
+Example structure for reference:
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            # Add forces from each expert...
+            # Apply to particle...
+
+Generate ONLY the kernel function code, no explanations:","```python
+@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert functions
+            force = expert_gravity(tv, i) * 1.0 + \
+                     expert_drift_right(tv, i) * 0.8 + \
+                     expert_moving_upwards(tv, i) * 0.8 + \
+                     expert_attract_center(tv, i) * 0.5 + \
+                     expert_repulsion(tv, i) * 0.5 + \
+                     expert_friction(tv, i) * 0.5 + \
+                     expert_spiral(tv, i) * 0.3 + \
+                     expert_orbit(tv, i) * 0.3 + \
+                     expert_Flocking(tv, i) * 0.3 + \
+                     expert_bounce_wallows(tv, i) * 0.4 + \
+                     expert_accelerate_random(tv, i) * 0.4 + \
+                     expert_sine_wave(tv, i) * 0.3
+            
+            combined_forces[i] += force
+            tv.p.field[i].vel = dt * force
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos[1:] += tv.p.field[i].vel
+```","@ti.kernel
+def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            combined_forces[i] = ti.Vector([0.0, 0.0])
+            
+            # Apply expert functions
+            force = expert_gravity(tv, i) * 1.0 + \
+                     expert_drift_right(tv, i) * 0.8 + \
+                     expert_moving_upwards(tv, i) * 0.8 + \
+                     expert_attract_center(tv, i) * 0.5 + \
+                     expert_repulsion(tv, i) * 0.5 + \
+                     expert_friction(tv, i) * 0.5 + \
+                     expert_spiral(tv, i) * 0.3 + \
+                     expert_orbit(tv, i) * 0.3 + \
+                     expert_Flocking(tv, i) * 0.3 + \
+                     expert_bounce_wallows(tv, i) * 0.4 + \
+                     expert_accelerate_random(tv, i) * 0.4 + \
+                     expert_sine_wave(tv, i) * 0.3
+            
+            combined_forces[i] += force
+            tv.p.field[i].vel = dt * force
+            tv.p.field[i].vel *= 0.98
+            tv.p.field[i].pos[1:] += tv.p.field[i].vel",True,,qwen2.5:3b,apply_all_experts,6490.46

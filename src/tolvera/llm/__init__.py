@@ -20,20 +20,32 @@ except ImportError:
 
 # PoE system imports
 from .poe_core import SimpleProgrammaticExpert, PoEBehaviorSystem
-from .poe_integration import TolveraBehaviorAgent, AsyncTolveraBehaviorAgent
-from .poe_synthesis import ExpertSynthesizer, SimpleSynthesizer
-from .poe_experts import ExpertLibrary
+from .poe_integration import TolveraBehaviorAgent
+from .poe_synthesis import PureLLMSynthesizer
+from .poe_experts import ExpertManager
+
+# Ollama integration (optional)
+try:
+    from .poe_ollama import PoEExpertSynthesizer, OllamaClient
+    _ollama_available = True
+except ImportError:
+    _ollama_available = False
 
 __all__ = [
     # PoE system
     "SimpleProgrammaticExpert",
-    "PoEBehaviorSystem", 
+    "PoEBehaviorSystem",
     "TolveraBehaviorAgent",
-    "AsyncTolveraBehaviorAgent",
-    "ExpertSynthesizer",
-    "SimpleSynthesizer",
-    "ExpertLibrary",
+    "PureLLMSynthesizer",
+    "ExpertManager",
 ]
+
+# Add Ollama exports if available
+if _ollama_available:
+    __all__.extend([
+        "PoEExpertSynthesizer",
+        "OllamaClient",
+    ])
 
 # Add legacy exports if available
 if _legacy_available:
