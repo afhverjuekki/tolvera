@@ -1,3 +1,4 @@
+
 """
 Simplified integration layer between PoE behavior system and Tölvera.
 
@@ -46,13 +47,10 @@ class TolveraBehaviorAgent:
         return expert
     
     async def add_expert_from_description(self, description: str, synthesizer: PoEExpertSynthesizer, weight: float = 1.0):
-        """Generate and add expert from natural language description."""
+        """Generate and add expert from natural language description using two-step process."""
         
-        # Set kernel synthesizer if not already set
-        if self.poe_system._kernel_synthesizer is None:
-            self.poe_system.set_kernel_synthesizer(synthesizer)
-        
-        # Synthesize expert
+        # Step 1: Synthesize expert @ti.func
+        logger.info(f"Step 1: Synthesizing expert function for: '{description}'")
         result = await synthesizer.synthesize_expert(description)
         
         if result["success"]:
@@ -64,16 +62,22 @@ class TolveraBehaviorAgent:
             expert.metadata["description"] = description
             expert.metadata["raw_llm_response"] = result.get("raw_response", "")
             
-            # Add expert to system
+            # Log the generated expert code
+            logger.info(f"Generated expert '{result['name']}' for description: '{description}'")
+            logger.debug(f"Generated code for '{result['name']}':{result['code']}")
+
+            # Add expert to system (this compiles the @ti.func and invalidates the kernel)
             self.poe_system.add_expert(expert)
             self.expert_manager.add_expert(result["name"], expert)
             
-            # Regenerate integration kernel
-            kernel_success = await self.poe_system._regenerate_kernel()
+            # Step 2: Regenerate integration @ti.kernel with all experts
+            logger.info(f"Step 2: Regenerating integration kernel for {len(self.poe_system.experts)} experts")
+            kernel_success = await self.poe_system.regenerate_integration_kernel(synthesizer)
             if not kernel_success:
-                logger.warning(f"Expert {result['name']} added but kernel regeneration failed")
+                logger.error(f"Expert {result['name']} added but kernel regeneration failed")
+                raise RuntimeError(f"Failed to regenerate integration kernel after adding expert {result['name']}")
             
-            logger.info(f"Successfully added synthesized expert: {result['name']}")
+            logger.info(f"Successfully added expert {result['name']} and regenerated integration kernel")
             return expert
         else:
             logger.error(f"Failed to synthesize expert: {result['errors']}")

@@ -18,12 +18,12 @@ class OllamaModelManager:
     
     def __init__(self):
         self.compatible_models = [
-            "qwen2.5:3b", "qwen2.5:7b", "qwen2.5-coder:7b",
+            "llama3.2:3b", "qwen2.5:7b", "qwen2.5-coder:7b",
             "gemma2:2b", "gemma2:9b",
             "llama3.2:3b", "llama3.2:1b",
             "mistral:7b", "mistral-nemo:12b"
         ]
-        self.default_model = "qwen2.5:3b"
+        self.default_model = "llama3.2:3b"
         
     def check_ollama_running(self) -> bool:
         """Check if Ollama is running."""
@@ -92,7 +92,7 @@ class OllamaModelManager:
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
-    def __init__(self, model_name: str = "qwen2.5:3b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str = "llama3.2:3b", base_url: str = "http://localhost:11434"):
         self.model_name = model_name
         self.base_url = base_url
         self.model_manager = OllamaModelManager()
@@ -183,7 +183,7 @@ class PoEExpertSynthesizer:
                 errors.append(message)
         
         # Check for Taichi-specific patterns
-        if re.search(r'math\.(sqrt|sin|cos|tan)', code):
+        if re.search(r'(?<!ti\.)math\.(sqrt|sin|cos|tan)', code):
             errors.append("Use ti.sqrt, ti.sin, ti.cos instead of Python math")
         
         return len(errors) == 0, errors
@@ -194,35 +194,90 @@ class PoEExpertSynthesizer:
         # Log the synthesis request
         logger.info(f"Synthesizing expert for: '{description}'")
         
-        prompt = f"""Generate a Taichi function that implements this particle behavior:
-"{description}"
+        prompt = f"""You are an expert Taichi programmer. Generate a single, complete Taichi function that implements a specific particle behavior.
 
-Rules:
-1. Use @ti.func decorator
-2. Function signature: def expert_NAME(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
-3. Access particle state via tv.p.field[i].pos and tv.p.field[i].vel
-4. Return a 2D force vector using ti.Vector([fx, fy])
-5. Keep the implementation focused on ONE specific behavior
-6. Use Taichi math functions (ti.sqrt, ti.sin, etc.) not Python math
-7. Avoid division by zero with small epsilon values
+Behavior description: "{description}"
 
-Available particle properties:
-- tv.p.field[i].pos - particle position (vec2)
-- tv.p.field[i].vel - particle velocity (vec2)
-- tv.p.field[i].mass - particle mass (float)
-- tv.p.field[i].size - particle size (float)
-- tv.p.field[i].species_id - particle type (int)
-- tv.x, tv.y - screen dimensions
-- tv.pn - total particle count
+Follow these rules precisely:
+1.  The function must have the decorator `@ti.func`.
+2.  The function signature must be `def expert_NAME(tv: ti.template(), i: ti.i32) -> ti.math.vec2:`, where `NAME` is a descriptive name based on the behavior (e.g., `gravity`, `attract_to_center`).
+3.  The function must return a 2D force vector: `ti.Vector([fx, fy])`. This vector will be added to the particle's velocity.
+4.  Access particle data using `tv.p.field[i]`. For example, `tv.p.field[i].pos` for position.
+5.  Use Taichi math functions like `ti.sqrt`, `ti.sin`, `ti.math.normalize`, etc. Do NOT use `math.sqrt`.
+6.  For type casting, use `ti.cast(value, ti.f32)`. Do NOT use `ti.f32(value)`.
+7.  **CRITICAL**: Do NOT use `return` inside of loops (`for`, `while`) or conditional blocks (`if`). Calculate forces and store them in variables, then return the final combined force at the end of the function.
+8.  Keep the function focused on a single, specific behavior as described. Do not add unrelated logic.
+9.  **CRITICAL**: All variables must be defined with a value before they are used.
 
-Example structure:
+Available Tolvera properties:
+- `tv.p.field[i].pos`: vec2, particle position
+- `tv.p.field[i].vel`: vec2, particle velocity
+- `tv.p.field[i].mass`: f32, particle mass
+- `tv.p.field[i].size`: f32, particle size
+- `tv.x`, `tv.y`: f32, screen dimensions
+- `tv.pn`: i32, total particle count
+
+---
+Good Example 1: Gravity
 @ti.func
 def expert_gravity(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
-    # Downward gravity force
-    gravity_strength = 9.8
+    # A simple, constant downward force.
+    gravity_strength = 0.05
     return ti.Vector([0.0, gravity_strength])
+---
+Good Example 2: Attraction to center
+@ti.func
+def expert_attract_to_center(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    # Force that pulls particle towards the screen center.
+    center = ti.Vector([tv.x / 2, tv.y / 2])
+    direction = center - tv.p.field[i].pos
+    # Normalize to get direction, handle zero-vector case.
+    direction_norm = ti.math.normalize(direction)
+    strength = 0.01
+    return direction_norm * strength
+---
+Good Example 3: Repulsion from other particles
+@ti.func
+def expert_repel_others(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    # Pushes particle away from nearby particles.
+    repulsion_force = ti.Vector([0.0, 0.0])
+    my_pos = tv.p.field[i].pos
+    repulsion_radius = 25.0
+    strength = 0.02
+    # This loop is OK because the return is outside of it.
+    for j in range(tv.pn):
+        if i != j:
+            other_pos = tv.p.field[j].pos
+            dist_vec = my_pos - other_pos
+            dist_mag = ti.math.length(dist_vec)
+            if dist_mag > 0 and dist_mag < repulsion_radius:
+                # Force is inversely proportional to distance
+                repulsion_force += ti.math.normalize(dist_vec) / dist_mag * strength
+    return repulsion_force
+---
+Good Example 4: Clockwise spiral motion
+@ti.func
+def expert_spiral_clockwise(tv: ti.template(), i: ti.i32) -> ti.math.vec2:
+    # Creates a spiral force by combining an inward pull with a tangential push.
+    center = ti.Vector([tv.x / 2, tv.y / 2])
+    to_center = center - tv.p.field[i].pos
+    
+    # Tangential force is perpendicular to the vector to the center.
+    # For clockwise, the perpendicular of (x, y) is (y, -x).
+    tangential_force = ti.Vector([to_center.y, -to_center.x])
+    
+    # Normalize forces to get pure direction
+    tangential_norm = ti.math.normalize(tangential_force)
+    inward_norm = ti.math.normalize(to_center)
+    
+    # Combine the forces. Adjust strengths to change spiral shape.
+    final_force = (tangential_norm * 0.02) + (inward_norm * 0.01)
+    return final_force
+---
 
-Generate ONLY the function code, no explanations:"""
+Now, generate the Taichi function for the description: "{description}".
+Generate ONLY the complete function code, starting with `@ti.func`. Do not include any explanations or markdown.
+"""''
 
         # Log the prompt
         logger.debug(f"LLM Prompt:\n{prompt}")
@@ -289,38 +344,34 @@ Generate ONLY the function code, no explanations:"""
         logger.info(f"Synthesizing integration kernel for {len(expert_info)} experts")
         
         # Build expert descriptions for the prompt
-        expert_descriptions = []
+        expert_calls = []
         for expert in expert_info:
-            expert_descriptions.append(f"  - {expert['name']}(tv, i) with weight {expert['weight']}")
-        
-        expert_list = "\n".join(expert_descriptions)
-        
-        prompt = f"""Generate a Taichi kernel that calls all these expert functions and applies their forces:
+            expert_calls.append(f"            total_force += {expert['name']}(tv, i) * {expert['weight']:.2f}")
+        expert_calls_str = "\n".join(expert_calls)
 
-{expert_list}
+        prompt = f"""You are a Taichi programmer. Your task is to generate a complete, precise Taichi kernel to integrate particle forces. Do not add any logic or functions that are not in the template.
 
-Rules:
-1. Use @ti.kernel decorator
-2. Function signature: def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
-3. For each particle i in range(tv.pn):
-   - Check if tv.p.field[i].active > 0
-   - Call each expert function and accumulate forces with their weights
-   - Apply accumulated force to tv.p.field[i].vel
-   - Apply damping: tv.p.field[i].vel *= 0.98
-   - Update position: tv.p.field[i].pos += tv.p.field[i].vel * dt
-4. Clear combined_forces[i] at start of each particle
-5. Use Taichi math functions (ti.Vector, etc.)
+Use this exact template:
 
-Example structure for reference:
 @ti.kernel
 def apply_all_experts(tv: ti.template(), combined_forces: ti.template(), dt: ti.f32):
     for i in range(tv.pn):
         if tv.p.field[i].active > 0:
-            combined_forces[i] = ti.Vector([0.0, 0.0])
-            # Add forces from each expert...
-            # Apply to particle...
+            # Initialise a total force for the particle
+            total_force = ti.Vector([0.0, 0.0])
 
-Generate ONLY the kernel function code, no explanations:"""
+            # Accumulate forces from all experts
+{expert_calls_str}
+
+            # Apply the final combined force to the particle
+            tv.p.field[i].vel += total_force * dt
+            # Apply simple damping to prevent runaway speeds
+            tv.p.field[i].vel *= 0.98
+            # Update particle position based on new velocity
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+
+Generate ONLY the complete kernel function code as defined in the template. Do not add any other text, explanations, or markdown formatting.
+"""
 
         try:
             response = await self.client.generate(prompt, temperature=0.7)

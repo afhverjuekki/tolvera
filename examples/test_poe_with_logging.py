@@ -57,7 +57,7 @@ async def test_with_logging():
     
     # Create LLM synthesizer
     print("🤖 Initializing LLM synthesizer...")
-    synthesizer = PureLLMSynthesizer(model_name="qwen2.5:3b")
+    synthesizer = PureLLMSynthesizer(model_name="llama3.2:3b")
     
     # Initialize particles
     @ti.kernel
@@ -190,7 +190,7 @@ async def test_with_logging():
     else:
         print("\n⚠️  No successful experts generated. Check:")
         print("   1. Ollama is running ('ollama serve')")
-        print("   2. Model is available ('ollama pull qwen2.5:3b')")
+        print("   2. Model is available ('ollama pull llama3.2:3b')")
         print("   3. Review the CSV file for error patterns")
 
 

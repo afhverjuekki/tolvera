@@ -80,10 +80,14 @@ class PureLLMSynthesizer:
         print("-"*80)
         
         # Log to CSV
+        # Sanitize prompt and raw response for CSV compatibility
+        sanitized_prompt = result.get("prompt", "").replace('"', "''")
+        sanitized_raw_response = result.get("raw_response", "").replace('"', "''")
+
         csv_logger.log_synthesis_attempt(
             user_description=description,
-            llm_prompt=result.get("prompt", ""),
-            raw_response=result.get("raw_response", ""),
+            llm_prompt=sanitized_prompt,
+            raw_response=sanitized_raw_response,
             extracted_code=result.get("code", ""),
             success=result["success"],
             errors=result.get("errors", []),

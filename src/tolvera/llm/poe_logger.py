@@ -8,6 +8,7 @@ to help analyze system performance and understand LLM limitations.
 import csv
 import time
 import os
+import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
@@ -36,13 +37,15 @@ class PoECSVLogger:
             'errors',
             'model_name',
             'expert_name',
-            'synthesis_time_ms'
+            'synthesis_time_ms',
+            'included_experts',  # For kernel synthesis: list of expert names
+            'expert_codes'  # For kernel synthesis: JSON dict of expert_name: code
         ]
         
         # Create file with headers if it doesn't exist
         if not os.path.exists(log_file):
             with open(log_file, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=self.fieldnames)
+                writer = csv.DictWriter(f, fieldnames=self.fieldnames, quoting=csv.QUOTE_ALL)
                 writer.writeheader()
         
         logger.info(f"Initialized PoE CSV logger: {log_file}")
@@ -57,7 +60,9 @@ class PoECSVLogger:
                             model_name: str,
                             expert_name: Optional[str],
                             synthesis_time_ms: float,
-                            synthesis_type: str = "expert"):
+                            synthesis_type: str = "expert",
+                            included_experts: Optional[list] = None,
+                            expert_codes: Optional[dict] = None):
         """Log a single synthesis attempt.
         
         Args:
@@ -70,6 +75,9 @@ class PoECSVLogger:
             model_name: LLM model used
             expert_name: Name of generated expert (if successful)
             synthesis_time_ms: Time taken for synthesis
+            synthesis_type: 'expert' or 'kernel'
+            included_experts: List of expert names included in kernel synthesis
+            expert_codes: Dict mapping expert names to their code
         """
         row = {
             'timestamp': datetime.now().isoformat(),
@@ -82,12 +90,14 @@ class PoECSVLogger:
             'errors': '|'.join(errors) if errors else '',
             'model_name': model_name,
             'expert_name': expert_name or '',
-            'synthesis_time_ms': round(synthesis_time_ms, 2)
+            'synthesis_time_ms': round(synthesis_time_ms, 2),
+            'included_experts': json.dumps(included_experts) if included_experts else '',
+            'expert_codes': json.dumps(expert_codes) if expert_codes else ''
         }
         
         try:
             with open(self.log_file, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=self.fieldnames)
+                writer = csv.DictWriter(f, fieldnames=self.fieldnames, quoting=csv.QUOTE_ALL)
                 writer.writerow(row)
             
             logger.debug(f"Logged synthesis attempt for '{user_description}' - Success: {success}")
