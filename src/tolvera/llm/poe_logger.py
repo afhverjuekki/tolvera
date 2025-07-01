@@ -20,11 +20,6 @@ class PoECSVLogger:
     """Logs PoE system interactions to CSV for analysis."""
     
     def __init__(self, log_file: str = "poe_llm_interactions.csv"):
-        """Initialize CSV logger.
-        
-        Args:
-            log_file: Path to CSV file (will be created if doesn't exist)
-        """
         self.log_file = log_file
         self.fieldnames = [
             'timestamp',
@@ -63,22 +58,6 @@ class PoECSVLogger:
                             synthesis_type: str = "expert",
                             included_experts: Optional[list] = None,
                             expert_codes: Optional[dict] = None):
-        """Log a single synthesis attempt.
-        
-        Args:
-            user_description: The behavior description from user
-            llm_prompt: The full prompt sent to LLM
-            raw_response: Raw LLM output
-            extracted_code: Code extracted from response
-            success: Whether synthesis succeeded
-            errors: List of error messages if failed
-            model_name: LLM model used
-            expert_name: Name of generated expert (if successful)
-            synthesis_time_ms: Time taken for synthesis
-            synthesis_type: 'expert' or 'kernel'
-            included_experts: List of expert names included in kernel synthesis
-            expert_codes: Dict mapping expert names to their code
-        """
         row = {
             'timestamp': datetime.now().isoformat(),
             'type': synthesis_type,
@@ -105,7 +84,6 @@ class PoECSVLogger:
             logger.error(f"Failed to write to CSV log: {e}")
     
     def get_summary_stats(self) -> Dict[str, Any]:
-        """Read log file and return summary statistics."""
         if not os.path.exists(self.log_file):
             return {"error": "Log file not found"}
         

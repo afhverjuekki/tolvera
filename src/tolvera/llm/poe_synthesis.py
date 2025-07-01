@@ -54,9 +54,7 @@ class PureLLMSynthesizer:
             ValueError if synthesis fails
         """
         
-        print("\n" + "="*80)
-        print(f"🎯 SYNTHESIZING EXPERT FOR: '{description}'")
-        print("="*80)
+        logger.info(f"Synthesizing expert for: '{description}'")
         
         # Start timing
         start_time = time.time()
@@ -68,26 +66,16 @@ class PureLLMSynthesizer:
         synthesis_time_ms = (time.time() - start_time) * 1000
         
         # Log the raw response
-        print("\n📝 RAW LLM RESPONSE:")
-        print("-"*80)
-        print(result.get("raw_response", "No response"))
-        print("-"*80)
+        logger.debug(f"Raw LLM response: {result.get('raw_response', 'No response')}")
         
         # Log the extracted code
-        print("\n💻 EXTRACTED CODE:")
-        print("-"*80)
-        print(result.get("code", "No code extracted"))
-        print("-"*80)
+        logger.debug(f"Extracted code: {result.get('code', 'No code extracted')}")
         
         # Log to CSV
-        # Sanitize prompt and raw response for CSV compatibility
-        sanitized_prompt = result.get("prompt", "").replace('"', "''")
-        sanitized_raw_response = result.get("raw_response", "").replace('"', "''")
-
         csv_logger.log_synthesis_attempt(
             user_description=description,
-            llm_prompt=sanitized_prompt,
-            raw_response=sanitized_raw_response,
+            llm_prompt=result.get("prompt", ""),
+            raw_response=result.get("raw_response", ""),
             extracted_code=result.get("code", ""),
             success=result["success"],
             errors=result.get("errors", []),
@@ -107,23 +95,16 @@ class PureLLMSynthesizer:
             expert.metadata["synthesis_method"] = "pure_llm"
             expert.metadata["raw_llm_response"] = result.get("raw_response", "")
             
-            print(f"\n✅ SUCCESS: Created expert '{result['name']}'")
-            print("="*80 + "\n")
+            logger.info(f"Successfully created expert '{result['name']}'")
             
             return expert
         else:
             # Log errors
-            print("\n❌ SYNTHESIS FAILED:")
-            for error in result.get("errors", ["Unknown error"]):
-                print(f"   - {error}")
-            print("="*80 + "\n")
+            logger.error(f"Synthesis failed: {result.get('errors', ['Unknown error'])}")
             
             raise ValueError(f"Failed to synthesize expert: {result.get('errors', ['Unknown error'])}")
     
-    def extract_function_name(self, code: str) -> Optional[str]:
-        """Extract function name from code."""
-        match = re.search(r'def\s+(\w+)', code)
-        return match.group(1) if match else None
+    
 
 
 async def create_expert_from_description(description: str, model_name: Optional[str] = None, weight: float = 1.0) -> SimpleProgrammaticExpert:

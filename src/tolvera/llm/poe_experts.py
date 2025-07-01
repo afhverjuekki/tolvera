@@ -20,27 +20,22 @@ class ExpertManager:
         logger.info("Initialized ExpertManager - no templates, only LLM-generated experts")
     
     def add_expert(self, name: str, expert: SimpleProgrammaticExpert):
-        """Add a dynamically generated expert."""
         self.experts[name] = expert
         logger.info(f"Added dynamic expert: {name}")
     
     def get_expert(self, name: str) -> SimpleProgrammaticExpert:
-        """Get an expert by name."""
         if name in self.experts:
             return self.experts[name]
         raise ValueError(f"Expert '{name}' not found. Available: {list(self.experts.keys())}")
     
     def list_experts(self) -> List[str]:
-        """List all available expert names."""
         return list(self.experts.keys())
     
     def clear_all(self):
-        """Remove all experts."""
         self.experts.clear()
         logger.info("Cleared all experts")
     
     def get_expert_info(self) -> List[Dict[str, Any]]:
-        """Get information about all experts."""
         return [{
             "name": name,
             "weight": expert.weight,

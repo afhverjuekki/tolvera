@@ -84,7 +84,7 @@ def main(**kwargs):
 '''
 
     # Combine all generated code
-    expert_code = "\n\n".join(agent.poe_system.generated_expert_code)
+    expert_code = "\n\n".join(agent.poe_system.generated_expert_code.values())
     kernel_code = agent.poe_system.generated_kernel_code or ""
 
     # Main render loop
@@ -93,7 +93,7 @@ def main(**kwargs):
     def render():
         # This calls the dynamically generated kernel
         if callable(apply_all_experts):
-             apply_all_experts(tv, tv.p.field, 0.016)
+             apply_all_experts(tv, 0.016)
 
         tv.px.clear()
         tv.px.particles(tv.p, tv.s.species)
@@ -165,10 +165,10 @@ async def demo_simple_behaviors():
     
     # Test different behavior descriptions
     behaviors = [
-        ("particles fall downward with strong initial gravity that then fades to a gentle trickle", 2),
-        ("particles are attracted to the center of the screen", 0.5),
+        # ("particles fall downward with strong initial gravity that then fades to a gentle trickle", 2),
+        # ("particles are attracted to the center of the screen", 0.5),
         ("particles move to the right", 5.0),
-        ("particles repel each other when they get too close", 0.3),
+        # ("particles repel each other when they get too close", 0.3),
     ]
     
     print(f"\n📝 Attempting to generate {len(behaviors)} behaviors:")
@@ -221,7 +221,8 @@ async def demo_simple_behaviors():
     
     @tv.render
     def render():
-        agent.update(dt=0.016) # Adjusted dt for smoother updates
+        if agent.poe_system._integration_kernel is not None:
+            agent.poe_system._integration_kernel(tv, 0.016)
         tv.px.clear()
         tv.px.particles(tv.p, tv.s.species)
         return tv.px
@@ -307,7 +308,8 @@ async def demo_custom_behavior():
     
     @tv.render
     def render():
-        agent.update(dt=0.016)
+        if agent.poe_system._integration_kernel is not None:
+            agent.poe_system._integration_kernel(tv, 0.016)
         return tv.px
     
     print("\n🎮 Running your custom behaviors...")
