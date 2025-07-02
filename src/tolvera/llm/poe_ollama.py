@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class OllamaModelManager:
-    
+
     def __init__(self):
         self.compatible_models = [
             "qwen2.5:3b", "qwen2.5:7b", "qwen2.5-coder:7b",
@@ -27,7 +27,8 @@ class OllamaModelManager:
         try:
             self.client = ollama.Client()
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize Ollama client. Is Ollama running? Error: {e}")
+            raise RuntimeError(
+                f"Failed to initialize Ollama client. Is Ollama running? Error: {e}")
 
     def check_ollama_running(self) -> bool:
         try:
@@ -35,29 +36,30 @@ class OllamaModelManager:
             return True
         except Exception:
             return False
-    
+
     def list_available_models(self) -> List[str]:
         try:
             models_info = self.client.list()
             return [model['name'] for model in models_info.get('models', [])]
         except Exception:
             return []
-    
-    def ensure_compatible_model(self, requested_model: Optional[str] = None) -> str:
+
+    def ensure_compatible_model(
+            self, requested_model: Optional[str] = None) -> str:
         available = self.list_available_models()
-        
+
         if requested_model and requested_model in available:
             logger.info(f"Using requested model: {requested_model}")
             return requested_model
-        
+
         for model in self.compatible_models:
             if model in available:
                 logger.info(f"Using compatible model: {model}")
                 return model
-        
+
         logger.warning(f"No compatible model found. Available: {available}")
         logger.info(f"Pulling default model: {self.default_model}")
-        
+
         try:
             ollama.pull(self.default_model)
             return self.default_model
@@ -66,19 +68,26 @@ class OllamaModelManager:
 
 
 class OllamaClient:
-    
+
     def __init__(self, model_name: str = "qwen2.5:3b"):
         self.model_name = model_name
         self.model_manager = OllamaModelManager()
-        
+
         if not self.model_manager.check_ollama_running():
-            raise RuntimeError("Ollama is not running. Please start it with 'ollama serve'")
-        
-        self.model_name = self.model_manager.ensure_compatible_model(model_name)
+            raise RuntimeError(
+                "Ollama is not running. Please start it with 'ollama serve'")
+
+        self.model_name = self.model_manager.ensure_compatible_model(
+            model_name)
         self.client = ollama.AsyncClient()
         logger.info(f"Initialized OllamaClient with model: {self.model_name}")
 
-    async def chat(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 2000, think: bool = False) -> str:
+    async def chat(self,
+                   messages: List[Dict[str,
+                                       str]],
+                   temperature: float = 0.7,
+                   max_tokens: int = 2000,
+                   think: bool = False) -> str:
         try:
             response = await self.client.chat(
                 model=self.model_name,
@@ -94,36 +103,43 @@ class OllamaClient:
         except Exception as e:
             raise RuntimeError(f"Ollama API error: {e}")
 
+
 class PoEExpertSynthesizer:
-    
+
     def __init__(self, model_name: Optional[str] = None):
         self.client = OllamaClient(model_name)
-        
+
     def extract_code(self, response: str) -> str:
         # Try to find code between triple backticks
-        code_match = re.search(r'```(?:python)?\n(.*?)```', response, re.DOTALL)
+        code_match = re.search(
+            r'```(?:python)?\n(.*?)```',
+            response,
+            re.DOTALL)
         if code_match:
             return code_match.group(1).strip()
-        
+
         # Try to find @ti.func definition directly
-        func_match = re.search(r'(@ti\.func.*?)(?=\n@|\n\n|\Z)', response, re.DOTALL)
+        func_match = re.search(
+            r'(@ti\.func.*?)(?=\n@|\n\n|\Z)',
+            response,
+            re.DOTALL)
         if func_match:
             return func_match.group(1).strip()
-        
+
         # Return cleaned response
         return response.strip()
-    
+
     def validate_expert_code(self, code: str) -> Tuple[bool, List[str]]:
         errors = []
-        
+
         # Check for required structure
         if "@ti.func" not in code:
             errors.append("Missing @ti.func decorator")
-        
+
         # Check for return statement
         if "return" not in code:
             errors.append("Missing return statement for force vector")
-        
+
         # Check for unsafe operations
         unsafe_patterns = [
             (r'exec\s*\(', "exec() is not allowed"),
@@ -132,24 +148,25 @@ class PoEExpertSynthesizer:
             (r'open\s*\(', "file operations not allowed"),
             (r'subprocess', "subprocess operations not allowed")
         ]
-        
+
         for pattern, message in unsafe_patterns:
             if re.search(pattern, code):
                 errors.append(message)
-        
+
         # Check for Taichi-specific patterns
         if re.search(r'(?<!ti\.)math\.(sqrt|sin|cos|tan)', code):
             errors.append("Use ti.sqrt, ti.sin, ti.cos instead of Python math")
-        
+
         return len(errors) == 0, errors
-    
+
     async def synthesize_expert(self, description: str) -> Dict[str, Any]:
-        
+
         logger.info(f"Synthesizing expert for: '{description}'")
-        
+
         system_prompt = load_prompt("expert_synthesis_system")
-        user_prompt = load_prompt("expert_synthesis_user").format(description=description)
-        
+        user_prompt = load_prompt("expert_synthesis_user").format(
+            description=description)
+
         messages = [
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_prompt}
@@ -159,38 +176,60 @@ class PoEExpertSynthesizer:
 
         try:
             response = await self.client.chat(messages, temperature=0.5, think=False)
-            
+
             logger.info(f"Raw LLM Response:\n{response}")
-            
+
             code = self.extract_code(response)
-            
+
             logger.info(f"Extracted Code:\n{code}")
-            
+
             is_valid, errors = self.validate_expert_code(code)
             if not is_valid:
                 logger.warning(f"Generated invalid code: {errors}")
-                return {"success": False, "code": code, "errors": errors, "raw_response": response}
-            
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": errors,
+                    "raw_response": response}
+
             name_match = re.search(r'def\s+(\w+)', code)
             if not name_match:
-                return {"success": False, "code": code, "errors": ["Could not extract function name"], "raw_response": response}
-            
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": ["Could not extract function name"],
+                    "raw_response": response}
+
             name = name_match.group(1)
-            
-            return {"success": True, "name": name, "code": code, "description": description, "errors": [], "raw_response": response}
-            
+
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "errors": [],
+                "raw_response": response}
+
         except Exception as e:
             logger.error(f"Expert synthesis failed: {e}")
-            return {"success": False, "code": "", "errors": [str(e)], "raw_response": ""}
-    
+            return {
+                "success": False,
+                "code": "",
+                "errors": [
+                    str(e)],
+                "raw_response": ""}
+
     async def synthesize_integration_kernel(self, expert_info: list) -> dict:
-        logger.info(f"Synthesizing integration kernel for {len(expert_info)} experts")
-        
-        expert_calls = [f"            total_force += {expert['name']}(pos, vel, mass) * {expert['weight']:.2f}" for expert in expert_info]
+        logger.info(
+            f"Synthesizing integration kernel for {len(expert_info)} experts")
+
+        expert_calls = [
+            f"            total_force += {expert['name']}(pos, vel, mass) * {expert['weight']:.2f}" for expert in expert_info]
         expert_calls_str = "\n".join(expert_calls)
 
         system_prompt = load_prompt("kernel_integration_system")
-        user_prompt = load_prompt("kernel_integration_user").format(expert_calls_str=expert_calls_str)
+        user_prompt = load_prompt("kernel_integration_user").format(
+            expert_calls_str=expert_calls_str)
         messages = [
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_prompt}
@@ -198,39 +237,57 @@ class PoEExpertSynthesizer:
 
         try:
             response = await self.client.chat(messages, temperature=0.0, think=False)
-            
+
             logger.info(f"Raw kernel response:\n{response}")
-            
+
             code = self.extract_code(response)
-            
+
             logger.info(f"Extracted kernel code:\n{code}")
-            
+
             is_valid, errors = self._validate_kernel_code(code)
             if not is_valid:
                 logger.warning(f"Generated invalid kernel: {errors}")
-                return {"success": False, "code": code, "errors": errors, "raw_response": response}
-            
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": errors,
+                    "raw_response": response}
+
             name_match = re.search(r'def\s+(\w+)', code)
             if not name_match:
-                return {"success": False, "code": code, "errors": ["Could not extract kernel function name"], "raw_response": response}
-            
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": ["Could not extract kernel function name"],
+                    "raw_response": response}
+
             name = name_match.group(1)
-            
-            return {"success": True, "name": name, "code": code, "errors": [], "raw_response": response}
-            
+
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "errors": [],
+                "raw_response": response}
+
         except Exception as e:
             logger.error(f"Kernel synthesis failed: {e}")
-            return {"success": False, "code": "", "errors": [str(e)], "raw_response": ""}
-    
+            return {
+                "success": False,
+                "code": "",
+                "errors": [
+                    str(e)],
+                "raw_response": ""}
+
     def _validate_kernel_code(self, code: str) -> tuple:
         errors = []
-        
+
         if "@ti.kernel" not in code:
             errors.append("Missing @ti.kernel decorator")
-        
+
         if "def " not in code:
             errors.append("Missing function definition")
-        
+
         unsafe_patterns = [
             (r'exec\s*\(', "exec() is not allowed"),
             (r'eval\s*\(', "eval() is not allowed"),
@@ -238,10 +295,9 @@ class PoEExpertSynthesizer:
             (r'open\s*\(', "file operations not allowed"),
             (r'subprocess', "subprocess operations not allowed")
         ]
-        
+
         for pattern, message in unsafe_patterns:
             if re.search(pattern, code):
                 errors.append(message)
-        
-        return len(errors) == 0, errors
 
+        return len(errors) == 0, errors

@@ -12,27 +12,29 @@ logger = logging.getLogger(__name__)
 
 
 class ExpertManager:
-    
+
     def __init__(self):
         self.experts = {}
-        logger.info("Initialized ExpertManager - no templates, only LLM-generated experts")
-    
+        logger.info(
+            "Initialized ExpertManager - no templates, only LLM-generated experts")
+
     def add_expert(self, name: str, expert: SimpleProgrammaticExpert):
         self.experts[name] = expert
         logger.info(f"Added dynamic expert: {name}")
-    
+
     def get_expert(self, name: str) -> SimpleProgrammaticExpert:
         if name in self.experts:
             return self.experts[name]
-        raise ValueError(f"Expert '{name}' not found. Available: {list(self.experts.keys())}")
-    
+        raise ValueError(
+            f"Expert '{name}' not found. Available: {list(self.experts.keys())}")
+
     def list_experts(self) -> List[str]:
         return list(self.experts.keys())
-    
+
     def clear_all(self):
         self.experts.clear()
         logger.info("Cleared all experts")
-    
+
     def get_expert_info(self) -> List[Dict[str, Any]]:
         return [{
             "name": name,
