@@ -1,12 +1,8 @@
 """
 CSV logging for PoE LLM interactions.
-
-This module provides comprehensive logging of all LLM interactions
-to help analyze system performance and understand LLM limitations.
 """
 
 import csv
-import time
 import os
 import json
 from datetime import datetime
@@ -17,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class PoECSVLogger:
-    """Logs PoE system interactions to CSV for analysis."""
     
     def __init__(self, log_file: str = "poe_llm_interactions.csv"):
         self.log_file = log_file
@@ -37,7 +32,6 @@ class PoECSVLogger:
             'expert_codes'  # For kernel synthesis: JSON dict of expert_name: code
         ]
         
-        # Create file with headers if it doesn't exist
         if not os.path.exists(log_file):
             with open(log_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=self.fieldnames, quoting=csv.QUOTE_ALL)
@@ -125,18 +119,9 @@ class PoECSVLogger:
             return {"error": f"Failed to read log file: {e}"}
 
 
-# Global logger instance (singleton pattern)
 _global_logger = None
 
 def get_logger(log_file: str = "poe_llm_interactions.csv") -> PoECSVLogger:
-    """Get or create the global PoE CSV logger.
-    
-    Args:
-        log_file: Path to CSV file
-        
-    Returns:
-        PoECSVLogger instance
-    """
     global _global_logger
     if _global_logger is None:
         _global_logger = PoECSVLogger(log_file)

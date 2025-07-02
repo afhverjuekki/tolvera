@@ -1,0 +1,47 @@
+Based on the rules above, generate the complete Taichi kernel using the provided expert calls.
+
+Expert Calls to Include:
+{expert_calls_str}
+
+Full Kernel Code:
+```python
+@ti.kernel
+def apply_all_experts():
+    """Main kernel that integrates all expert forces."""
+    dt = 0.016  # ~60fps timestep
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Get current particle state (cleaner approach)
+            pos = tv.p.field[i].pos
+            vel = tv.p.field[i].vel
+            mass = tv.p.field[i].mass
+            
+            # Initialize total force
+            total_force = ti.Vector([0.0, 0.0])
+            
+            # === ACCUMULATE FORCES FROM ALL EXPERTS ===
+{expert_calls_str}
+            
+            # Apply the combined force using F = ma
+            if mass > 0:
+                acceleration = total_force / mass
+                tv.p.field[i].vel += acceleration * dt
+                
+            # Apply damping
+            tv.p.field[i].vel *= 0.98
+            
+            # Update position based on new velocity
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+            
+            # Wrap particles around screen edges
+            if tv.p.field[i].pos[0] > tv.x:
+                tv.p.field[i].pos[0] = 0
+            elif tv.p.field[i].pos[0] < 0:
+                tv.p.field[i].pos[0] = tv.x
+                
+            if tv.p.field[i].pos[1] > tv.y:
+                tv.p.field[i].pos[1] = 0
+            elif tv.p.field[i].pos[1] < 0:
+                tv.p.field[i].pos[1] = tv.y
+```

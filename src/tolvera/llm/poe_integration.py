@@ -1,9 +1,8 @@
 
 """
-Simplified integration layer between PoE behavior system and Tölvera.
+Integration layer between PoE behavior system and Tölvera.
 
-This module provides the glue between the PoE expert system and Tölvera's
-particle system, handling force application without mouse tracking.
+This module provides the glue between the PoE expert system and Tölvera's particle system.
 """
 
 from typing import Dict, Any, List
@@ -15,13 +14,7 @@ from .poe_ollama import PoEExpertSynthesizer
 
 logger = logging.getLogger(__name__)
 
-
 class TolveraBehaviorAgent:
-    """
-    Simplified integration of PoE behavior system with Tölvera particle system.
-    
-    This version focuses on pure particle behaviors without mouse interaction.
-    """
     
     def __init__(self, tolvera_instance):
         self.tv = tolvera_instance
@@ -56,7 +49,6 @@ class TolveraBehaviorAgent:
             logger.info(f"Generated expert '{result['name']}' for description: '{description}'")
             logger.debug(f"Generated code for '{result['name']}':{result['code']}")
 
-            # Add expert to system (this compiles the @ti.func and invalidates the kernel)
             self.poe_system.add_expert(expert)
             self.expert_manager.add_expert(result["name"], expert)
             
