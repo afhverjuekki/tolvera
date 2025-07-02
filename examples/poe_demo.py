@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demonstrates the Product of Experts (PoE) behavior system for Tölvera, focusing on generating particle behaviors using LLMs.
+Demonstrates the Products of Programmatic Experts (PoE) behavior system for Tölvera, focusing on generating particle behaviors using LLMs.
 
 This example illustrates:
 1. Generating force behaviors from natural language descriptions via LLM.

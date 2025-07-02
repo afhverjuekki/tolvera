@@ -1,5 +1,5 @@
 """
-Product of Experts (PoE) Core Implementation
+Products of Programmatic Experts (PoE) Core Implementation
 
 This module implements the core PoE system for Tölvera particle behaviors using dynamically generated LLM code.
 """
