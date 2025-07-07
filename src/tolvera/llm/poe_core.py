@@ -53,7 +53,8 @@ class PoEBehaviorSystem:
         logger.info(
             f"Regenerating integration kernel for {len(self.experts)} experts")
 
-        expert_info = [{'name': expert.name, 'weight': expert.weight}
+        expert_info = [{'name': expert.name, 'weight': expert.weight,
+                        'is_interaction': expert.metadata.get('is_interaction', False)}
                        for expert in self.experts]
 
         # Collect natural language descriptions of experts for logging
@@ -164,7 +165,8 @@ class PoEBehaviorSystem:
         return [{
             "name": expert.name,
             "weight": expert.weight,
-            "code_preview": expert.code[:200] + "..." if len(expert.code) > 200 else expert.code
+            "code_preview": expert.code[:200] + "..." if len(expert.code) > 200 else expert.code,
+            "is_interaction": expert.metadata.get("is_interaction", False)
         } for expert in self.experts]
 
     def clear_experts(self):

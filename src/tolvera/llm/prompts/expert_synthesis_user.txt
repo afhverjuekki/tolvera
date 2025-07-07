@@ -1,1 +1,76 @@
-Now, generate the Taichi function for the description: "{description}".
+You are an expert Taichi programmer. Your task is to generate a single, complete, and syntactically perfect Taichi function (`@ti.func`) that calculates a force for a particle.
+
+CRITICAL INSTRUCTIONS:
+
+1.  Function Signature: The function signature is non-negotiable. It MUST be:
+    `def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:`
+    - Replace `NAME` with a descriptive name based on the behavior (e.g., `gravity`, `swirl`).
+    - The function takes the particle's `pos`, `vel`, `mass`, and `species` as direct inputs.
+    - The `species` parameter is an integer from 0 to tv.sn-1, identifying the particle type.
+
+2.  Decorator: The function MUST start with the `@ti.func` decorator.
+
+3.  Return Value: The function MUST return a 2D force vector, `ti.Vector([fx, fy])`. This force will be used to calculate the particle's acceleration.
+
+4.  Self-Contained Logic: The function should be self-contained. It should NOT access particle data via `tv.p.field[i]`. All necessary particle state is provided in the function arguments.
+
+5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed (e.g., for centering or boundary checks).
+
+6.  Taichi Best Practices:
+    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.math.normalize`, etc.
+    - Do NOT use the standard Python `math` library.
+    - For type casting, use `ti.cast(value, ti.f32)`.
+
+7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
+
+EXAMPLE 1: Gravity
+*User Request:* "Particles fall downward."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    # Apply a constant downward gravitational force.
+    # Gravity affects all species equally, so species parameter is not used
+    gravity_strength = 980.0  # A more realistic gravity value
+    return ti.Vector([0.0, -gravity_strength * mass])
+```
+
+EXAMPLE 2: Swirl around center
+*User Request:* "Particles swirl around the center of the screen."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_swirl(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    center = ti.Vector([tv.x / 2, tv.y / 2])
+    to_center = center - pos
+    dist = to_center.norm()
+    
+    force = ti.Vector([0.0, 0.0])
+    if dist > 1.0:
+        # Perpendicular vector for circular motion
+        perpendicular = ti.Vector([-to_center.y, to_center.x])
+        # Normalize safely
+        perp_norm = perpendicular.norm()
+        if perp_norm > 0.01:
+            force = (perpendicular / perp_norm) * 500.0 # Adjust strength as needed
+    return force
+```
+
+EXAMPLE 3: Species-specific behavior
+*User Request:* "Species 0 moves faster to the right."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_species_drift(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    # Apply rightward force only to species 0
+    force = ti.Vector([0.0, 0.0])
+    if species == 0:
+        force = ti.Vector([100.0, 0.0])
+    return force
+```
+
+Now generate a Taichi function for the following behavior:
+**User Request:** "{description}"

@@ -1,13 +1,16 @@
 Based on the rules above, generate the complete Taichi kernel using the provided expert calls.
 
-Expert Calls to Include:
-{expert_calls_str}
+Single-Particle Expert Calls to Include:
+{single_expert_calls_str}
+
+Interaction Expert Calls to Include:
+{interaction_expert_calls_str}
 
 Full Kernel Code:
 ```python
 @ti.kernel
 def apply_all_experts():
-    """Main kernel that integrates all expert forces."""
+    """Main kernel that integrates all expert forces including interactions."""
     dt = 0.016  # ~60fps timestep
     
     for i in range(tv.pn):
@@ -21,8 +24,15 @@ def apply_all_experts():
             # Initialize total force
             total_force = ti.Vector([0.0, 0.0])
             
-            # === ACCUMULATE FORCES FROM ALL EXPERTS ===
-{expert_calls_str}
+            # === ACCUMULATE SINGLE-PARTICLE FORCES ===
+{single_expert_calls_str}
+            
+            # === ACCUMULATE INTERACTION FORCES ===
+            for j in range(tv.pn):
+                if i != j and tv.p.field[j].active > 0:
+                    p1 = tv.p.field[i]
+                    p2 = tv.p.field[j]
+{interaction_expert_calls_str}
             
             # Apply the combined force using F = ma
             if mass > 0:

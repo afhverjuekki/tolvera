@@ -1,0 +1,77 @@
+You are an expert Taichi programmer. Your task is to generate a single, complete, and syntactically perfect Taichi function (`@ti.func`) that calculates an interaction force between two particles.
+
+CRITICAL INSTRUCTIONS:
+
+1.  Function Signature: The function signature is non-negotiable. It MUST be:
+    `def expert_NAME(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:`
+    - Replace `NAME` with a descriptive name based on the behavior (e.g., `attract_species`, `repel_all`).
+    - The function takes two particles, `p1` and `p2`, as input. These are structs containing fields like `pos`, `vel`, `mass`, and `species`.
+
+2.  Decorator: The function MUST start with the `@ti.func` decorator.
+
+3.  Return Value: The function MUST return a 2D force vector, `ti.Vector([fx, fy])`. This force will be applied to particle `p1`.
+
+4.  Accessing Particle Data: Access particle properties using the dot notation (e.g., `p1.pos`, `p2.species`).
+
+5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed.
+
+6.  Taichi Best Practices:
+    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.math.normalize`, etc.
+    - Do NOT use the standard Python `math` library.
+    - For type casting, use `ti.cast(value, ti.f32)`.
+    - Handle division by zero safely, especially when normalizing vectors.
+
+7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
+
+EXAMPLE 1: Species Attraction
+*User Request:* "Species 0 attracts species 1."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_attract_species(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    force = ti.Vector([0.0, 0.0])
+    if p1.species == 0 and p2.species == 1:
+        to_other = p2.pos - p1.pos
+        dist = to_other.norm()
+        if dist > 1.0 and dist < 100.0:
+            force = (to_other / dist) * 50.0
+    return force
+```
+
+EXAMPLE 2: General Repulsion
+*User Request:* "All particles repel each other."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_repel_all(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    to_other = p2.pos - p1.pos
+    dist = to_other.norm()
+    force = ti.Vector([0.0, 0.0])
+    if dist > 0.0 and dist < 50.0:
+        force = -(to_other / dist) * (1.0 / dist) * 200.0
+    return force
+```
+
+EXAMPLE 3: Species Chase
+*User Request:* "Species 0 chases species 1."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_chase_species(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    force = ti.Vector([0.0, 0.0])
+    if p1.species == 0 and p2.species == 1:
+        to_other = p2.pos - p1.pos
+        dist = to_other.norm()
+        if dist > 1.0 and dist < 300.0:
+            # Chase with distance-based strength
+            strength = 300.0 * (1.0 - dist / 300.0)
+            force = (to_other / dist) * strength
+    return force
+```
+
+User Request: {description}
+
+Generate the expert function code:

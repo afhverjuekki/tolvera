@@ -41,7 +41,8 @@ class TolveraBehaviorAgent:
         # Step 1: Synthesize expert @ti.func
         logger.info(
             f"Step 1: Synthesizing expert function for: '{description}'")
-        result = await synthesizer.synthesize_expert(description)
+        # Use interaction synthesis method which automatically detects interaction keywords
+        result = await synthesizer.synthesize_interaction_expert(description)
 
         if result["success"]:
             expert = SimpleProgrammaticExpert(
@@ -52,6 +53,7 @@ class TolveraBehaviorAgent:
             expert.metadata["description"] = description
             expert.metadata["raw_llm_response"] = result.get(
                 "raw_response", "")
+            expert.metadata["is_interaction"] = result.get("is_interaction", False)
 
             # Log the generated expert code
             logger.info(
