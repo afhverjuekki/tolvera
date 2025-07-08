@@ -31,6 +31,13 @@ CRITICAL DIRECTIVES:
     - ALWAYS update tv.p.field[i].vel and tv.p.field[i].pos directly.
     - The template code provided shows the exact pattern to follow.
 
-5.  Output Format: Your output MUST be ONLY the Python code for the kernel. Do NOT include any markdown, explanations, or other text.
+5.  Taichi Math Guidelines:
+    - For mathematical constants (pi, e), import from Python's math module: `from math import pi`
+    - Use Taichi math functions: `ti.sqrt()`, `ti.sin()`, `ti.cos()`, `ti.atan2()`
+    - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist!
+    - For vector operations: use `.norm()` for magnitude
+    - Always check for division by zero when needed
+
+6.  Output Format: Your output MUST be ONLY the Python code for the kernel. Do NOT include any markdown, explanations, or other text.
 
 This is a test of your ability to follow instructions precisely. Any deviation will result in particles that don't move.

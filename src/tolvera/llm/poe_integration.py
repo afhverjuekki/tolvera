@@ -10,7 +10,7 @@ import logging
 
 from .poe_core import PoEBehaviorSystem, SimpleProgrammaticExpert
 from .poe_experts import ExpertManager
-from .poe_ollama import PoEExpertSynthesizer
+from .poe_synthesis import PoEExpertSynthesizer
 
 logger = logging.getLogger(__name__)
 

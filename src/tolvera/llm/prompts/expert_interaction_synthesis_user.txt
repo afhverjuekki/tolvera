@@ -9,17 +9,19 @@ CRITICAL INSTRUCTIONS:
 
 2.  Decorator: The function MUST start with the `@ti.func` decorator.
 
-3.  Return Value: The function MUST return a 2D force vector, `ti.Vector([fx, fy])`. This force will be applied to particle `p1`.
+3.  Return Value: The function MUST return a 2D force vector, `ti.math.vec2(fx, fy)`. This force will be applied to particle `p1`.
 
 4.  Accessing Particle Data: Access particle properties using the dot notation (e.g., `p1.pos`, `p2.species`).
 
 5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed.
 
 6.  Taichi Best Practices:
-    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.math.normalize`, etc.
-    - Do NOT use the standard Python `math` library.
+    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
+    - For math constants (pi, e), import from Python: `from math import pi`
+    - NEVER use `ti.pi` or `ti.math.pi` - they don't exist!
     - For type casting, use `ti.cast(value, ti.f32)`.
     - Handle division by zero safely, especially when normalizing vectors.
+    - Always use `ti.math.vec2(x, y)` for vector construction, not `ti.Vector([x, y])`
 
 7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
 
@@ -30,7 +32,7 @@ EXAMPLE 1: Species Attraction
 ```python
 @ti.func
 def expert_attract_species(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
-    force = ti.Vector([0.0, 0.0])
+    force = ti.math.vec2(0.0, 0.0)
     if p1.species == 0 and p2.species == 1:
         to_other = p2.pos - p1.pos
         dist = to_other.norm()
@@ -48,7 +50,7 @@ EXAMPLE 2: General Repulsion
 def expert_repel_all(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
     to_other = p2.pos - p1.pos
     dist = to_other.norm()
-    force = ti.Vector([0.0, 0.0])
+    force = ti.math.vec2(0.0, 0.0)
     if dist > 0.0 and dist < 50.0:
         force = -(to_other / dist) * (1.0 / dist) * 200.0
     return force
@@ -61,7 +63,7 @@ EXAMPLE 3: Species Chase
 ```python
 @ti.func
 def expert_chase_species(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
-    force = ti.Vector([0.0, 0.0])
+    force = ti.math.vec2(0.0, 0.0)
     if p1.species == 0 and p2.species == 1:
         to_other = p2.pos - p1.pos
         dist = to_other.norm()
@@ -69,6 +71,23 @@ def expert_chase_species(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
             # Chase with distance-based strength
             strength = 300.0 * (1.0 - dist / 300.0)
             force = (to_other / dist) * strength
+    return force
+```
+
+EXAMPLE 4: Mutual Repulsion Between Species
+*User Request:* "Species 0 and species 1 repel each other."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_mutual_repel(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    # Check both directions for symmetric interaction
+    if (p1.species == 0 and p2.species == 1) or (p1.species == 1 and p2.species == 0):
+        to_other = p2.pos - p1.pos
+        dist = to_other.norm()
+        if dist > 0.0 and dist < 50.0:
+            force = -(to_other / dist) * (400.0 / (dist + 1.0))  # Strong repulsion with distance falloff
     return force
 ```
 

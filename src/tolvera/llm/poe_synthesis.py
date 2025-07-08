@@ -5,16 +5,394 @@ This module provides functionality to generate behavior experts from natural lan
 """
 
 import logging
-from typing import Optional
+import re
+from typing import Optional, List, Dict, Any, Tuple
 import asyncio
 import time
 
 from .poe_core import SimpleProgrammaticExpert
-from .poe_ollama import PoEExpertSynthesizer
+from .poe_ollama import OllamaClient
+from .prompt_loader import load_prompt
 from .poe_logger import get_logger
 
 logger = logging.getLogger(__name__)
 csv_logger = get_logger()
+
+
+class PoEExpertSynthesizer:
+
+    def __init__(self, model_name: Optional[str] = None):
+        self.client = OllamaClient(model_name)
+
+    def extract_code(self, response: str) -> str:
+        # Try to find code between triple backticks
+        code_match = re.search(
+            r'```(?:python)?\n(.*?)```',
+            response,
+            re.DOTALL)
+        if code_match:
+            return code_match.group(1).strip()
+
+        # Try to find @ti.func definition directly
+        func_match = re.search(
+            r'(@ti\.func.*?)(?=\n@|\n\n|\Z)',
+            response,
+            re.DOTALL)
+        if func_match:
+            return func_match.group(1).strip()
+
+        # Return cleaned response
+        return response.strip()
+
+    def validate_expert_code(self, code: str) -> Tuple[bool, List[str]]:
+        errors = []
+
+        # Check for required structure
+        if "@ti.func" not in code:
+            errors.append("Missing @ti.func decorator")
+
+        # Check for return statement
+        if "return" not in code:
+            errors.append("Missing return statement for force vector")
+
+        # Check for unsafe operations
+        unsafe_patterns = [
+            (r'exec\s*\(', "exec() is not allowed"),
+            (r'eval\s*\(', "eval() is not allowed"),
+            (r'__import__', "__import__ is not allowed"),
+            (r'open\s*\(', "file operations not allowed"),
+            (r'subprocess', "subprocess operations not allowed")
+        ]
+
+        for pattern, message in unsafe_patterns:
+            if re.search(pattern, code):
+                errors.append(message)
+
+        # Check for Taichi-specific patterns
+        if re.search(r'(?<!ti\.)math\.(sqrt|sin|cos|tan)', code):
+            errors.append("Use ti.sqrt, ti.sin, ti.cos instead of Python math")
+
+        return len(errors) == 0, errors
+
+    async def synthesize_expert(self, description: str) -> Dict[str, Any]:
+
+        logger.info(f"Synthesizing expert for: '{description}'")
+
+        system_prompt = load_prompt("expert_synthesis_system")
+        user_prompt = load_prompt("expert_synthesis_user").format(
+            description=description)
+
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ]
+
+        logger.debug(f"LLM Messages: {messages}")
+
+        try:
+            response = await self.client.chat(messages, temperature=0.5, think=False)
+
+            logger.info(f"Raw LLM Response:\n{response}")
+
+            code = self.extract_code(response)
+
+            logger.info(f"Extracted Code:\n{code}")
+
+            is_valid, errors = self.validate_expert_code(code)
+            if not is_valid:
+                logger.warning(f"Generated invalid code: {errors}")
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": errors,
+                    "raw_response": response}
+
+            name_match = re.search(r'def\s+expert_(\w+)', code)
+            if not name_match:
+                # Try fallback for functions without expert_ prefix
+                name_match = re.search(r'def\s+(\w+)', code)
+                if not name_match:
+                    return {
+                        "success": False,
+                        "code": code,
+                        "errors": ["Could not extract function name"],
+                        "raw_response": response}
+                name = name_match.group(1)
+            else:
+                name = name_match.group(1)
+
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "errors": [],
+                "raw_response": response}
+
+        except Exception as e:
+            logger.error(f"Expert synthesis failed: {e}")
+            return {
+                "success": False,
+                "code": "",
+                "errors": [
+                    str(e)],
+                "raw_response": ""}
+
+    async def synthesize_integration_kernel(self, expert_info: list) -> dict:
+        logger.info(
+            f"Synthesizing integration kernel for {len(expert_info)} experts")
+
+        # Separate single-particle and interaction experts
+        single_experts = [e for e in expert_info if not e.get('is_interaction', False)]
+        interaction_experts = [e for e in expert_info if e.get('is_interaction', False)]
+        
+        # Check if we have interaction experts
+        has_interactions = len(interaction_experts) > 0
+        
+        if has_interactions:
+            # Use the new interaction kernel template
+            single_expert_calls = [
+                f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}" 
+                for expert in single_experts
+            ]
+            single_expert_calls_str = "\n".join(single_expert_calls) if single_experts else "            # No single-particle experts"
+            
+            interaction_expert_calls = [
+                f"                    total_force += expert_{expert['name']}(p1, p2) * {expert['weight']:.2f}"
+                for expert in interaction_experts
+            ]
+            interaction_expert_calls_str = "\n".join(interaction_expert_calls)
+            
+            system_prompt = load_prompt("kernel_integration_interaction_system")
+            user_prompt = load_prompt("kernel_integration_interaction_user").format(
+                single_expert_calls_str=single_expert_calls_str,
+                interaction_expert_calls_str=interaction_expert_calls_str
+            )
+        else:
+            # Use the original single-particle kernel template
+            expert_calls = [
+                f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}" 
+                for expert in expert_info
+            ]
+            expert_calls_str = "\n".join(expert_calls)
+            
+            system_prompt = load_prompt("kernel_integration_system")
+            user_prompt = load_prompt("kernel_integration_user").format(
+                expert_calls_str=expert_calls_str
+            )
+        
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ]
+
+        try:
+            response = await self.client.chat(messages, temperature=0.0, think=False)
+
+            logger.info(f"Raw kernel response:\n{response}")
+
+            code = self.extract_code(response)
+            
+            # Fix common LLM errors
+            if "tv.p.p.field" in code:
+                logger.warning("Found tv.p.p.field error, fixing...")
+                code = code.replace("tv.p.p.field", "tv.p.field")
+
+            logger.info(f"Extracted kernel code:\n{code}")
+
+            is_valid, errors = self._validate_kernel_code(code)
+            if not is_valid:
+                logger.warning(f"Generated invalid kernel: {errors}")
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": errors,
+                    "raw_response": response}
+
+            name_match = re.search(r'def\s+(\w+)', code)
+            if not name_match:
+                return {
+                    "success": False,
+                    "code": code,
+                    "errors": ["Could not extract kernel function name"],
+                    "raw_response": response}
+
+            name = name_match.group(1)
+
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "errors": [],
+                "raw_response": response}
+
+        except Exception as e:
+            logger.error(f"Kernel synthesis failed: {e}")
+            return {
+                "success": False,
+                "code": "",
+                "errors": [
+                    str(e)],
+                "raw_response": ""}
+
+    def _validate_kernel_code(self, code: str) -> tuple:
+        errors = []
+
+        if "@ti.kernel" not in code:
+            errors.append("Missing @ti.kernel decorator")
+
+        if "def " not in code:
+            errors.append("Missing function definition")
+            
+        # Check for common errors
+        if "tv.p.p.field" in code:
+            errors.append("Found tv.p.p.field - should be tv.p.field")
+            
+        if "tv.px.field" in code and "tv.px.particles" not in code:
+            errors.append("Found tv.px.field - particles are accessed via tv.p.field, not tv.px.field")
+
+        unsafe_patterns = [
+            (r'exec\s*\(', "exec() is not allowed"),
+            (r'eval\s*\(', "eval() is not allowed"),
+            (r'__import__', "__import__ is not allowed"),
+            (r'open\s*\(', "file operations not allowed"),
+            (r'subprocess', "subprocess operations not allowed")
+        ]
+
+        for pattern, message in unsafe_patterns:
+            if re.search(pattern, code):
+                errors.append(message)
+
+        return len(errors) == 0, errors
+    
+    def _validate_expert_code(self, code: str) -> tuple:
+        """Validate expert function code"""
+        errors = []
+        
+        if "@ti.func" not in code:
+            errors.append("Missing @ti.func decorator")
+        
+        if "def expert_" not in code:
+            errors.append("Function must start with 'expert_'")
+        
+        if "return" not in code:
+            errors.append("Missing return statement")
+        
+        # Check for unsafe patterns
+        unsafe_patterns = [
+            (r'exec\s*\(', "exec() is not allowed"),
+            (r'eval\s*\(', "eval() is not allowed"),
+            (r'__import__', "__import__ is not allowed"),
+            (r'open\s*\(', "file operations not allowed"),
+            (r'subprocess', "subprocess operations not allowed")
+        ]
+        
+        for pattern, message in unsafe_patterns:
+            if re.search(pattern, code):
+                errors.append(message)
+        
+        return len(errors) == 0, errors
+    
+    async def classify_behavior(self, description: str) -> str:
+        """Use LLM to classify whether a behavior is single-particle or interaction based."""
+        logger.info(f"Classifying behavior: '{description}'")
+        
+        system_prompt = load_prompt("behavior_router_system")
+        user_prompt = load_prompt("behavior_router_user").format(description=description)
+        
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ]
+        
+        try:
+            response = await self.client.chat(messages, temperature=0.1, max_tokens=10)
+            classification = response.strip().upper()
+            
+            if classification not in ["SINGLE", "INTERACTION"]:
+                logger.warning(f"Invalid classification response: {response}. Defaulting to SINGLE.")
+                classification = "SINGLE"
+            
+            logger.info(f"Behavior classified as: {classification}")
+            return classification
+            
+        except Exception as e:
+            logger.error(f"Classification failed: {e}. Defaulting to SINGLE.")
+            return "SINGLE"
+    
+    async def synthesize_interaction_expert(self, description: str) -> dict:
+        logger.info(f"Synthesizing expert for: '{description}'")
+        
+        # Use the router to classify the behavior
+        classification = await self.classify_behavior(description)
+        
+        if classification == "SINGLE":
+            logger.info("Behavior classified as SINGLE-PARTICLE, using standard synthesis")
+            return await self.synthesize_expert(description)
+        
+        logger.info("Behavior classified as INTERACTION, using interaction synthesis")
+        
+        system_prompt = load_prompt("expert_interaction_synthesis_system")
+        user_prompt = load_prompt("expert_interaction_synthesis_user").format(description=description)
+
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ]
+
+        try:
+            response = await self.client.chat(messages, temperature=0.5, think=False)
+            
+            logger.info(f"Raw interaction response:\n{response}")
+            
+            code = self.extract_code(response)
+            
+            logger.info(f"Extracted interaction code:\n{code}")
+            
+            # Validate the interaction expert code
+            is_valid, errors = self._validate_expert_code(code)
+            if not is_valid:
+                logger.warning(f"Generated invalid interaction expert: {errors}")
+                return {
+                    "success": False,
+                    "code": code,
+                    "description": description,
+                    "errors": errors,
+                    "raw_response": response
+                }
+            
+            # Extract function name
+            name_match = re.search(r'def\s+expert_(\w+)', code)
+            if not name_match:
+                return {
+                    "success": False,
+                    "code": code,
+                    "description": description,
+                    "errors": ["Could not extract function name"],
+                    "raw_response": response
+                }
+            
+            name = name_match.group(1)
+            
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "errors": [],
+                "raw_response": response,
+                "is_interaction": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Interaction expert synthesis failed: {e}")
+            return {
+                "success": False,
+                "code": "",
+                "description": description,
+                "errors": [str(e)],
+                "raw_response": ""
+            }
 
 
 class PureLLMSynthesizer:

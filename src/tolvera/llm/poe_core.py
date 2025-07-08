@@ -87,6 +87,11 @@ class PoEBehaviorSystem:
 
             if result['success']:
                 self.generated_kernel_code = result.get('code', '')
+                
+                # Fix common LLM errors in kernel code
+                if "tv.p.p.field" in self.generated_kernel_code:
+                    logger.warning("Found tv.p.p.field error in kernel, fixing...")
+                    self.generated_kernel_code = self.generated_kernel_code.replace("tv.p.p.field", "tv.p.field")
 
                 # Combine all expert and kernel code into a single string
                 all_code = "\n\n".join(

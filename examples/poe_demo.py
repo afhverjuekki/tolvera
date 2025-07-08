@@ -45,6 +45,7 @@ Timestamp: {datetime.datetime.now()}
 import taichi as ti
 from tolvera import Tolvera, run
 import numpy as np
+from math import pi
 
 def main(**kwargs):
     tv = Tolvera(**kwargs)
@@ -169,13 +170,14 @@ async def demo_simple_behaviors():
         ("particles are attracted to the center", 10),
         ("particles move to the right", 20),
         ("particles rapidly repel the center of the screen", 5),
+        ("particles bounce around randomly", 8),
     ]
     
     print("\nAvailable behaviors:")
     for i, (desc, weight) in enumerate(behaviors, 1):
         print(f"{i}. {desc} (weight: {weight})")
     
-    choice = input("\nWhich behavior would you like to generate? (1-4): ").strip()
+    choice = input("\nWhich behavior would you like to generate? (1-5): ").strip()
     
     try:
         choice_idx = int(choice) - 1

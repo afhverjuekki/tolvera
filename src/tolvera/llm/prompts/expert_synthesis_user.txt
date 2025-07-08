@@ -10,65 +10,65 @@ CRITICAL INSTRUCTIONS:
 
 2.  Decorator: The function MUST start with the `@ti.func` decorator.
 
-3.  Return Value: The function MUST return a 2D force vector, `ti.Vector([fx, fy])`. This force will be used to calculate the particle's acceleration.
+3.  Return Value: The function MUST return a 2D force vector, `ti.math.vec2(fx, fy)`. This force will be used to calculate the particle's acceleration.
 
 4.  Self-Contained Logic: The function should be self-contained. It should NOT access particle data via `tv.p.field[i]`. All necessary particle state is provided in the function arguments.
 
 5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed (e.g., for centering or boundary checks).
 
 6.  Taichi Best Practices:
-    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.math.normalize`, etc.
-    - Do NOT use the standard Python `math` library.
-    - For type casting, use `ti.cast(value, ti.f32)`.
+    - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
+    - For math constants (pi, e), import from Python: `from math import pi`
+    - NEVER use `ti.pi` or `ti.math.pi` - they don't exist!
+    - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
+    - For type casting, use `ti.cast(value, ti.f32)`
+    - ALWAYS initialize force variable: `force = ti.math.vec2(0.0, 0.0)`
 
 7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
 
 EXAMPLE 1: Gravity
-*User Request:* "Particles fall downward."
+*User Request:* "Particles fall downward strongly."
 
 *Generated Code:*
 ```python
 @ti.func
 def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
-    # Apply a constant downward gravitational force.
-    # Gravity affects all species equally, so species parameter is not used
-    gravity_strength = 980.0  # A more realistic gravity value
-    return ti.Vector([0.0, -gravity_strength * mass])
+    gravity_strength = 300.0
+    return ti.math.vec2(0.0, -gravity_strength * mass)
 ```
 
-EXAMPLE 2: Swirl around center
-*User Request:* "Particles swirl around the center of the screen."
+EXAMPLE 2: Circular motion
+*User Request:* "Particles orbit around the center."
 
 *Generated Code:*
 ```python
 @ti.func
-def expert_swirl(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
-    center = ti.Vector([tv.x / 2, tv.y / 2])
+def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    center = ti.math.vec2(tv.x / 2, tv.y / 2)
     to_center = center - pos
     dist = to_center.norm()
     
-    force = ti.Vector([0.0, 0.0])
+    force = ti.math.vec2(0.0, 0.0)
     if dist > 1.0:
-        # Perpendicular vector for circular motion
-        perpendicular = ti.Vector([-to_center.y, to_center.x])
-        # Normalize safely
-        perp_norm = perpendicular.norm()
-        if perp_norm > 0.01:
-            force = (perpendicular / perp_norm) * 500.0 # Adjust strength as needed
+        angle = ti.atan2(to_center[1], to_center[0)
+        tangent_angle = angle + pi / 2
+        force_direction = ti.math.vec2(ti.cos(tangent_angle), ti.sin(tangent_angle))
+        force = force_direction * 250.0
     return force
 ```
 
-EXAMPLE 3: Species-specific behavior
-*User Request:* "Species 0 moves faster to the right."
+EXAMPLE 3: Random wiggle
+*User Request:* "Particles wiggle randomly."
 
 *Generated Code:*
 ```python
+from math import pi
+
 @ti.func
-def expert_species_drift(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
-    # Apply rightward force only to species 0
-    force = ti.Vector([0.0, 0.0])
-    if species == 0:
-        force = ti.Vector([100.0, 0.0])
+def expert_wiggle(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    angle = ti.random() * 2 * pi
+    force_magnitude = 150.0
+    force = ti.math.vec2(ti.cos(angle) * force_magnitude, ti.sin(angle) * force_magnitude)
     return force
 ```
 

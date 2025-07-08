@@ -1,5 +1,11 @@
 Based on the rules above, generate the complete Taichi kernel using the provided expert calls.
 
+CRITICAL: Copy the template below EXACTLY. Only replace {expert_calls_str} with the actual expert calls.
+DO NOT modify any other part of the template, especially:
+- DO NOT change tv.p.field[i] to tv.p.p.field[i]
+- DO NOT add ti.static() to tv.x or tv.y
+- DO NOT use local variables in the wrapping logic
+
 Expert Calls to Include:
 {expert_calls_str}
 
@@ -12,14 +18,14 @@ def apply_all_experts():
     
     for i in range(tv.pn):
         if tv.p.field[i].active > 0:
-            # Get current particle state (cleaner approach)
+            # Get current particle state 
             pos = tv.p.field[i].pos
             vel = tv.p.field[i].vel
             mass = tv.p.field[i].mass
             species = tv.p.field[i].species
             
             # Initialize total force
-            total_force = ti.Vector([0.0, 0.0])
+            total_force = ti.math.vec2(0.0, 0.0)
             
             # === ACCUMULATE FORCES FROM ALL EXPERTS ===
 {expert_calls_str}
@@ -37,12 +43,12 @@ def apply_all_experts():
             
             # Wrap particles around screen edges
             if tv.p.field[i].pos[0] > tv.x:
-                tv.p.field[i].pos[0] = 0
-            elif tv.p.field[i].pos[0] < 0:
+                tv.p.field[i].pos[0] = 0.0
+            elif tv.p.field[i].pos[0] < 0.0:
                 tv.p.field[i].pos[0] = tv.x
                 
             if tv.p.field[i].pos[1] > tv.y:
-                tv.p.field[i].pos[1] = 0
-            elif tv.p.field[i].pos[1] < 0:
+                tv.p.field[i].pos[1] = 0.0
+            elif tv.p.field[i].pos[1] < 0.0:
                 tv.p.field[i].pos[1] = tv.y
 ```
