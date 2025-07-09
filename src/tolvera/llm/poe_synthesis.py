@@ -14,6 +14,9 @@ from .poe_core import SimpleProgrammaticExpert
 from .poe_ollama import OllamaClient
 from .prompt_loader import load_prompt
 from .poe_logger import get_logger
+from .taichi_error_detector import TaichiErrorDetector
+from .taichi_error_corrector import TaichiErrorCorrector
+from .kernel_accumulator import KernelAccumulator
 
 logger = logging.getLogger(__name__)
 csv_logger = get_logger()
@@ -21,8 +24,13 @@ csv_logger = get_logger()
 
 class PoEExpertSynthesizer:
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, 
+                 accumulator_path: str = "generated_kernels/kernels_repository.py"):
         self.client = OllamaClient(model_name)
+        self.error_detector = TaichiErrorDetector()
+        self.error_corrector = TaichiErrorCorrector(model_name)
+        self.auto_correct = auto_correct
+        self.kernel_accumulator = KernelAccumulator(accumulator_path)
 
     def extract_code(self, response: str) -> str:
         # Try to find code between triple backticks
@@ -99,13 +107,46 @@ class PoEExpertSynthesizer:
             logger.info(f"Extracted Code:\n{code}")
 
             is_valid, errors = self.validate_expert_code(code)
+            
+            # Run error detector for additional checks
+            detected_errors = self.error_detector.detect_errors(code)
+            if detected_errors:
+                error_summary = self.error_detector.get_error_summary(detected_errors)
+                logger.warning(f"Detected {len(detected_errors)} potential issues in generated code")
+                logger.warning(f"Error summary: {error_summary}")
+                
+                # Add detected errors to the response for logging
+                detected_error_messages = [
+                    f"Line {e['line']}: {e['severity']} - {e['message']}" 
+                    for e in detected_errors if e['severity'] == 'error'
+                ]
+                errors.extend(detected_error_messages)
+            
+            # Attempt auto-correction if enabled and there are errors
+            correction_result = None
+            if self.auto_correct and (not is_valid or (detected_errors and any(e['severity'] == 'error' for e in detected_errors))):
+                logger.info("Attempting automatic error correction...")
+                correction_result = await self.error_corrector.correct_errors(code)
+                
+                if correction_result['success']:
+                    logger.info(f"Successfully corrected code after {correction_result['attempts']} attempts")
+                    code = correction_result['corrected_code']
+                    # Re-validate the corrected code
+                    is_valid, errors = self.validate_expert_code(code)
+                    detected_errors = correction_result['final_errors']
+                else:
+                    logger.warning("Auto-correction did not resolve all errors")
+            
             if not is_valid:
                 logger.warning(f"Generated invalid code: {errors}")
                 return {
                     "success": False,
                     "code": code,
                     "errors": errors,
-                    "raw_response": response}
+                    "raw_response": response,
+                    "detected_errors": detected_errors,
+                    "correction_attempted": correction_result is not None,
+                    "correction_result": correction_result}
 
             name_match = re.search(r'def\s+expert_(\w+)', code)
             if not name_match:
@@ -121,13 +162,35 @@ class PoEExpertSynthesizer:
             else:
                 name = name_match.group(1)
 
+            # Save successful kernel to accumulator
+            kernel_uuid = ""
+            try:
+                additional_metadata = {
+                    "description": description,
+                    "corrected": correction_result is not None
+                }
+                kernel_uuid = self.kernel_accumulator.save_kernel(
+                    code=code,
+                    prompt=description,
+                    model=self.client.model_name,
+                    kernel_type="expert",
+                    additional_metadata=additional_metadata
+                )
+                logger.info(f"Saved expert kernel with UUID: {kernel_uuid}")
+            except Exception as e:
+                logger.warning(f"Failed to save kernel to accumulator: {e}")
+            
             return {
                 "success": True,
                 "name": name,
                 "code": code,
                 "description": description,
                 "errors": [],
-                "raw_response": response}
+                "raw_response": response,
+                "detected_errors": detected_errors if detected_errors else [],
+                "correction_attempted": correction_result is not None,
+                "correction_result": correction_result,
+                "kernel_uuid": kernel_uuid}
 
         except Exception as e:
             logger.error(f"Expert synthesis failed: {e}")
@@ -201,13 +264,29 @@ class PoEExpertSynthesizer:
             logger.info(f"Extracted kernel code:\n{code}")
 
             is_valid, errors = self._validate_kernel_code(code)
+            
+            # Run error detector for additional checks
+            detected_errors = self.error_detector.detect_errors(code)
+            if detected_errors:
+                error_summary = self.error_detector.get_error_summary(detected_errors)
+                logger.warning(f"Detected {len(detected_errors)} potential issues in kernel code")
+                logger.warning(f"Error summary: {error_summary}")
+                
+                # Add detected errors to the response for logging
+                detected_error_messages = [
+                    f"Line {e['line']}: {e['severity']} - {e['message']}" 
+                    for e in detected_errors if e['severity'] == 'error'
+                ]
+                errors.extend(detected_error_messages)
+            
             if not is_valid:
                 logger.warning(f"Generated invalid kernel: {errors}")
                 return {
                     "success": False,
                     "code": code,
                     "errors": errors,
-                    "raw_response": response}
+                    "raw_response": response,
+                    "detected_errors": detected_errors}
 
             name_match = re.search(r'def\s+(\w+)', code)
             if not name_match:
@@ -219,12 +298,35 @@ class PoEExpertSynthesizer:
 
             name = name_match.group(1)
 
+            # Save successful integration kernel to accumulator
+            kernel_uuid = ""
+            try:
+                # Build expert list for metadata
+                expert_names = [e['name'] for e in expert_info]
+                additional_metadata = {
+                    "expert_count": len(expert_info),
+                    "experts": expert_names,
+                    "has_interactions": any(e.get('is_interaction', False) for e in expert_info)
+                }
+                kernel_uuid = self.kernel_accumulator.save_kernel(
+                    code=code,
+                    prompt=f"Integration kernel for experts: {', '.join(expert_names)}",
+                    model=self.client.model_name,
+                    kernel_type="integration",
+                    additional_metadata=additional_metadata
+                )
+                logger.info(f"Saved integration kernel with UUID: {kernel_uuid}")
+            except Exception as e:
+                logger.warning(f"Failed to save integration kernel to accumulator: {e}")
+            
             return {
                 "success": True,
                 "name": name,
                 "code": code,
                 "errors": [],
-                "raw_response": response}
+                "raw_response": response,
+                "detected_errors": detected_errors if detected_errors else [],
+                "kernel_uuid": kernel_uuid}
 
         except Exception as e:
             logger.error(f"Kernel synthesis failed: {e}")
@@ -351,6 +453,21 @@ class PoEExpertSynthesizer:
             
             # Validate the interaction expert code
             is_valid, errors = self._validate_expert_code(code)
+            
+            # Run error detector for additional checks
+            detected_errors = self.error_detector.detect_errors(code)
+            if detected_errors:
+                error_summary = self.error_detector.get_error_summary(detected_errors)
+                logger.warning(f"Detected {len(detected_errors)} potential issues in interaction expert code")
+                logger.warning(f"Error summary: {error_summary}")
+                
+                # Add detected errors to the response for logging
+                detected_error_messages = [
+                    f"Line {e['line']}: {e['severity']} - {e['message']}" 
+                    for e in detected_errors if e['severity'] == 'error'
+                ]
+                errors.extend(detected_error_messages)
+            
             if not is_valid:
                 logger.warning(f"Generated invalid interaction expert: {errors}")
                 return {
@@ -358,7 +475,8 @@ class PoEExpertSynthesizer:
                     "code": code,
                     "description": description,
                     "errors": errors,
-                    "raw_response": response
+                    "raw_response": response,
+                    "detected_errors": detected_errors
                 }
             
             # Extract function name
@@ -374,6 +492,24 @@ class PoEExpertSynthesizer:
             
             name = name_match.group(1)
             
+            # Save successful interaction kernel to accumulator
+            kernel_uuid = ""
+            try:
+                additional_metadata = {
+                    "description": description,
+                    "is_interaction": True
+                }
+                kernel_uuid = self.kernel_accumulator.save_kernel(
+                    code=code,
+                    prompt=description,
+                    model=self.client.model_name,
+                    kernel_type="expert",
+                    additional_metadata=additional_metadata
+                )
+                logger.info(f"Saved interaction expert kernel with UUID: {kernel_uuid}")
+            except Exception as e:
+                logger.warning(f"Failed to save interaction kernel to accumulator: {e}")
+            
             return {
                 "success": True,
                 "name": name,
@@ -381,7 +517,9 @@ class PoEExpertSynthesizer:
                 "description": description,
                 "errors": [],
                 "raw_response": response,
-                "is_interaction": True
+                "is_interaction": True,
+                "detected_errors": detected_errors if detected_errors else [],
+                "kernel_uuid": kernel_uuid
             }
             
         except Exception as e:
@@ -397,10 +535,10 @@ class PoEExpertSynthesizer:
 
 class PureLLMSynthesizer:
 
-    def __init__(self, model_name: Optional[str] = None):
-        self.synthesizer = PoEExpertSynthesizer(model_name)
+    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True):
+        self.synthesizer = PoEExpertSynthesizer(model_name, auto_correct)
         logger.info(
-            f"Initialized PureLLMSynthesizer with model: {model_name or 'default'}")
+            f"Initialized PureLLMSynthesizer with model: {model_name or 'default'}, auto_correct: {auto_correct}")
 
     async def synthesize_expert(
             self,
@@ -419,6 +557,9 @@ class PureLLMSynthesizer:
         logger.debug(
             f"Extracted code: {result.get('code', 'No code extracted')}")
 
+        # Extract correction info
+        correction_result = result.get("correction_result", None)
+        
         csv_logger.log_synthesis_attempt(
             user_description=description,
             llm_prompt=result.get("prompt", ""),
@@ -428,7 +569,12 @@ class PureLLMSynthesizer:
             errors=result.get("errors", []),
             model_name=self.synthesizer.client.model_name,
             expert_name=result.get("name", None),
-            synthesis_time_ms=synthesis_time_ms
+            synthesis_time_ms=synthesis_time_ms,
+            detected_errors=result.get("detected_errors", []),
+            correction_attempted=result.get("correction_attempted", False),
+            correction_succeeded=correction_result['success'] if correction_result else False,
+            correction_history=correction_result['correction_history'] if correction_result else None,
+            final_code=correction_result['corrected_code'] if correction_result and correction_result['success'] else result.get("code", "")
         )
 
         if result["success"]:

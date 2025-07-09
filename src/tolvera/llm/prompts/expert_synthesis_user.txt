@@ -15,6 +15,7 @@ CRITICAL INSTRUCTIONS:
 4.  Self-Contained Logic: The function should be self-contained. It should NOT access particle data via `tv.p.field[i]`. All necessary particle state is provided in the function arguments.
 
 5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed (e.g., for centering or boundary checks).
+    - CRITICAL: Always use `tv.x` and `tv.y` to access screen dimensions. NEVER use `tv[0]` or `tv[1]` - Tolvera does NOT support subscript notation!
 
 6.  Taichi Best Practices:
     - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
@@ -42,6 +43,8 @@ EXAMPLE 2: Circular motion
 
 *Generated Code:*
 ```python
+from math import pi
+
 @ti.func
 def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
@@ -50,7 +53,7 @@ def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti
     
     force = ti.math.vec2(0.0, 0.0)
     if dist > 1.0:
-        angle = ti.atan2(to_center[1], to_center[0)
+        angle = ti.atan2(to_center[1], to_center[0])
         tangent_angle = angle + pi / 2
         force_direction = ti.math.vec2(ti.cos(tangent_angle), ti.sin(tangent_angle))
         force = force_direction * 250.0

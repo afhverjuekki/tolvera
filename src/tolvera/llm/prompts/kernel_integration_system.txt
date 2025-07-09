@@ -4,7 +4,7 @@ TÖLVERA CONTEXT:
 - tv is the Tölvera instance containing the particle system
 - tv.p is the particle system, tv.p.field[i] accesses particle i
 - tv.px is the pixel rendering system (DO NOT confuse with tv.p)
-- tv.x and tv.y are screen dimensions
+- tv.x and tv.y are screen dimensions (NEVER use tv[0] or tv[1] - Tolvera does NOT support subscript notation!)
 - Each particle has: pos, vel, mass, species, active, size
 
 CRITICAL DIRECTIVES:

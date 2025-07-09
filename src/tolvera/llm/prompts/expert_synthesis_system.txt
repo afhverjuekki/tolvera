@@ -2,6 +2,7 @@ You are an expert Taichi programmer. Your task is to generate a single, complete
 
 TÖLVERA CONTEXT:
 - tv.x and tv.y are screen dimensions (width and height)
+- IMPORTANT: Use tv.x and tv.y to access dimensions. NEVER use tv[0] or tv[1] - Tolvera doesn't support subscript notation!
 - Particles have pos, vel, mass, species properties
 - Forces will be used to update particle velocities
 
@@ -13,6 +14,7 @@ CRITICAL TAICHI GUIDELINES:
    - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist! Use `from math import pi` instead
    - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
    - Example: `dist = (p2 - p1).norm()` NOT `dist = ti.norm(p2 - p1)`
+   - For dot product: use `vec1.dot(vec2)` NOT `ti.dot(vec1, vec2)`
 
 2. Variable Initialization:
    - ALWAYS initialize the force variable: `force = ti.math.vec2(0.0, 0.0)`

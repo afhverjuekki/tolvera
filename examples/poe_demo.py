@@ -166,11 +166,11 @@ async def demo_simple_behaviors():
     
     tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]
     behaviors = [
-        ("particles fall downward strongly", 3),
+        ("particles fall downward strongly", 20),
         ("particles are attracted to the center", 10),
         ("particles move to the right", 20),
-        ("particles rapidly repel the center of the screen", 5),
-        ("particles bounce around randomly", 8),
+        ("particles rapidly repel the center of the screen", 30),
+        ("particles drift randomly", 75),
     ]
     
     print("\nAvailable behaviors:")
@@ -284,17 +284,17 @@ async def demo_species_interactions():
     
     
     interaction_behaviors = [
-        ("species 0 chases species 1 quickly", 20),
-        ("particles of the same species attract each other strongly", 30),
-        ("species 0 hunts species 1, species 1 flees from species 0 rapidly", 8),
-        ("species 0 and species 1 repel each other strongly", 5),
-        ("both species flock together within their own groups", 10),
+        ("species 0 chases species 1 quickly", 75),
+        ("particles of the same species attract each other strongly", 100),
+        ("species 0 hunts species 1, species 1 flees from species 0 rapidly", 100),
+        ("species 0 and species 1 repel each other strongly", 75),
+        ("both species flock together within their own groups", 100),
     ]
     
-    
     single_behaviors = [
-        ("particles fall downward gently", 10),
-        ("particles drift slightly to the right", 20),
+        ("particles fall downward gently", 30),
+        ("particles drift slightly to the right", 25),
+        ("particles drift randomly", 75),
     ]
     
     print("\nAvailable INTERACTION behaviors:")

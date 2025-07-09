@@ -8,7 +8,6 @@ import taichi as ti
 import numpy as np
 from typing import List, Dict, Any, Optional
 import logging
-import re
 import time
 import linecache
 

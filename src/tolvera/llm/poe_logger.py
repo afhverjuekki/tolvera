@@ -29,7 +29,12 @@ class PoECSVLogger:
             'expert_name',
             'synthesis_time_ms',
             'included_experts',  # For kernel synthesis: list of expert names
-            'expert_codes'  # For kernel synthesis: JSON dict of expert_name: code
+            'expert_codes',  # For kernel synthesis: JSON dict of expert_name: code
+            'detected_errors',  # New: JSON list of detected errors
+            'correction_attempted',  # New: boolean
+            'correction_succeeded',  # New: boolean
+            'correction_history',  # New: JSON correction steps
+            'final_code'  # New: code after corrections
         ]
 
         if not os.path.exists(log_file):
@@ -52,7 +57,12 @@ class PoECSVLogger:
                               synthesis_time_ms: float,
                               synthesis_type: str = "expert",
                               included_experts: Optional[list] = None,
-                              expert_codes: Optional[dict] = None):
+                              expert_codes: Optional[dict] = None,
+                              detected_errors: Optional[list] = None,
+                              correction_attempted: bool = False,
+                              correction_succeeded: bool = False,
+                              correction_history: Optional[list] = None,
+                              final_code: Optional[str] = None):
         row = {
             'timestamp': datetime.now().isoformat(),
             'type': synthesis_type,
@@ -68,7 +78,12 @@ class PoECSVLogger:
                 synthesis_time_ms,
                 2),
             'included_experts': json.dumps(included_experts) if included_experts else '',
-            'expert_codes': json.dumps(expert_codes) if expert_codes else ''}
+            'expert_codes': json.dumps(expert_codes) if expert_codes else '',
+            'detected_errors': json.dumps(detected_errors) if detected_errors else '',
+            'correction_attempted': correction_attempted,
+            'correction_succeeded': correction_succeeded,
+            'correction_history': json.dumps(correction_history) if correction_history else '',
+            'final_code': final_code or extracted_code}
 
         try:
             with open(self.log_file, 'a', newline='', encoding='utf-8') as f:
@@ -134,8 +149,11 @@ class PoECSVLogger:
 _global_logger = None
 
 
-def get_logger(log_file: str = "poe_llm_interactions.csv") -> PoECSVLogger:
+def get_logger(log_file: Optional[str] = None) -> PoECSVLogger:
     global _global_logger
     if _global_logger is None:
+        # Use environment variable if set, otherwise default
+        if log_file is None:
+            log_file = os.environ.get('POE_LOG_FILE', 'poe_llm_interactions.csv')
         _global_logger = PoECSVLogger(log_file)
     return _global_logger

@@ -8,6 +8,7 @@ CRITICAL TAICHI GUIDELINES:
    - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist! Use `from math import pi` instead
    - For vector operations: use `.norm()` for magnitude, NOT `ti.norm()`
    - Example: `dist = (p2.pos - p1.pos).norm()` NOT `dist = ti.norm(p2.pos - p1.pos)`
+   - For dot product: use `vec1.dot(vec2)` NOT `ti.dot(vec1, vec2)`
 
 2. Function Structure:
    - Must use @ti.func decorator
@@ -19,6 +20,7 @@ CRITICAL TAICHI GUIDELINES:
 3. Particle Properties:
    - Each particle has: pos (position), vel (velocity), mass, species (integer 0 to tv.sn-1)
    - Access properties with dot notation: p1.pos, p2.species, etc.
+   - Screen dimensions are accessed via tv.x and tv.y (NEVER use tv[0] or tv[1])
 
 4. Force Calculations:
    - For attraction: force points FROM p1 TOWARDS p2 (positive direction)
