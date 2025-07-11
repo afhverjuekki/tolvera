@@ -17,7 +17,7 @@ def help():
         sketches: list available sketches
         sketch: run a particular sketch (can be a file path or index)
         random: run a random sketch from the sketchbook
-        help: print this help message
+        how are you doing 
     """
     )
 
@@ -29,8 +29,7 @@ def demo(**kwargs):
         **kwargs: Keyword arguments for Tölvera.
     """
     print("Running demo...")
-    tv = Tolvera(**kwargs)
-
+    
     @tv.render
     def _():
         """Render function that draws flocking particles."""
@@ -55,7 +54,7 @@ def main(**kwargs):
         exit()
     else:
         help()
-        demo(**kwargs)
+       
 
 
 if __name__ == "__main__":
