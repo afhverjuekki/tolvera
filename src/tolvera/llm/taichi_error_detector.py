@@ -179,9 +179,12 @@ class TaichiErrorDetector:
         return errors
 
     def _is_multiline_pattern(self, pattern: str) -> bool:
-        # Currently only the missing return statement pattern is multiline so I
-        # check with that
-        return pattern == r'@ti\.func\s*\n\s*def\s+\w+.*?(?=@|\Z)(?!.*return)'
+        # Patterns that need multiline matching
+        multiline_patterns = [
+            r'@ti\\.func\s*\n\s*def\s+\w+\([^)]*\)\s*->\s*ti\\.math\\.vec2:((?!.*\\breturn\\b(.|\n))*$)',
+            r'(if|elif|else|for|while)[^\n]*:\s*\n(?:\s*.*\n)*?^\s*return\s+'
+        ]
+        return pattern in multiline_patterns
 
     def detect_errors(self, code: str) -> List[Dict[str, any]]:
         errors = []

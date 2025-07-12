@@ -150,6 +150,16 @@ class PoEBehaviorSystem:
             return False
 
     def add_expert(self, expert: SimpleProgrammaticExpert):
+        original_name = expert.name
+        counter = 1
+        while any(e.name == expert.name for e in self.experts):
+            expert.name = f"{original_name}_{counter}"
+            counter += 1
+            logger.warning(f"Duplicate expert name detected. Renamed {original_name} to {expert.name}")
+        
+        if expert.name != original_name:
+            expert.code = expert.code.replace(f"def expert_{original_name}", f"def expert_{expert.name}")
+        
         self.experts.append(expert)
         self.generated_expert_code[expert.name] = expert.code
         logger.info(f"Added expert {expert.name} with weight {expert.weight}")

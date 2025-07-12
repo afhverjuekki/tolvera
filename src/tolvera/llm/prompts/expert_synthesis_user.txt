@@ -1,4 +1,9 @@
-You are an expert Taichi programmer. Your task is to generate a single, complete, and syntactically perfect Taichi function (`@ti.func`) that calculates a force for a particle.
+You are an expert Taichi programmer creating behaviors for an artificial life simulation. Your task is to generate a single, complete, and syntactically perfect Taichi function (`@ti.func`) that calculates a force for a particle representing an autonomous agent or organism.
+
+ARTIFICIAL LIFE CONTEXT:
+- You are simulating lifelike behaviors: seeking resources, avoiding threats, social interactions
+- Forces represent biological motivations and environmental influences
+- Think in terms of natural movements: flee, chase, wander, flock, forage
 
 CRITICAL INSTRUCTIONS:
 
@@ -19,7 +24,6 @@ CRITICAL INSTRUCTIONS:
 
 6.  Taichi Best Practices:
     - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
-    - For math constants (pi, e), import from Python: `from math import pi`
     - NEVER use `ti.pi` or `ti.math.pi` - they don't exist!
     - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
     - For type casting, use `ti.cast(value, ti.f32)`
@@ -43,8 +47,6 @@ EXAMPLE 2: Circular motion
 
 *Generated Code:*
 ```python
-from math import pi
-
 @ti.func
 def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
@@ -60,20 +62,59 @@ def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti
     return force
 ```
 
-EXAMPLE 3: Random wiggle
-*User Request:* "Particles wiggle randomly."
+EXAMPLE 3: Random exploration
+*User Request:* "Particles wander randomly like foraging animals."
 
 *Generated Code:*
 ```python
-from math import pi
-
 @ti.func
-def expert_wiggle(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_wander(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
     angle = ti.random() * 2 * pi
     force_magnitude = 150.0
     force = ti.math.vec2(ti.cos(angle) * force_magnitude, ti.sin(angle) * force_magnitude)
     return force
 ```
+
+EXAMPLE 4: Repulsion/Fleeing (CRITICAL - shows AWAY movement)
+*User Request:* "Particles flee from the center rapidly."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_flee_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    center = ti.math.vec2(tv.x / 2, tv.y / 2)
+    away_from_center = pos - center  # Vector pointing AWAY from center
+    dist = away_from_center.norm()
+    
+    force = ti.math.vec2(0.0, 0.0)
+    if dist > 0.01:
+        direction = away_from_center / dist  # Normalize
+        force = direction * 400.0  # Strong force AWAY from center
+    return force
+```
+
+EXAMPLE 5: Attraction/Seeking (shows TOWARD movement)
+*User Request:* "Particles seek the center like moths to light."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_seek_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+    center = ti.math.vec2(tv.x / 2, tv.y / 2)
+    to_center = center - pos  # Vector pointing TOWARD center
+    dist = to_center.norm()
+    
+    force = ti.math.vec2(0.0, 0.0)
+    if dist > 1.0:
+        direction = to_center / dist  # Normalize
+        force = direction * 200.0  # Force TOWARD center
+    return force
+```
+
+IMPORTANT DIRECTION RULES:
+- "repel", "flee", "escape", "avoid" → Use (pos - target) to get direction AWAY
+- "seek", "chase", "attract", "follow" → Use (target - pos) to get direction TOWARD
+- Always normalize direction vectors before applying force magnitude
 
 Now generate a Taichi function for the following behavior:
 **User Request:** "{description}"

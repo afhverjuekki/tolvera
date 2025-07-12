@@ -17,7 +17,6 @@ CRITICAL INSTRUCTIONS:
 
 6.  Taichi Best Practices:
     - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
-    - For math constants (pi, e), import from Python: `from math import pi`
     - NEVER use `ti.pi` or `ti.math.pi` - they don't exist!
     - For type casting, use `ti.cast(value, ti.f32)`.
     - Handle division by zero safely, especially when normalizing vectors.

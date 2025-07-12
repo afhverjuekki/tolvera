@@ -17,6 +17,7 @@ from .poe_logger import get_logger
 from .taichi_error_detector import TaichiErrorDetector
 from .taichi_error_corrector import TaichiErrorCorrector
 from .kernel_accumulator import KernelAccumulator
+from .behavior_decomposer import BehaviorDecomposer, SubBehavior
 
 logger = logging.getLogger(__name__)
 csv_logger = get_logger()
@@ -25,12 +26,15 @@ csv_logger = get_logger()
 class PoEExpertSynthesizer:
 
     def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, 
-                 accumulator_path: str = "generated_kernels/kernels_repository.py"):
+                 accumulator_path: str = "generated_kernels/kernels_repository.py",
+                 enable_decomposition: bool = True):
         self.client = OllamaClient(model_name)
         self.error_detector = TaichiErrorDetector()
         self.error_corrector = TaichiErrorCorrector(model_name)
         self.auto_correct = auto_correct
         self.kernel_accumulator = KernelAccumulator(accumulator_path)
+        self.decomposer = BehaviorDecomposer(model_name) if enable_decomposition else None
+        self.enable_decomposition = enable_decomposition
 
     def extract_code(self, response: str) -> str:
         # Try to find code between triple backticks
@@ -85,6 +89,8 @@ class PoEExpertSynthesizer:
     async def synthesize_expert(self, description: str) -> Dict[str, Any]:
 
         logger.info(f"Synthesizing expert for: '{description}'")
+        
+        species_info = await self.extract_species_info(description)
 
         system_prompt = load_prompt("expert_synthesis_system")
         user_prompt = load_prompt("expert_synthesis_user").format(
@@ -190,7 +196,8 @@ class PoEExpertSynthesizer:
                 "detected_errors": detected_errors if detected_errors else [],
                 "correction_attempted": correction_result is not None,
                 "correction_result": correction_result,
-                "kernel_uuid": kernel_uuid}
+                "kernel_uuid": kernel_uuid,
+                "species_info": species_info}
 
         except Exception as e:
             logger.error(f"Expert synthesis failed: {e}")
@@ -422,15 +429,142 @@ class PoEExpertSynthesizer:
             logger.error(f"Classification failed: {e}. Defaulting to SINGLE.")
             return "SINGLE"
     
+    async def extract_species_info(self, description: str) -> dict:
+        logger.info(f"Extracting species info from: '{description}'")
+        
+        prompt = f"""Analyze this particle behavior description and extract species information.
+
+Description: "{description}"
+
+Look for:
+1. Specific species mentioned by number (e.g., "species 0", "species 1", "species 2")
+2. Phrases indicating multiple species (e.g., "all species", "each species", "different species")
+3. Interactions between species (e.g., "species 0 chases species 1")
+
+IMPORTANT: Extract ONLY the exact species numbers that are explicitly mentioned. Do not assume species 0 exists unless it's explicitly mentioned.
+
+Respond with ONLY a JSON object in this format:
+{{
+    "max_species": <highest species number + 1, or null if unclear>,
+    "species_mentioned": [<list of species numbers explicitly mentioned>],
+    "requires_all_species": <true if behavior applies to all species, false otherwise>,
+    "interaction_pairs": [[0, 1], ...] // pairs of species that interact
+}}
+
+Examples:
+- "species 0 chases species 1" -> {{"max_species": 2, "species_mentioned": [0, 1], "requires_all_species": false, "interaction_pairs": [[0, 1]]}}
+- "species 2 avoids species 0" -> {{"max_species": 3, "species_mentioned": [0, 2], "requires_all_species": false, "interaction_pairs": [[2, 0]]}}  
+- "species 1 and species 2 repel each other" -> {{"max_species": 3, "species_mentioned": [1, 2], "requires_all_species": false, "interaction_pairs": [[1, 2]]}}
+- "species 4 moves upward" -> {{"max_species": 5, "species_mentioned": [4], "requires_all_species": false, "interaction_pairs": []}}
+- "all species attract each other" -> {{"max_species": null, "species_mentioned": [], "requires_all_species": true, "interaction_pairs": []}}
+- "particles fall downward" -> {{"max_species": 1, "species_mentioned": [], "requires_all_species": false, "interaction_pairs": []}}
+"""
+        
+        messages = [
+            {'role': 'system', 'content': 'You are a species detection expert. Extract species information accurately.'},
+            {'role': 'user', 'content': prompt}
+        ]
+        
+        response = await self.client.chat(messages, temperature=0.1)
+        logger.debug(f"Species extraction response: {response}")
+        
+        # Clean response and parse JSON
+        import json
+        response_clean = response.strip()
+        if response_clean.startswith("```json"):
+            response_clean = response_clean[7:]
+        if response_clean.endswith("```"):
+            response_clean = response_clean[:-3]
+        
+        species_info = json.loads(response_clean)
+        logger.info(f"Extracted species info: {species_info}")
+        return species_info
+    
+    async def _synthesize_single_behavior(self, description: str) -> Dict[str, Any]:
+        behavior_type = await self.classify_behavior(description)
+        if behavior_type == "INTERACTION":
+            return await self.synthesize_interaction_expert(description)
+        return await self.synthesize_expert(description)
+    
+    def _add_decomposition_metadata(self, result: Dict[str, Any], 
+                                   original_description: str, 
+                                   sub_behavior: SubBehavior,
+                                   index: int, 
+                                   total_count: int) -> None:
+        result['is_decomposed'] = True
+        result['original_description'] = original_description
+        result['sub_behavior_index'] = index
+        result['sub_behavior_count'] = total_count
+        result['relationship'] = sub_behavior.relationship
+        result['adjusted_weight'] = sub_behavior.weight
+        result['weight'] = sub_behavior.weight
+    
+    async def _process_sub_behaviors(self, sub_behaviors: List[SubBehavior], 
+                                   original_description: str) -> List[Dict[str, Any]]:
+        """Process and synthesize each sub-behavior."""
+        results = []
+        
+        for i, sub_behavior in enumerate(sub_behaviors):
+            logger.info(f"Synthesizing sub-behavior {i+1}/{len(sub_behaviors)}: "
+                       f"'{sub_behavior.description}' (weight: {sub_behavior.weight})")
+            
+            try:
+                result = await self._synthesize_single_behavior(sub_behavior.description)
+                self._add_decomposition_metadata(
+                    result, original_description, sub_behavior, i, len(sub_behaviors)
+                )
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Failed to synthesize sub-behavior '{sub_behavior.description}': {e}")
+                # Continue with other sub-behaviors
+        
+        return results
+    
+    async def _handle_no_decomposition(self, description: str) -> List[Dict[str, Any]]:
+        result = await self._synthesize_single_behavior(description)
+        return [result]
+    
+    async def synthesize_with_decomposition(self, description: str) -> List[Dict[str, Any]]:
+        # Check if decomposition is enabled
+        if not self.enable_decomposition or not self.decomposer:
+            return await self._handle_no_decomposition(description)
+        
+        sub_behaviors = await self.decomposer.decompose_behavior(description)
+        
+        # If only one sub-behavior, it wasn't really decomposed
+        if len(sub_behaviors) == 1:
+            logger.info(f"No decomposition needed for: '{description}'")
+            return await self._handle_no_decomposition(description)
+        
+        logger.info(f"Decomposed into {len(sub_behaviors)} sub-behaviors")
+        
+        sub_behaviors = self.decomposer.adjust_weights_for_balance(sub_behaviors, description)
+        
+        
+        results = await self._process_sub_behaviors(sub_behaviors, description)
+        
+        if not results:
+            logger.warning("All sub-behavior synthesis failed, attempting original")
+            return await self._handle_no_decomposition(description)
+        
+        return results
+    
     async def synthesize_interaction_expert(self, description: str) -> dict:
         logger.info(f"Synthesizing expert for: '{description}'")
         
         # Use the router to classify the behavior
         classification = await self.classify_behavior(description)
         
+        # Extract species information
+        species_info = await self.extract_species_info(description)
+        
         if classification == "SINGLE":
             logger.info("Behavior classified as SINGLE-PARTICLE, using standard synthesis")
-            return await self.synthesize_expert(description)
+            result = await self.synthesize_expert(description)
+            # Add species info to result
+            if result["success"]:
+                result["species_info"] = species_info
+            return result
         
         logger.info("Behavior classified as INTERACTION, using interaction synthesis")
         
@@ -519,7 +653,8 @@ class PoEExpertSynthesizer:
                 "raw_response": response,
                 "is_interaction": True,
                 "detected_errors": detected_errors if detected_errors else [],
-                "kernel_uuid": kernel_uuid
+                "kernel_uuid": kernel_uuid,
+                "species_info": species_info
             }
             
         except Exception as e:
@@ -535,10 +670,10 @@ class PoEExpertSynthesizer:
 
 class PureLLMSynthesizer:
 
-    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True):
-        self.synthesizer = PoEExpertSynthesizer(model_name, auto_correct)
+    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, enable_decomposition: bool = True):
+        self.synthesizer = PoEExpertSynthesizer(model_name=model_name, auto_correct=auto_correct, enable_decomposition=enable_decomposition)
         logger.info(
-            f"Initialized PureLLMSynthesizer with model: {model_name or 'default'}, auto_correct: {auto_correct}")
+            f"Initialized PureLLMSynthesizer with model: {model_name or 'default'}, auto_correct: {auto_correct}, enable_decomposition={enable_decomposition}")
 
     async def synthesize_expert(
             self,

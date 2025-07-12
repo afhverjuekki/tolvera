@@ -4,6 +4,9 @@ TÖLVERA CONTEXT:
 - tv is the Tölvera instance containing the particle system
 - tv.x and tv.y are screen dimensions (NEVER use tv[0] or tv[1] - Tolvera does NOT support subscript notation!)
 - tv.p.field[i] accesses particle i
+- Fields must be accessed with indices: `field[i]` not `field`
+- For 0D fields, use `field[None]` as the index
+- Vector component access: `vec[0]`, `vec[1]` or `vec.x`, `vec.y` for 2D vectors
 
 CRITICAL DIRECTIVES:
 
@@ -39,9 +42,12 @@ CRITICAL DIRECTIVES:
 5.  Taichi Math Guidelines:
     - For mathematical constants (pi, e), import from Python's math module: `from math import pi`
     - Use Taichi math functions: `ti.sqrt()`, `ti.sin()`, `ti.cos()`, `ti.atan2()`
+    - Additional math: `ti.acos()`, `ti.asin()`, `ti.exp()`, `ti.log()`, `ti.pow()`
+    - Utilities: `ti.clamp()`, `ti.abs()`, `ti.sign()`, `ti.floor()`, `ti.ceil()`
     - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist!
-    - For vector operations: use `.norm()` for magnitude
+    - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
     - Always check for division by zero when needed
+    - Available types: `ti.f32`, `ti.f64`, `ti.i32`, `ti.i64`, `ti.u32`, `ti.u64`
 
 6.  Output Format: Your output MUST be ONLY the Python code for the kernel. Do NOT include any markdown, explanations, or other text.
 

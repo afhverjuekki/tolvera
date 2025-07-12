@@ -14,7 +14,7 @@ import asyncio
 import taichi as ti
 from tolvera import Tolvera, run
 from src.tolvera.llm.poe_integration import TolveraBehaviorAgent
-from src.tolvera.llm.poe_synthesis import PureLLMSynthesizer
+from src.tolvera.llm.poe_synthesis import PureLLMSynthesizer, PoEExpertSynthesizer
 import logging
 import datetime
 import os
@@ -25,7 +25,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
 
 def save_generated_sketch_to_file(agent, tv_config, filename=None):
     sketch_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_sketches")
@@ -52,48 +51,60 @@ def main(**kwargs):
 
 '''
 
+    # Use the dynamic species system to determine species requirements
+    species_ids, species_analysis = agent.get_species_requirements()
     
-    has_interactions = any(expert.metadata.get("is_interaction", False) for expert in agent.poe_system.experts)
+    num_species = len(species_ids)
     
+    # Build initialization code with species mapping
+    init_code = f"""# Species configuration: {species_ids}
+species_map = ti.field(dtype=ti.i32, shape={num_species})
+"""
     
+    # Add species mapping initialization
+    for idx, species_id in enumerate(species_ids):
+        init_code += f"species_map[{idx}] = {species_id}\n"
     
-    if has_interactions:
-        
-        init_code = f'''
-    @ti.kernel
-    def init_particles():
-        for i in range(tv.pn):
-            tv.p.field[i].active = 1.0
-            tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
-            tv.p.field[i].vel = ti.Vector([0.0, 0.0])
-            tv.p.field[i].species = i % 2
-            tv.p.field[i].size = 5.0
-            tv.p.field[i].mass = 1.0
+    init_code += f"""
 
-    init_particles()
+@ti.kernel
+def init_particles():
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+        tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        # Assign species using the mapping
+        species_index = i % {num_species}
+        tv.p.field[i].species = species_map[species_index]
+
+init_particles()
+"""
     
-    tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]
-    tv.s.species.field[1].rgba = [0.3, 0.3, 1.0, 1.0]
-
-'''
-    else:
-        
-        init_code = f'''
-    @ti.kernel
-    def init_particles():
-        for i in range(tv.pn):
-            tv.p.field[i].active = 1.0
-            tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
-            tv.p.field[i].vel = ti.Vector([0.0, 0.0])
-            tv.p.field[i].species = 0
-            tv.p.field[i].size = 5.0
-            tv.p.field[i].mass = 1.0
-
-    init_particles()
+    # this can be whatever, but for now just simple colors
+    default_colors = [
+        [1.0, 0.3, 0.3, 1.0],  # Red
+        [0.3, 0.3, 1.0, 1.0],  # Blue
+        [0.3, 1.0, 0.3, 1.0],  # Green
+        [1.0, 1.0, 0.3, 1.0],  # Yellow
+        [1.0, 0.3, 1.0, 1.0],  # Magenta
+    ]
     
-    tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]
-
-'''
+    for idx, species_id in enumerate(species_ids):
+        if idx < len(default_colors):
+            color = default_colors[idx]
+        else:
+            # Generate distinct colors for additional species
+            color = [
+                0.5 + 0.5 * (idx / max(1, num_species)),
+                0.5 + 0.5 * ((idx + 1) % 3 / 3),
+                0.5 + 0.5 * ((idx + 2) % 3 / 3),
+                1.0
+            ]
+        init_code += f"tv.s.species.field[{species_id}].rgba = {color}\n"
+    
+    print(f"Configuring simulation with species {species_ids} based on behavior analysis")
 
     
     
@@ -118,7 +129,9 @@ if __name__ == "__main__":
 '''
     with open(filepath, "w") as f:
         f.write(header)
-        f.write(init_code)
+        
+        indented_init = "\n".join(["    " + line for line in init_code.splitlines() if line.strip()])
+        f.write(indented_init + "\n\n")
 
         indented_experts = "\n".join(["    " + line for line in expert_code.splitlines()])
         f.write(f"    # ***** Generated Expert Functions *****\n{indented_experts}\n\n")
@@ -147,7 +160,7 @@ async def demo_simple_behaviors():
     agent = TolveraBehaviorAgent(tv)
     
     print("Initializing LLM synthesizer...")
-    synthesizer = PureLLMSynthesizer(model_name="qwen2.5:3b")
+    synthesizer = PureLLMSynthesizer(model_name="qwen3:4b", enable_decomposition=False)
     
     @ti.kernel
     def init_particles():
@@ -202,7 +215,8 @@ async def demo_simple_behaviors():
         expert = await agent.add_expert_from_description(
             description,
             synthesizer.synthesizer,
-            weight=weight
+            weight=weight,
+            use_decomposition=False
         )
         successful_experts.append((expert.name, description))
         
@@ -255,7 +269,8 @@ async def demo_species_interactions():
     tv_config = {
         "particles": 150,
         "px": "pixels",
-        "gpu": "metal" if sys.platform == "darwin" else "cuda"
+        "gpu": "metal" if sys.platform == "darwin" else "cuda",
+        "species": 5  # just a demo
     }
     
     print("Initializing Tölvera...")
@@ -263,32 +278,34 @@ async def demo_species_interactions():
     
     agent = TolveraBehaviorAgent(tv)
     
-    print("Initializing LLM synthesizer...")
-    synthesizer = PureLLMSynthesizer(model_name="qwen2.5:3b")
+    print("Initializing LLM synthesizer with decomposition support...")
     
+    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True)
     
+    # Start with a simple single-species initialization
     @ti.kernel
-    def init_particles():
+    def init_particles_default():
         for i in range(tv.pn):
             tv.p.field[i].active = 1.0
             tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
             tv.p.field[i].vel = ti.Vector([0.0, 0.0])
-            tv.p.field[i].species = i % 2
+            tv.p.field[i].species = 0
             tv.p.field[i].size = 5.0
             tv.p.field[i].mass = 1.0
     
-    init_particles()
-    
+    init_particles_default()
     tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]
-    tv.s.species.field[1].rgba = [0.3, 0.3, 1.0, 1.0]
     
     
     interaction_behaviors = [
-        ("species 0 chases species 1 quickly", 75),
-        ("particles of the same species attract each other strongly", 100),
-        ("species 0 hunts species 1, species 1 flees from species 0 rapidly", 100),
-        ("species 0 and species 1 repel each other strongly", 75),
-        ("both species flock together within their own groups", 100),
+        ("species 0 chases species 1 quickly", 20),
+        ("particles of the same species attract each other strongly", 20),
+        ("species 0 hunts species 1, species 1 flees from species 0 rapidly", 30),
+        ("species 0 and species 1 repel each other strongly", 20),
+        ("both species flock together within their own groups", 20),
+        ("species 2 forms a protective barrier around species 0", 20),
+        ("species 0 chases species 1, species 1 chases species 2, species 2 runs from species 0", 30),
+        ("species 3 and species 4 orbit around each other", 40),
     ]
     
     single_behaviors = [
@@ -335,8 +352,9 @@ async def demo_species_interactions():
             
             expert = await agent.add_expert_from_description(
                 description,
-                synthesizer.synthesizer,
-                weight=weight
+                synthesizer_engine,
+                weight=weight,
+                use_decomposition=True
             )
             successful_experts.append((expert.name, description, expert.metadata.get("is_interaction", False)))
             
@@ -344,30 +362,56 @@ async def demo_species_interactions():
             print(f"Failed to generate expert: {e}")
     
 
-    has_interactions = any(is_interaction for _, _, is_interaction in successful_experts)
+    species_ids, species_analysis = agent.get_species_requirements()
     
-    # Re-initialize particles based on whether we have interactions
-    if has_interactions:
-        print("Re-initializing particles with 2 species for interactions...")
+    print(f"\nSpecies analysis complete:")
+    print(f"  - Required species IDs: {species_ids}")
+    print(f"  - Species mentioned: {species_analysis['species_mentioned']}")
+    print(f"  - Has interactions: {species_analysis['requires_multiple']}")
+    
+    if len(species_ids) > 1:
+        print(f"Re-initializing particles with species {species_ids}...")
         
-    else:
-        print("Re-initializing particles with single species...")
+        # Create a Taichi field to store the species mapping
+        species_map = ti.field(dtype=ti.i32, shape=len(species_ids))
+        for idx, species_id in enumerate(species_ids):
+            species_map[idx] = species_id
+        
         @ti.kernel
-        def reinit_particles_single():
+        def init_particles_with_species(n_species: ti.i32):
             for i in range(tv.pn):
                 tv.p.field[i].active = 1.0
-                tv.p.field[i].pos = ti.Vector([
-                    ti.random() * tv.x,
-                    ti.random() * tv.y
-                ])
+                tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
                 tv.p.field[i].vel = ti.Vector([0.0, 0.0])
-                tv.p.field[i].species = 0
                 tv.p.field[i].size = 5.0
                 tv.p.field[i].mass = 1.0
+                species_index = i % n_species
+                tv.p.field[i].species = species_map[species_index]
         
-        reinit_particles_single()
+        init_particles_with_species(len(species_ids))
         
-        tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]
+        default_colors = [
+            [1.0, 0.3, 0.3, 1.0],  # Red
+            [0.3, 0.3, 1.0, 1.0],  # Blue
+            [0.3, 1.0, 0.3, 1.0],  # Green
+            [1.0, 1.0, 0.3, 1.0],  # Yellow
+            [1.0, 0.3, 1.0, 1.0],  # Magenta
+        ]
+        
+        for idx, species_id in enumerate(species_ids):
+            if idx < len(default_colors):
+                tv.s.species.field[species_id].rgba = default_colors[idx]
+            else:
+                # Generate random colors for additional species
+                color = [
+                    0.5 + 0.5 * (idx / max(1, len(species_ids))),
+                    0.5 + 0.5 * ((idx + 1) % 3 / 3),
+                    0.5 + 0.5 * ((idx + 2) % 3 / 3),
+                    1.0
+                ]
+                tv.s.species.field[species_id].rgba = color
+    else:
+        print("Keeping single species configuration...")
     
     if successful_experts:
         print(f"Successfully generated {len(successful_experts)} expert(s):")
@@ -416,20 +460,22 @@ async def demo_custom_behavior():
     print("CUSTOM BEHAVIOR DEMO - Your Ideas, LLM Generation")
     print("="*80)
     
-    tv = Tolvera(
-        width=800,
-        height=600,
-        pn=300,
-        px="pixels"
-    )
+    tv_config = {
+        "width": 800,
+        "height": 600,
+        "particles": 300,
+        "px": "pixels",
+        "species": 5 
+    }
+    
+    tv = Tolvera(**tv_config)
     
     agent = TolveraBehaviorAgent(tv)
     
-    synthesizer = PureLLMSynthesizer()
-    
+    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True)
     
     @ti.kernel
-    def init_particles():
+    def init_particles_default():
         for i in range(tv.pn):
             tv.p.field[i].active = 1.0
             tv.p.field[i].pos = ti.Vector([
@@ -441,7 +487,7 @@ async def demo_custom_behavior():
             tv.p.field[i].size = 3.0
             tv.p.field[i].mass = 1.0
     
-    init_particles()
+    init_particles_default()
     tv.s.species.field[0].rgba = [0.8, 0.5, 0.2, 1.0]
     
     print("\nEnter particle behavior descriptions (or 'done' to start):")
@@ -449,6 +495,10 @@ async def demo_custom_behavior():
     print("  - particles bounce off the edges of the screen")
     print("  - particles form a rotating ring pattern")
     print("  - particles accelerate towards the bottom")
+    print("\nMulti-species examples:")
+    print("  - species 0 chases species 1")
+    print("  - species 2 protects species 0 from species 1")
+    print("  - all species repel each other")
     
     behaviors = []
     while True:
@@ -475,22 +525,66 @@ async def demo_custom_behavior():
         try:
             expert = await agent.add_expert_from_description(
                 description,
-                synthesizer.synthesizer,
-                weight=weight
+                synthesizer_engine,
+                weight=weight,
+                use_decomposition=True
             )
-            print("Added: {expert.name}")
+            print(f"Added: {expert.name}")
             successful_experts.append(expert)
         except Exception as e:
             print(f"Failed: {e}")
     
     if successful_experts:
+        species_ids, species_analysis = agent.get_species_requirements()
+        
+        if len(species_ids) > 1:
+            print(f"\nRe-initializing particles with species {species_ids}...")
+            
+            # Create a Taichi field to store the species mapping
+            species_map_custom = ti.field(dtype=ti.i32, shape=len(species_ids))
+            for idx, species_id in enumerate(species_ids):
+                species_map_custom[idx] = species_id
+            
+            # Define a static kernel that uses the species mapping
+            @ti.kernel
+            def init_particles_custom_species(n_species: ti.i32):
+                for i in range(tv.pn):
+                    tv.p.field[i].active = 1.0
+                    tv.p.field[i].pos = ti.Vector([
+                        tv.x * 0.5 + (ti.random() - 0.5) * 200,
+                        tv.y * 0.5 + (ti.random() - 0.5) * 200
+                    ])
+                    tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+                    tv.p.field[i].size = 3.0
+                    tv.p.field[i].mass = 1.0
+                    # Assign species using the mapping
+                    species_index = i % n_species
+                    tv.p.field[i].species = species_map_custom[species_index]
+            
+            init_particles_custom_species(len(species_ids))
+            
+            default_colors = [
+                [1.0, 0.3, 0.3, 1.0],  # Red
+                [0.3, 0.3, 1.0, 1.0],  # Blue
+                [0.3, 1.0, 0.3, 1.0],  # Green
+                [1.0, 1.0, 0.3, 1.0],  # Yellow
+                [1.0, 0.3, 1.0, 1.0],  # Magenta
+            ]
+            
+            for idx, species_id in enumerate(species_ids):
+                if idx < len(default_colors):
+                    tv.s.species.field[species_id].rgba = default_colors[idx]
+                else:
+                    # Generate random colors for additional species
+                    color = [
+                        0.5 + 0.5 * (idx / max(1, len(species_ids))),
+                        0.5 + 0.5 * ((idx + 1) % 3 / 3),
+                        0.5 + 0.5 * ((idx + 2) % 3 / 3),
+                        1.0
+                    ]
+                    tv.s.species.field[species_id].rgba = color
+        
         # Save the generated sketch to a file
-        tv_config = {
-            "width": 800,
-            "height": 600,
-            "particles": 300,
-            "px": "pixels"
-        }
         filename = save_generated_sketch_to_file(agent, tv_config)
         
         # Ask user what to do next

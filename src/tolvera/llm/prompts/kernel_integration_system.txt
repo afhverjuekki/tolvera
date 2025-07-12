@@ -28,15 +28,21 @@ CRITICAL DIRECTIVES:
     j.  Update the particle's position DIRECTLY: `tv.p.field[i].pos += tv.p.field[i].vel * dt`.
     k.  (Optional but Recommended) Add screen wrapping logic for the particle's position.
 
-4.  Data Access: You MUST access particle data using the Array-of-Structures (AoS) pattern: `tv.p.field[i].<attribute>`.
+4.  Data Access and Field Patterns:
+    - You MUST access particle data using the Array-of-Structures (AoS) pattern: `tv.p.field[i].<attribute>`
+    - Fields must be accessed with indices: `field[i]` not `field`
+    - For 0D fields, use `field[None]` as the index
+    - Vector component access: `vec[0]`, `vec[1]` or `vec.x`, `vec.y` for 2D vectors
 
 5.  Taichi Math Guidelines:
-    - For mathematical constants (pi, e), import from Python's math module: `from math import pi`
     - Use Taichi math functions: `ti.sqrt()`, `ti.sin()`, `ti.cos()`, `ti.atan2()`
-    - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist!
-    - For vector operations: use `.norm()` for magnitude
+    - Additional math: `ti.acos()`, `ti.asin()`, `ti.exp()`, `ti.log()`, `ti.pow()`
+    - Utilities: `ti.clamp()`, `ti.abs()`, `ti.sign()`, `ti.floor()`, `ti.ceil()`
+    - DO NOT use `ti.pi` or `ti.math.pi` - these don't exist! Import from math module
+    - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
     - Always check for division by zero when needed
-    - For 2D vectors, prefer `ti.math.vec2(x, y)` over `ti.Vector([x, y])` for consistency
+    - For 2D vectors: `ti.math.vec2(x, y)` or `ti.Vector([x, y])` (both valid)
+    - Available types: `ti.f32`, `ti.f64`, `ti.i32`, `ti.i64`, `ti.u32`, `ti.u64`
 
 6.  Output Format: Your output MUST be ONLY the Python code for the kernel. Do NOT include any markdown, explanations, or other text.
 

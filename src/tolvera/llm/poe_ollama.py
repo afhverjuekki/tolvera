@@ -6,6 +6,7 @@ This module provides the core Ollama client functionality for LLM interactions.
 """
 
 import logging
+import re
 from typing import Optional, List, Dict
 import ollama
 
@@ -16,12 +17,13 @@ class OllamaModelManager:
 
     def __init__(self):
         self.compatible_models = [
+            "qwen3:4b",
             "qwen2.5:3b", "qwen2.5:7b", "qwen2.5-coder:7b",
             "gemma2:2b", "gemma2:9b",
             "qwen2.5:3b", "llama3.2:1b",
             "mistral:7b", "mistral-nemo:12b"
         ]
-        self.default_model = "qwen2.5:3b"
+        self.default_model = "qwen3:4b"
         try:
             self.client = ollama.Client()
         except Exception as e:
@@ -67,7 +69,7 @@ class OllamaModelManager:
 
 class OllamaClient:
 
-    def __init__(self, model_name: str = "qwen2.5:3b"):
+    def __init__(self, model_name: str = "qwen3:4b"):
         self.model_name = model_name
         self.model_manager = OllamaModelManager()
 
@@ -77,19 +79,25 @@ class OllamaClient:
 
         self.model_name = self.model_manager.ensure_compatible_model(
             model_name)
-        self.client = ollama.AsyncClient()
+        self.client = ollama.AsyncClient(timeout=90)
         logger.info(f"Initialized OllamaClient with model: {self.model_name}")
 
     async def chat(self,
                    messages: List[Dict[str,
                                        str]],
                    temperature: float = 0.7,
-                   max_tokens: int = 2000,
+                   max_tokens: int = 30000, 
                    think: bool = False) -> str:
         try:
+            # Append /no_think to avoid thinking mode issues
+            messages_with_no_think = messages.copy()
+            if messages_with_no_think:
+                # Append /no_think to the last message's content
+                messages_with_no_think[-1]['content'] += "\n\n/no_think"
+            
             response = await self.client.chat(
                 model=self.model_name,
-                messages=messages,
+                messages=messages_with_no_think,
                 stream=False,
                 options={
                     'temperature': temperature,
@@ -97,7 +105,13 @@ class OllamaClient:
                 },
                 # think=think
             )
-            return response['message']['content']
+            
+            # Remove <think> tags and their content
+            content = response['message']['content']
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+            content = content.strip()
+            
+            return content
         except Exception as e:
             raise RuntimeError(f"Ollama API error: {e}")
 
