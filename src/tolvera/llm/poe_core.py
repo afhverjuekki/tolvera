@@ -53,7 +53,8 @@ class PoEBehaviorSystem:
             f"Regenerating integration kernel for {len(self.experts)} experts")
 
         expert_info = [{'name': expert.name, 'weight': expert.weight,
-                        'is_interaction': expert.metadata.get('is_interaction', False)}
+                        'is_interaction': expert.metadata.get('is_interaction', False),
+                        'species_info': expert.metadata.get('species_info', {})}
                        for expert in self.experts]
 
         # Collect natural language descriptions of experts for logging

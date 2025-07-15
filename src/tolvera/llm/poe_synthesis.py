@@ -221,16 +221,57 @@ class PoEExpertSynthesizer:
         
         if has_interactions:
             # Use the new interaction kernel template
-            single_expert_calls = [
-                f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}" 
-                for expert in single_experts
-            ]
+            single_expert_calls = []
+            for expert in single_experts:
+                species_info = expert.get('species_info', {})
+                species_mentioned = species_info.get('species_mentioned', [])
+                
+                if species_mentioned and not species_info.get('requires_all_species', False):
+                    # Only apply to specific species
+                    conditions = " or ".join([f"species == {s}" for s in species_mentioned])
+                    single_expert_calls.append(
+                        f"            if {conditions}:\n"
+                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    )
+                else:
+                    # Apply to all species
+                    single_expert_calls.append(
+                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    )
+            
             single_expert_calls_str = "\n".join(single_expert_calls) if single_experts else "            # No single-particle experts"
             
-            interaction_expert_calls = [
-                f"                    total_force += expert_{expert['name']}(p1, p2) * {expert['weight']:.2f}"
-                for expert in interaction_experts
-            ]
+            interaction_expert_calls = []
+            for expert in interaction_experts:
+                species_info = expert.get('species_info', {})
+                interaction_pairs = species_info.get('interaction_pairs', [])
+                
+                if interaction_pairs:
+                    # Generate specific conditions for known interaction pairs
+                    conditions = []
+                    for pair in interaction_pairs:
+                        if len(pair) == 2:
+                            conditions.append(f"(p1.species == {pair[0]} and p2.species == {pair[1]})")
+                            # Add reverse condition if not symmetric (only specified in prompt)
+                            if pair[0] != pair[1]:
+                                conditions.append(f"(p1.species == {pair[1]} and p2.species == {pair[0]})")
+                    
+                    if conditions:
+                        condition_str = " or ".join(conditions)
+                        interaction_expert_calls.append(
+                            f"                    if {condition_str}:\n"
+                            f"                        total_force += expert_{expert['name']}(p1, p2) * {expert['weight']:.2f}"
+                        )
+                    else:
+                        interaction_expert_calls.append(
+                            f"                    total_force += expert_{expert['name']}(p1, p2) * {expert['weight']:.2f}"
+                        )
+                else:
+                    # No specific pairs, apply to all
+                    interaction_expert_calls.append(
+                        f"                    total_force += expert_{expert['name']}(p1, p2) * {expert['weight']:.2f}"
+                    )
+            
             interaction_expert_calls_str = "\n".join(interaction_expert_calls)
             
             system_prompt = load_prompt("kernel_integration_interaction_system")
@@ -240,10 +281,24 @@ class PoEExpertSynthesizer:
             )
         else:
             # Use the original single-particle kernel template
-            expert_calls = [
-                f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}" 
-                for expert in expert_info
-            ]
+            expert_calls = []
+            for expert in expert_info:
+                species_info = expert.get('species_info', {})
+                species_mentioned = species_info.get('species_mentioned', [])
+                
+                if species_mentioned and not species_info.get('requires_all_species', False):
+                    # Only apply to specific species
+                    conditions = " or ".join([f"species == {s}" for s in species_mentioned])
+                    expert_calls.append(
+                        f"            if {conditions}:\n"
+                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    )
+                else:
+                    # Apply to all species
+                    expert_calls.append(
+                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    )
+            
             expert_calls_str = "\n".join(expert_calls)
             
             system_prompt = load_prompt("kernel_integration_system")

@@ -8,6 +8,13 @@ ARTIFICIAL LIFE CONTEXT:
 
 TÖLVERA CONTEXT:
 - tv.x and tv.y are screen dimensions (width and height)
+- Coordinate system: (0,0) is at the TOP-LEFT corner
+  - x increases going RIGHT (0 to tv.x)
+  - y increases going DOWN (0 to tv.y)
+  - Upper-left corner: (0, 0)
+  - Upper-right corner: (tv.x, 0)
+  - Lower-left corner: (0, tv.y)
+  - Lower-right corner: (tv.x, tv.y)
 - Particles have pos, vel, mass, species properties
 - Forces will be used to update particle velocities
 - Different species can represent different organism types (predators, prey, food, etc.)
@@ -37,6 +44,11 @@ CRITICAL TAICHI GUIDELINES:
    - Safe normalization: `if dist > 0.01: direction = to_target / dist`
    - Screen center: `center = ti.math.vec2(tv.x / 2, tv.y / 2)`
    - Random angles: `angle = ti.random() * 2 * pi` (after importing pi)
+   - Corner positions:
+     * Upper-left: `ti.math.vec2(50.0, 50.0)`
+     * Upper-right: `ti.math.vec2(tv.x - 50.0, 50.0)`
+     * Lower-left: `ti.math.vec2(50.0, tv.y - 50.0)`
+     * Lower-right: `ti.math.vec2(tv.x - 50.0, tv.y - 50.0)`
 
 4. Force Magnitude Guidelines:
    - Default force magnitudes: 50-400 for noticeable movement
