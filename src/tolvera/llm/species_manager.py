@@ -1,6 +1,7 @@
 import logging
 import random
 from typing import List, Dict, Tuple, Optional
+from .boundary_manager import BoundaryMode, BoundaryManager
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ class SpeciesManager:
     def __init__(self, tolvera_instance):
         self.tv = tolvera_instance
         self.current_species_count = self.tv.sn
+        self.boundary_manager = BoundaryManager()
         logger.info(f"Initialized SpeciesManager with {self.current_species_count} species")
     
     def analyze_species_requirements(self, behaviors: List[Dict]) -> Tuple[List[int], Dict]:
@@ -114,7 +116,7 @@ init_particles()
         
         return init_code
     
-    def generate_species_aware_kernel(self, expert_info: List[Dict], species_ids: List[int]) -> str:
+    def generate_species_aware_kernel(self, expert_info: List[Dict], species_ids: List[int], boundary_mode: BoundaryMode = BoundaryMode.NONE) -> str:
         single_experts = [e for e in expert_info if not e.get('is_interaction', False)]
         interaction_experts = [e for e in expert_info if e.get('is_interaction', False)]
         
@@ -202,24 +204,21 @@ def apply_all_experts():
             
 '''
         
+        # Get boundary handling code based on mode
+        boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=True)
+        
         kernel_code += '''            # Update velocity with damping
             tv.p.field[i].vel = tv.p.field[i].vel * 0.99 + total_force * dt
             
-            # Update position with boundary wrapping
+            # Update position
             new_pos = tv.p.field[i].pos + tv.p.field[i].vel * dt
             
-            # Wrap around boundaries
-            if new_pos[0] < 0:
-                new_pos[0] += tv.x
-            elif new_pos[0] > tv.x:
-                new_pos[0] -= tv.x
-                
-            if new_pos[1] < 0:
-                new_pos[1] += tv.y
-            elif new_pos[1] > tv.y:
-                new_pos[1] -= tv.y
-            
-            tv.p.field[i].pos = new_pos
 '''
+        
+        if boundary_code:
+            kernel_code += boundary_code + '\n'
+        else:
+            # No boundary handling - just update position
+            kernel_code += '            tv.p.field[i].pos = new_pos\n'
         
         return kernel_code

@@ -5,7 +5,7 @@ Integration layer between PoE behavior system and Tölvera.
 This module provides the glue between the PoE expert system and Tölvera's particle system.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 
 from .poe_core import PoEBehaviorSystem, SimpleProgrammaticExpert
@@ -23,6 +23,7 @@ class TolveraBehaviorAgent:
         self.poe_system = PoEBehaviorSystem(tolvera_instance)
         self.expert_manager = ExpertManager()
         self.species_manager = SpeciesManager(tolvera_instance)
+        self.current_boundary_mode = None  # Track boundary mode
 
         logger.info(
             f"Initialized TolveraBehaviorAgent with {tolvera_instance.pn} particles and {tolvera_instance.sn} species")
@@ -89,10 +90,14 @@ class TolveraBehaviorAgent:
             self.poe_system.add_expert(expert)
             self.expert_manager.add_expert(result["name"], expert)
 
+            # Analyze boundary requirements if not already set
+            if self.current_boundary_mode is None:
+                self.current_boundary_mode = synthesizer.analyze_boundary_requirements(description)
+            
             # Step 2: Regenerate integration @ti.kernel with all experts
             logger.info(
                 f"Step 2: Regenerating integration kernel for {len(self.poe_system.experts)} experts")
-            kernel_success = await self.poe_system.regenerate_integration_kernel(synthesizer)
+            kernel_success = await self.poe_system.regenerate_integration_kernel(synthesizer, self.current_boundary_mode)
             if not kernel_success:
                 logger.error(
                     f"Expert {result['name']} added but kernel regeneration failed")
@@ -165,6 +170,10 @@ class TolveraBehaviorAgent:
         """
         logger.info(f"Adding composite behavior: '{description}'")
         
+        # Analyze boundary requirements if not already set
+        if self.current_boundary_mode is None:
+            self.current_boundary_mode = synthesizer.analyze_boundary_requirements(description)
+        
         results = await synthesizer.synthesize_with_decomposition(description)
         
         if not results:
@@ -213,7 +222,7 @@ class TolveraBehaviorAgent:
     async def _regenerate_kernel_or_rollback(self, synthesizer: PoEExpertSynthesizer, 
                                            added_experts: List[SimpleProgrammaticExpert]) -> None:
         logger.info(f"Regenerating integration kernel for {len(self.poe_system.experts)} experts")
-        kernel_success = await self.poe_system.regenerate_integration_kernel(synthesizer)
+        kernel_success = await self.poe_system.regenerate_integration_kernel(synthesizer, self.current_boundary_mode)
         
         if not kernel_success:
             logger.error("Kernel regeneration failed after adding composite behavior")
@@ -244,3 +253,22 @@ class TolveraBehaviorAgent:
     
     def get_species_initialization_code(self, species_ids: List[int]) -> str:
         return self.species_manager.get_species_initialization_code(species_ids)
+    
+    def set_boundary_mode(self, mode: str):
+        from .boundary_manager import BoundaryMode
+        mode_map = {
+            'none': BoundaryMode.NONE,
+            'wrap': BoundaryMode.WRAP,
+            'bounce': BoundaryMode.BOUNCE,
+            'absorb': BoundaryMode.ABSORB
+        }
+        if mode.lower() in mode_map:
+            self.current_boundary_mode = mode_map[mode.lower()]
+            logger.info(f"Set boundary mode to: {self.current_boundary_mode.value}")
+        else:
+            logger.warning(f"Invalid boundary mode: {mode}. Valid modes: {list(mode_map.keys())}")
+    
+    def get_boundary_mode(self) -> Optional[str]:
+        if self.current_boundary_mode:
+            return self.current_boundary_mode.value
+        return None

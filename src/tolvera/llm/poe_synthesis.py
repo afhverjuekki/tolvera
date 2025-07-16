@@ -18,6 +18,7 @@ from .taichi_error_detector import TaichiErrorDetector
 from .taichi_error_corrector import TaichiErrorCorrector
 from .kernel_accumulator import KernelAccumulator
 from .behavior_decomposer import BehaviorDecomposer, SubBehavior
+from .boundary_manager import BoundaryManager, BoundaryMode
 
 logger = logging.getLogger(__name__)
 csv_logger = get_logger()
@@ -35,7 +36,13 @@ class PoEExpertSynthesizer:
         self.kernel_accumulator = KernelAccumulator(accumulator_path)
         self.decomposer = BehaviorDecomposer(model_name) if enable_decomposition else None
         self.enable_decomposition = enable_decomposition
+        self.boundary_manager = BoundaryManager()
 
+    def analyze_boundary_requirements(self, description: str) -> BoundaryMode:
+        mode, confidence = self.boundary_manager.analyze_boundary_requirements(description)
+        logger.info(f"Boundary analysis for '{description}': {mode.value} (confidence: {confidence})")
+        return mode
+    
     def extract_code(self, response: str) -> str:
         # Try to find code between triple backticks
         code_match = re.search(
@@ -208,9 +215,9 @@ class PoEExpertSynthesizer:
                     str(e)],
                 "raw_response": ""}
 
-    async def synthesize_integration_kernel(self, expert_info: list) -> dict:
+    async def synthesize_integration_kernel(self, expert_info: list, boundary_mode: Optional[BoundaryMode] = None) -> dict:
         logger.info(
-            f"Synthesizing integration kernel for {len(expert_info)} experts")
+            f"Synthesizing integration kernel for {len(expert_info)} experts with boundary mode: {boundary_mode.value if boundary_mode else 'none'}")
 
         # Separate single-particle and interaction experts
         single_experts = [e for e in expert_info if not e.get('is_interaction', False)]
@@ -274,10 +281,16 @@ class PoEExpertSynthesizer:
             
             interaction_expert_calls_str = "\n".join(interaction_expert_calls)
             
+            # Get boundary handling code
+            if boundary_mode is None:
+                boundary_mode = BoundaryMode.NONE
+            boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=False)
+            
             system_prompt = load_prompt("kernel_integration_interaction_system")
             user_prompt = load_prompt("kernel_integration_interaction_user").format(
                 single_expert_calls_str=single_expert_calls_str,
-                interaction_expert_calls_str=interaction_expert_calls_str
+                interaction_expert_calls_str=interaction_expert_calls_str,
+                boundary_handling_code=boundary_code
             )
         else:
             # Use the original single-particle kernel template
@@ -301,9 +314,15 @@ class PoEExpertSynthesizer:
             
             expert_calls_str = "\n".join(expert_calls)
             
+            # Get boundary handling code
+            if boundary_mode is None:
+                boundary_mode = BoundaryMode.NONE
+            boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=False)
+            
             system_prompt = load_prompt("kernel_integration_system")
             user_prompt = load_prompt("kernel_integration_user").format(
-                expert_calls_str=expert_calls_str
+                expert_calls_str=expert_calls_str,
+                boundary_handling_code=boundary_code
             )
         
         messages = [

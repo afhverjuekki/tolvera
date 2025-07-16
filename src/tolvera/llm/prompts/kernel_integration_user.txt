@@ -41,14 +41,5 @@ def apply_all_experts():
             # Update position based on new velocity
             tv.p.field[i].pos += tv.p.field[i].vel * dt
             
-            # Wrap particles around screen edges
-            if tv.p.field[i].pos[0] > tv.x:
-                tv.p.field[i].pos[0] = 0.0
-            elif tv.p.field[i].pos[0] < 0.0:
-                tv.p.field[i].pos[0] = tv.x
-                
-            if tv.p.field[i].pos[1] > tv.y:
-                tv.p.field[i].pos[1] = 0.0
-            elif tv.p.field[i].pos[1] < 0.0:
-                tv.p.field[i].pos[1] = tv.y
+{boundary_handling_code}
 ```

@@ -43,7 +43,7 @@ class PoEBehaviorSystem:
 
         logger.info(f"Initialized PoE system with {self.tv.pn} particles")
 
-    async def regenerate_integration_kernel(self, synthesizer):
+    async def regenerate_integration_kernel(self, synthesizer, boundary_mode=None):
         if not self.experts:
             logger.info("No experts available - clearing integration kernel")
             self._integration_kernel = None
@@ -66,7 +66,7 @@ class PoEBehaviorSystem:
 
         start_time = time.time()
         try:
-            result = await synthesizer.synthesize_integration_kernel(expert_info)
+            result = await synthesizer.synthesize_integration_kernel(expert_info, boundary_mode)
             synthesis_time_ms = (time.time() - start_time) * 1000
 
             # None of this is necessary, but it's nice to have for the CSV
