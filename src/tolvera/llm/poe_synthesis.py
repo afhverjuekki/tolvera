@@ -19,6 +19,8 @@ from .taichi_error_corrector import TaichiErrorCorrector
 from .kernel_accumulator import KernelAccumulator
 from .behavior_decomposer import BehaviorDecomposer, SubBehavior
 from .boundary_manager import BoundaryManager, BoundaryMode
+from .state_synthesizer import StateSynthesizer
+from .dynamic_state_manager import DynamicStateManager
 
 logger = logging.getLogger(__name__)
 csv_logger = get_logger()
@@ -28,7 +30,7 @@ class PoEExpertSynthesizer:
 
     def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, 
                  accumulator_path: str = "generated_kernels/kernels_repository.py",
-                 enable_decomposition: bool = True):
+                 enable_decomposition: bool = True, tolvera_instance=None):
         self.client = OllamaClient(model_name)
         self.error_detector = TaichiErrorDetector()
         self.error_corrector = TaichiErrorCorrector(model_name)
@@ -37,6 +39,72 @@ class PoEExpertSynthesizer:
         self.decomposer = BehaviorDecomposer(model_name) if enable_decomposition else None
         self.enable_decomposition = enable_decomposition
         self.boundary_manager = BoundaryManager()
+        self.state_synthesizer = StateSynthesizer(model_name)
+        self.state_manager = DynamicStateManager(tolvera_instance) if tolvera_instance else None
+        
+        # Determine if we're using a small model
+        self.is_small_model = self._is_small_model(model_name)
+
+    def _is_small_model(self, model_name: Optional[str]) -> bool:
+        """Determine if the model is a small model that needs simplified prompts."""
+        if not model_name:
+            return False
+        small_model_patterns = ['3b', '4b', '7b', '1b', '2b', 'small', 'mini', 'tiny']
+        return any(pattern in model_name.lower() for pattern in small_model_patterns)
+    
+    def _fix_parameter_order(self, code: str) -> str:
+        """Fix parameter order in expert functions if they're incorrect."""
+        import re
+        
+        # Pattern to match expert function definition
+        func_pattern = r'(@ti\.func\s*\n\s*def\s+expert_\w+\s*\()([^)]+)(\)\s*->\s*ti\.math\.vec2\s*:)'
+        
+        match = re.search(func_pattern, code, re.MULTILINE | re.DOTALL)
+        if not match:
+            return code
+        
+        decorator_and_def = match.group(1)
+        params = match.group(2)
+        return_type = match.group(3)
+        
+        # Check if parameters are in wrong order (species first)
+        if 'species:' in params and params.strip().startswith('species:'):
+            logger.warning("Detected incorrect parameter order (species first), fixing...")
+            
+            # Parse parameters
+            param_list = [p.strip() for p in params.split(',')]
+            param_dict = {}
+            
+            for param in param_list:
+                if 'pos:' in param:
+                    param_dict['pos'] = param
+                elif 'vel:' in param:
+                    param_dict['vel'] = param
+                elif 'mass:' in param:
+                    param_dict['mass'] = param
+                elif 'species:' in param:
+                    param_dict['species'] = param
+                elif 'particle_idx:' in param or 'i:' in param:
+                    param_dict['particle_idx'] = param
+            
+            # Reconstruct in correct order
+            correct_order = ['pos', 'vel', 'mass', 'species', 'particle_idx']
+            new_params = []
+            
+            for key in correct_order:
+                if key in param_dict:
+                    new_params.append(param_dict[key])
+            
+            if len(new_params) == 5:
+                new_param_str = ', '.join(new_params)
+                fixed_code = code.replace(
+                    decorator_and_def + params + return_type,
+                    decorator_and_def + new_param_str + return_type
+                )
+                logger.info("Successfully fixed parameter order")
+                return fixed_code
+        
+        return code
 
     def analyze_boundary_requirements(self, description: str) -> BoundaryMode:
         mode, confidence = self.boundary_manager.analyze_boundary_requirements(description)
@@ -93,15 +161,82 @@ class PoEExpertSynthesizer:
 
         return len(errors) == 0, errors
 
-    async def synthesize_expert(self, description: str) -> Dict[str, Any]:
+    async def synthesize_expert_with_states(self, description: str) -> Dict[str, Any]:
+        """
+        Synthesize expert with automatic state analysis and creation.
+        
+        Args:
+            description: Natural language behavior description
+            
+        Returns:
+            Expert synthesis result with state information
+        """
+        logger.info(f"Synthesizing expert with state analysis for: '{description}'")
+        
+        # Step 1: Analyze state requirements
+        state_spec = await self.state_synthesizer.analyze_state_requirements(description)
+        logger.info(f"State analysis result for '{description}': {state_spec}")
+        state_context = None
+        
+        # Step 2: Create states if needed and manager is available
+        if state_spec and self.state_manager:
+            any_states = any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states'])
+            logger.info(f"State spec check: state_spec={bool(state_spec)}, manager={bool(self.state_manager)}, any_states={any_states}")
+            if any_states:
+                logger.info(f"Creating dynamic states based on analysis: {state_spec}")
+                created_states = self.state_manager.create_states_from_spec(state_spec)
+                logger.info(f"Created states: {created_states}")
+                state_context = self.state_manager.get_synthesis_context()
+                logger.info(f"State context: {state_context}")
+            else:
+                logger.warning(f"No states found in spec: {state_spec}")
+        else:
+            logger.warning(f"Skipping state creation: state_spec={bool(state_spec)}, manager={bool(self.state_manager)}")
+        
+        # Step 3: Synthesize expert with state context, routing to interaction if needed
+        classification = await self.classify_behavior(description)
+        
+        if classification == "INTERACTION":
+            result = await self.synthesize_interaction_expert(description, state_context)
+        else:
+            result = await self.synthesize_expert(description, state_context)
+        
+        # Add state information to result
+        if result['success']:
+            result['state_spec'] = state_spec
+            result['state_context'] = state_context
+        
+        return result
+
+    async def synthesize_expert(self, description: str, state_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
         logger.info(f"Synthesizing expert for: '{description}'")
         
         species_info = await self.extract_species_info(description)
 
         system_prompt = load_prompt("expert_synthesis_system")
-        user_prompt = load_prompt("expert_synthesis_user").format(
-            description=description)
+        
+        # Choose appropriate user prompt based on model size
+        user_prompt_file = "expert_synthesis_user_small_model" if self.is_small_model else "expert_synthesis_user"
+        
+        # Add state context to user prompt if available
+        if state_context:
+            # Generate state access examples
+            state_examples = ""
+            if self.state_manager:
+                state_examples = self.state_manager.generate_state_access_examples()
+            
+            # Format user prompt with state context
+            user_prompt_template = load_prompt(user_prompt_file)
+            user_prompt = user_prompt_template.format(
+                description=description,
+                state_context=state_examples if state_examples else "No custom states available"
+            )
+        else:
+            # Format with empty state context
+            user_prompt = load_prompt(user_prompt_file).format(
+                description=description,
+                state_context="No custom states available")
 
         messages = [
             {'role': 'system', 'content': system_prompt},
@@ -118,6 +253,12 @@ class PoEExpertSynthesizer:
             code = self.extract_code(response)
 
             logger.info(f"Extracted Code:\n{code}")
+            
+            # Fix parameter order if needed
+            original_code = code
+            code = self._fix_parameter_order(code)
+            if code != original_code:
+                logger.info("Fixed parameter order in generated code")
 
             is_valid, errors = self.validate_expert_code(code)
             
@@ -215,7 +356,7 @@ class PoEExpertSynthesizer:
                     str(e)],
                 "raw_response": ""}
 
-    async def synthesize_integration_kernel(self, expert_info: list, boundary_mode: Optional[BoundaryMode] = None) -> dict:
+    async def synthesize_integration_kernel(self, expert_info: list, boundary_mode: Optional[BoundaryMode] = None, state_context: Optional[Dict[str, Any]] = None) -> dict:
         logger.info(
             f"Synthesizing integration kernel for {len(expert_info)} experts with boundary mode: {boundary_mode.value if boundary_mode else 'none'}")
 
@@ -238,15 +379,22 @@ class PoEExpertSynthesizer:
                     conditions = " or ".join([f"species == {s}" for s in species_mentioned])
                     single_expert_calls.append(
                         f"            if {conditions}:\n"
-                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                     )
                 else:
                     # Apply to all species
                     single_expert_calls.append(
-                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                     )
             
             single_expert_calls_str = "\n".join(single_expert_calls) if single_experts else "            # No single-particle experts"
+            
+            # Generate state access code if state context is available
+            state_access_code = ""
+            if state_context and state_context.get('access_examples'):
+                state_access_code = "\n        # Access custom states\n" + "\n        ".join(
+                    ["        " + line for line in state_context['access_examples'].split('\n') if line.strip() and not line.startswith('#')]
+                )
             
             interaction_expert_calls = []
             for expert in interaction_experts:
@@ -287,11 +435,20 @@ class PoEExpertSynthesizer:
             boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=False)
             
             system_prompt = load_prompt("kernel_integration_interaction_system")
-            user_prompt = load_prompt("kernel_integration_interaction_user").format(
-                single_expert_calls_str=single_expert_calls_str,
-                interaction_expert_calls_str=interaction_expert_calls_str,
-                boundary_handling_code=boundary_code
-            )
+            
+            # Build user prompt with state context if available
+            prompt_kwargs = {
+                'single_expert_calls_str': single_expert_calls_str,
+                'interaction_expert_calls_str': interaction_expert_calls_str,
+                'boundary_handling_code': boundary_code
+            }
+            
+            # Add state context to prompt if available
+            if state_context:
+                prompt_kwargs['state_access_code'] = state_access_code
+                prompt_kwargs['state_context'] = state_context.get('state_summary', '')
+            
+            user_prompt = load_prompt("kernel_integration_interaction_user").format(**prompt_kwargs)
         else:
             # Use the original single-particle kernel template
             expert_calls = []
@@ -304,12 +461,12 @@ class PoEExpertSynthesizer:
                     conditions = " or ".join([f"species == {s}" for s in species_mentioned])
                     expert_calls.append(
                         f"            if {conditions}:\n"
-                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                        f"                total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                     )
                 else:
                     # Apply to all species
                     expert_calls.append(
-                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                        f"            total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                     )
             
             expert_calls_str = "\n".join(expert_calls)
@@ -319,11 +476,27 @@ class PoEExpertSynthesizer:
                 boundary_mode = BoundaryMode.NONE
             boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=False)
             
+            # Generate state access code if state context is available
+            state_access_code = ""
+            if state_context and state_context.get('access_examples'):
+                state_access_code = "\n        # Access custom states\n" + "\n        ".join(
+                    ["        " + line for line in state_context['access_examples'].split('\n') if line.strip() and not line.startswith('#')]
+                )
+            
             system_prompt = load_prompt("kernel_integration_system")
-            user_prompt = load_prompt("kernel_integration_user").format(
-                expert_calls_str=expert_calls_str,
-                boundary_handling_code=boundary_code
-            )
+            
+            # Build user prompt with state context if available
+            prompt_kwargs = {
+                'expert_calls_str': expert_calls_str,
+                'boundary_handling_code': boundary_code
+            }
+            
+            # Add state context to prompt if available
+            if state_context:
+                prompt_kwargs['state_access_code'] = state_access_code
+                prompt_kwargs['state_context'] = state_context.get('state_summary', '')
+            
+            user_prompt = load_prompt("kernel_integration_user").format(**prompt_kwargs)
         
         messages = [
             {'role': 'system', 'content': system_prompt},
@@ -506,33 +679,7 @@ class PoEExpertSynthesizer:
     async def extract_species_info(self, description: str) -> dict:
         logger.info(f"Extracting species info from: '{description}'")
         
-        prompt = f"""Analyze this particle behavior description and extract species information.
-
-Description: "{description}"
-
-Look for:
-1. Specific species mentioned by number (e.g., "species 0", "species 1", "species 2")
-2. Phrases indicating multiple species (e.g., "all species", "each species", "different species")
-3. Interactions between species (e.g., "species 0 chases species 1")
-
-IMPORTANT: Extract ONLY the exact species numbers that are explicitly mentioned. Do not assume species 0 exists unless it's explicitly mentioned.
-
-Respond with ONLY a JSON object in this format:
-{{
-    "max_species": <highest species number + 1, or null if unclear>,
-    "species_mentioned": [<list of species numbers explicitly mentioned>],
-    "requires_all_species": <true if behavior applies to all species, false otherwise>,
-    "interaction_pairs": [[0, 1], ...] // pairs of species that interact
-}}
-
-Examples:
-- "species 0 chases species 1" -> {{"max_species": 2, "species_mentioned": [0, 1], "requires_all_species": false, "interaction_pairs": [[0, 1]]}}
-- "species 2 avoids species 0" -> {{"max_species": 3, "species_mentioned": [0, 2], "requires_all_species": false, "interaction_pairs": [[2, 0]]}}  
-- "species 1 and species 2 repel each other" -> {{"max_species": 3, "species_mentioned": [1, 2], "requires_all_species": false, "interaction_pairs": [[1, 2]]}}
-- "species 4 moves upward" -> {{"max_species": 5, "species_mentioned": [4], "requires_all_species": false, "interaction_pairs": []}}
-- "all species attract each other" -> {{"max_species": null, "species_mentioned": [], "requires_all_species": true, "interaction_pairs": []}}
-- "particles fall downward" -> {{"max_species": 1, "species_mentioned": [], "requires_all_species": false, "interaction_pairs": []}}
-"""
+        prompt = f"""Analyze this particle behavior description and extract species information.\n\nDescription: "{description}"\n\nLook for:\n1. Specific species mentioned by number (e.g., "species 0", "species 1", "species 2")\n2. Phrases indicating multiple species (e.g., "all species", "each species", "different species")\n3. Interactions between species (e.g., "species 0 chases species 1")\n\nIMPORTANT: Extract ONLY the exact species numbers that are explicitly mentioned. Do not assume species 0 exists unless it's explicitly mentioned.\n\nRespond with ONLY a JSON object in this format:\n{{\n    "max_species": <highest species number + 1, or null if unclear>,\n    "species_mentioned": [<list of species numbers explicitly mentioned>],\n    "requires_all_species": <true if behavior applies to all species, false otherwise>,\n    "interaction_pairs": [[0, 1], ...] // pairs of species that interact\n}}\n\nExamples:\n- "species 0 chases species 1" -> {{"max_species": 2, "species_mentioned": [0, 1], "requires_all_species": false, "interaction_pairs": [[0, 1]]}}\n- "species 2 avoids species 0" -> {{"max_species": 3, "species_mentioned": [0, 2], "requires_all_species": false, "interaction_pairs": [[2, 0]]}}  \n- "species 1 and species 2 repel each other" -> {{"max_species": 3, "species_mentioned": [1, 2], "requires_all_species": false, "interaction_pairs": [[1, 2]]}}\n- "species 4 moves upward" -> {{"max_species": 5, "species_mentioned": [4], "requires_all_species": false, "interaction_pairs": []}}\n- "all species attract each other" -> {{"max_species": null, "species_mentioned": [], "requires_all_species": true, "interaction_pairs": []}}\n- "particles fall downward" -> {{"max_species": 1, "species_mentioned": [], "requires_all_species": false, "interaction_pairs": []}}\n"""
         
         messages = [
             {'role': 'system', 'content': 'You are a species detection expert. Extract species information accurately.'},
@@ -555,10 +702,15 @@ Examples:
         return species_info
     
     async def _synthesize_single_behavior(self, description: str) -> Dict[str, Any]:
+        # If we have a state manager, use the state-aware synthesis
+        if self.state_manager:
+            return await self.synthesize_expert_with_states(description)
+        
+        # Otherwise, fall back to regular synthesis
         behavior_type = await self.classify_behavior(description)
         if behavior_type == "INTERACTION":
-            return await self.synthesize_interaction_expert(description)
-        return await self.synthesize_expert(description)
+            return await self.synthesize_interaction_expert(description, state_context=None)
+        return await self.synthesize_expert(description, state_context=None)
     
     def _add_decomposition_metadata(self, result: Dict[str, Any], 
                                    original_description: str, 
@@ -574,7 +726,9 @@ Examples:
         result['weight'] = sub_behavior.weight
     
     async def _process_sub_behaviors(self, sub_behaviors: List[SubBehavior], 
-                                   original_description: str) -> List[Dict[str, Any]]:
+                                   original_description: str,
+                                   original_state_spec: Optional[Dict[str, Any]] = None,
+                                   original_state_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Process and synthesize each sub-behavior."""
         results = []
         
@@ -583,10 +737,22 @@ Examples:
                        f"'{sub_behavior.description}' (weight: {sub_behavior.weight})")
             
             try:
-                result = await self._synthesize_single_behavior(sub_behavior.description)
+                # Use original state context if available, otherwise analyze per sub-behavior
+                if original_state_spec and original_state_context:
+                    logger.info(f"Using original state context for sub-behavior: {sub_behavior.description}")
+                    result = await self._synthesize_with_state_context(sub_behavior.description, original_state_spec, original_state_context)
+                else:
+                    result = await self._synthesize_single_behavior(sub_behavior.description)
+                
                 self._add_decomposition_metadata(
                     result, original_description, sub_behavior, i, len(sub_behaviors)
                 )
+                
+                # Add original state spec to the result for proper state initialization
+                if original_state_spec:
+                    result['state_spec'] = original_state_spec
+                    result['state_context'] = original_state_context
+                
                 results.append(result)
             except Exception as e:
                 logger.error(f"Failed to synthesize sub-behavior '{sub_behavior.description}': {e}")
@@ -594,6 +760,16 @@ Examples:
         
         return results
     
+    async def _synthesize_with_state_context(self, description: str, state_spec: Dict[str, Any], state_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Synthesize expert code with a given state context."""
+        # Use the existing synthesize_expert method with the provided state context
+        classification = await self.classify_behavior(description)
+        
+        if classification == "INTERACTION":
+            return await self.synthesize_interaction_expert(description, state_context)
+        else:
+            return await self.synthesize_expert(description, state_context)
+
     async def _handle_no_decomposition(self, description: str) -> List[Dict[str, Any]]:
         result = await self._synthesize_single_behavior(description)
         return [result]
@@ -614,8 +790,23 @@ Examples:
         
         sub_behaviors = self.decomposer.adjust_weights_for_balance(sub_behaviors, description)
         
+        # IMPORTANT: Analyze state requirements for the ORIGINAL behavior before decomposition
+        # This ensures that complex behaviors requiring states get proper state analysis
+        original_state_spec = None
+        original_state_context = None
+        if self.state_manager:
+            logger.info(f"Analyzing state requirements for original behavior: '{description}'")
+            original_state_spec = await self.state_synthesizer.analyze_state_requirements(description)
+            
+            # Create states if needed
+            if original_state_spec:
+                any_states = any(original_state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states'])
+                if any_states:
+                    logger.info(f"Creating states for original behavior: {original_state_spec}")
+                    self.state_manager.create_states_from_spec(original_state_spec)
+                    original_state_context = self.state_manager.get_synthesis_context()
         
-        results = await self._process_sub_behaviors(sub_behaviors, description)
+        results = await self._process_sub_behaviors(sub_behaviors, description, original_state_spec, original_state_context)
         
         if not results:
             logger.warning("All sub-behavior synthesis failed, attempting original")
@@ -623,7 +814,7 @@ Examples:
         
         return results
     
-    async def synthesize_interaction_expert(self, description: str) -> dict:
+    async def synthesize_interaction_expert(self, description: str, state_context: Optional[Dict[str, Any]] = None) -> dict:
         logger.info(f"Synthesizing expert for: '{description}'")
         
         # Use the router to classify the behavior
@@ -634,7 +825,7 @@ Examples:
         
         if classification == "SINGLE":
             logger.info("Behavior classified as SINGLE-PARTICLE, using standard synthesis")
-            result = await self.synthesize_expert(description)
+            result = await self.synthesize_expert(description, state_context)
             # Add species info to result
             if result["success"]:
                 result["species_info"] = species_info
@@ -643,7 +834,25 @@ Examples:
         logger.info("Behavior classified as INTERACTION, using interaction synthesis")
         
         system_prompt = load_prompt("expert_interaction_synthesis_system")
-        user_prompt = load_prompt("expert_interaction_synthesis_user").format(description=description)
+        
+        # Add state context to user prompt if available
+        if state_context:
+            # Generate state access examples
+            state_examples = ""
+            if self.state_manager:
+                state_examples = self.state_manager.generate_state_access_examples()
+            
+            # Format user prompt with state context
+            user_prompt_template = load_prompt("expert_interaction_synthesis_user")
+            user_prompt = user_prompt_template.format(
+                description=description,
+                state_context=state_examples if state_examples else "No custom states available"
+            )
+        else:
+            # Format with empty state context
+            user_prompt = load_prompt("expert_interaction_synthesis_user").format(
+                description=description,
+                state_context="No custom states available")
 
         messages = [
             {'role': 'system', 'content': system_prompt},
@@ -744,8 +953,8 @@ Examples:
 
 class PureLLMSynthesizer:
 
-    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, enable_decomposition: bool = True):
-        self.synthesizer = PoEExpertSynthesizer(model_name=model_name, auto_correct=auto_correct, enable_decomposition=enable_decomposition)
+    def __init__(self, model_name: Optional[str] = None, auto_correct: bool = True, enable_decomposition: bool = True, tolvera_instance=None):
+        self.synthesizer = PoEExpertSynthesizer(model_name=model_name, auto_correct=auto_correct, enable_decomposition=enable_decomposition, tolvera_instance=tolvera_instance)
         logger.info(
             f"Initialized PureLLMSynthesizer with model: {model_name or 'default'}, auto_correct: {auto_correct}, enable_decomposition={enable_decomposition}")
 

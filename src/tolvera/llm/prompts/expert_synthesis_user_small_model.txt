@@ -1,0 +1,143 @@
+CRITICAL PARAMETER ORDER - READ THIS FIRST
+
+FUNCTION SIGNATURE MUST BE EXACTLY:
+def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+
+PARAMETER ORDER (NEVER CHANGE THIS):
+1. pos (position)
+2. vel (velocity) 
+3. mass (mass)
+4. species (species ID)
+5. particle_idx (particle index)
+
+WRONG: def expert_NAME(species: ti.i32, pos: ti.math.vec2, ...)
+CORRECT: def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32)
+
+=== TASK ===
+Generate a Taichi function that calculates a force for a particle.
+
+REQUIREMENTS:
+1. Start with @ti.func decorator
+2. Use EXACT parameter order shown above
+3. Return ti.math.vec2 force vector
+4. Initialize variables BEFORE if/else blocks
+
+VARIABLE SCOPING RULE:
+Variables used after if/else MUST be initialized BEFORE:
+
+WRONG:
+if condition:
+    multiplier = 2.0
+force = vel * multiplier  # ERROR: multiplier not defined
+
+CORRECT:
+multiplier = 1.0  # Initialize first
+if condition:
+    multiplier = 2.0
+force = vel * multiplier  # OK
+
+=== QUICK REFERENCE ===
+- Vector magnitude: vec.norm()
+- Normalize: vec.normalized() (check norm > 0.01 first!)
+- Create vector: ti.math.vec2(x, y)
+- Math functions: ti.sin(), ti.cos(), ti.sqrt()
+- Pi value: 3.14159 (not ti.pi)
+- Screen size: tv.x, tv.y
+
+{state_context}
+
+BEHAVIOR IMPLEMENTATION NOTES
+When implementing behaviors that mention specific species:
+- "species 0 active during day, species 1 nocturnal" means they should have OPPOSITE activity patterns
+- "species 0 chases species 1" means force calculation should check both species
+- States are updated elsewhere - your job is to USE the states, not SET them
+- Access species-specific states using: tv.s.llm_species.field[species].state_name
+- Access global states using: tv.s.llm_global.field[0].state_name
+
+CRITICAL STATE USAGE RULES
+1. ONLY use states that are EXPLICITLY listed in the state context above
+2. NEVER invent or assume states exist (like home_pos, target_pos, etc.)
+3. If you need a state that doesn't exist, work around it creatively
+4. For "return home" behaviors without home_pos state:
+   - Use the center of the screen as "home"
+   - Or use the particle's initial spawn area
+   - DO NOT try to access non-existent home_pos state!
+
+=== SIMPLE EXAMPLES ===
+
+GRAVITY:
+@ti.func
+def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    return ti.math.vec2(0.0, -300.0 * mass)
+
+RANDOM MOVEMENT:
+@ti.func
+def expert_wander(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    angle = ti.random() * 2 * 3.14159
+    return ti.math.vec2(ti.cos(angle) * 150.0, ti.sin(angle) * 150.0)
+
+CENTER ATTRACTION:
+@ti.func
+def expert_center_attraction(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    center = ti.math.vec2(tv.x / 2, tv.y / 2)
+    to_center = center - pos
+    dist = to_center.norm()
+    force = ti.math.vec2(0.0, 0.0)
+    if dist > 1.0:
+        force = (to_center / dist) * 200.0
+    return force
+
+SPECIES-SPECIFIC BEHAVIOR (using states):
+@ti.func
+def expert_species_activity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Get activity level for THIS species (not all species!)
+    activity = tv.s.llm_species.field[species].activity_level
+    
+    # Create movement based on activity
+    angle = ti.random() * 2 * 3.14159
+    base_force = ti.math.vec2(ti.cos(angle), ti.sin(angle)) * 100.0
+    
+    # Scale by THIS species' activity level
+    return base_force * activity
+
+RETURN HOME (without home_pos state):
+@ti.func
+def expert_return_tired(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # If no home_pos state exists, use center as "home"
+    home = ti.math.vec2(tv.x / 2, tv.y / 2)
+    tiredness = tv.s.llm_particle.field[particle_idx].tiredness
+    
+    # Return force toward home when tired
+    to_home = home - pos
+    dist = to_home.norm()
+    force = ti.math.vec2(0.0, 0.0)
+    
+    if tiredness > 0.7 and dist > 1.0:
+        force = (to_home / dist) * 200.0 * tiredness
+    
+    return force
+
+RETURN HOME (WITH home_pos state - when listed in state context):
+@ti.func  
+def expert_return_home(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Only use home_pos if it's listed in the state context above!
+    home = tv.s.llm_particle.field[particle_idx].home_pos
+    tiredness = tv.s.llm_particle.field[particle_idx].tiredness
+    
+    # Return force toward home when tired
+    to_home = home - pos
+    dist = to_home.norm()
+    force = ti.math.vec2(0.0, 0.0)
+    
+    if tiredness > 0.7 and dist > 1.0:
+        force = (to_home / dist) * 300.0 * tiredness
+    
+    return force
+
+=== YOUR TASK ===
+Generate ONLY the function code for: "{description}"
+
+REMEMBER: 
+- EXACT parameter order: pos, vel, mass, species, particle_idx
+- Return ti.math.vec2
+- Initialize variables BEFORE conditionals

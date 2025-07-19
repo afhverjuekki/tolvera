@@ -86,7 +86,7 @@ class OllamaClient:
                    messages: List[Dict[str,
                                        str]],
                    temperature: float = 0.7,
-                   max_tokens: int = 30000, 
+                   max_tokens: int = 50000, 
                    think: bool = False) -> str:
         try:
             # Append /no_think to avoid thinking mode issues

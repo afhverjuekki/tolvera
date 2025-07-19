@@ -1,0 +1,68 @@
+Design the complete state architecture for implementing this behavior:
+
+"{description}"
+
+Think creatively about what states would enable this behavior. Consider:
+- What information needs to persist across frames?
+- What emergent properties might arise?
+- What hidden variables could create interesting dynamics?
+- How might states interact to produce the described behavior?
+
+IMPORTANT STATE CONSIDERATIONS:
+- If behavior mentions "remember position" or "return home", include a position state (e.g., home_pos as ti.math.vec2)
+- If behavior mentions "target" or "goal", include appropriate position/target states
+- If behavior mentions "memory" or "history", include states to track past information
+- For time-based behaviors, include temporal states
+
+CRITICAL POSITION STATE PATTERNS:
+- "return home" → MUST include home_pos (ti.math.vec2) in particle_states
+- "remember where" → MUST include appropriate position state (ti.math.vec2)
+- "go back to" → MUST include saved position state (ti.math.vec2)
+- "return when tired" → MUST include both tiredness (ti.f32) AND home_pos (ti.math.vec2)
+- "remember their home" → MUST include home_pos (ti.math.vec2)
+
+Example for "return home" behaviors:
+"particle_states": {{
+  "tiredness": {{
+    "type": "ti.f32",
+    "min": 0.0,
+    "max": 1.0,
+    "description": "How tired the particle is"
+  }},
+  "home_pos": {{
+    "type": "ti.math.vec2",
+    "min": [0.0, 0.0],
+    "max": [1.0, 1.0],
+    "description": "The particle's home position to return to"
+  }}
+}}
+
+If the behavior involves time, cycles, or gradual changes, design a temporal system that suits it. Don't use generic solutions - create something specific and elegant for this behavior.
+
+Output ONLY valid JSON with your state design. The JSON must be properly formatted with:
+- Proper quotes around all keys and string values
+- No trailing commas
+- Correct nesting of objects
+
+Include any of these categories that you need:
+{{
+  "global_states": {{
+    "state_name": {{
+      "type": "ti.f32",
+      "min": 0.0,
+      "max": 1.0,
+      "description": "What this state represents"
+    }}
+  }},
+  "particle_states": {{}},
+  "species_states": {{}},
+  "pixel_states": {{}},
+  "temporal_config": {{
+    "day_duration": 10.0,
+    "time_units": ["day", "night"],
+    "frame_rate": 60.0,
+    "time_scale": 1.0
+  }}
+}}
+
+Remember: Output ONLY the JSON, no explanatory text before or after.

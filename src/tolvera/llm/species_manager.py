@@ -129,11 +129,11 @@ init_particles()
                 conditions = " or ".join([f"species == {s}" for s in mentioned])
                 single_calls.append(
                     f"            if {conditions}:\n"
-                    f"                total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    f"                total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                 )
             else:
                 single_calls.append(
-                    f"            total_force += expert_{expert['name']}(pos, vel, mass, species) * {expert['weight']:.2f}"
+                    f"            total_force += expert_{expert['name']}(pos, vel, mass, species, i) * {expert['weight']:.2f}"
                 )
         
         single_calls_str = "\n".join(single_calls) if single_calls else "            # No single-particle experts"

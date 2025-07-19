@@ -64,9 +64,18 @@ class PoEBehaviorSystem:
                 expert.name) for expert in self.experts]
         user_description_for_kernel = f"Integration kernel for experts: {'; '.join(expert_descriptions)}"
 
+        # Collect state context from experts
+        state_context = None
+        for expert in self.experts:
+            if expert.metadata.get('state_context'):
+                # Use the first non-empty state context found
+                state_context = expert.metadata['state_context']
+                logger.info("Found state context from expert metadata")
+                break
+
         start_time = time.time()
         try:
-            result = await synthesizer.synthesize_integration_kernel(expert_info, boundary_mode)
+            result = await synthesizer.synthesize_integration_kernel(expert_info, boundary_mode, state_context)
             synthesis_time_ms = (time.time() - start_time) * 1000
 
             # None of this is necessary, but it's nice to have for the CSV

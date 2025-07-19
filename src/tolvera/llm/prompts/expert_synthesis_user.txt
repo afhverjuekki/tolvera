@@ -7,29 +7,135 @@ ARTIFICIAL LIFE CONTEXT:
 
 CRITICAL INSTRUCTIONS:
 
-1.  Function Signature: The function signature is non-negotiable. It MUST be:
-    `def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:`
-    - Replace `NAME` with a descriptive name based on the behavior (e.g., `gravity`, `swirl`).
-    - The function takes the particle's `pos`, `vel`, `mass`, and `species` as direct inputs.
-    - The `species` parameter is an integer from 0 to tv.sn-1, identifying the particle type.
+TAICHI VARIABLE SCOPING RULE: Any variable used after an if/else block MUST be initialized BEFORE the if/else block. This prevents "Name not defined" errors.
+
+1.  CRITICAL: FUNCTION SIGNATURE MUST BE EXACTLY THIS
+    
+    The function signature is ABSOLUTELY NON-NEGOTIABLE. Copy this EXACTLY:
+    ```python
+    def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    ```
+    
+    - Replace ONLY `NAME` with a descriptive name (e.g., `gravity`, `swirl`)
+    - DO NOT CHANGE THE PARAMETER ORDER!
+    - DO NOT MOVE SPECIES TO THE FRONT!
+    
+    COMPILATION WILL FAIL IF YOU CHANGE THE PARAMETER ORDER!
+    
+    DO NOT DO THINGS LIKE THIS!  THESE ARE ALL WRONG AND WILL CAUSE TYPE ERRORS:
+    ```python
+    def expert_NAME(species: ti.i32, pos: ti.math.vec2, ...)  # WRONG: species first
+    def expert_NAME(pos: ti.math.vec2, species: ti.i32, ...)  # WRONG: species before mass
+    def expert_NAME(vel: ti.math.vec2, pos: ti.math.vec2, ...)  # WRONG: vel before pos
+    ```
+    
+    THIS IS THE ONLY CORRECT SIGNATURE:
+    ```python
+    def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    ```
+    
+    PARAMETER ORDER (MEMORIZE THIS):
+    1st: pos (position vector)
+    2nd: vel (velocity vector) 
+    3rd: mass (particle mass)
+    4th: species (species ID)
+    5th: particle_idx (particle index)
+    
+    - The `species` parameter is an integer from 0 to tv.sn-1
+    - The `particle_idx` parameter is the index of the current particle
 
 2.  Decorator: The function MUST start with the `@ti.func` decorator.
 
 3.  Return Value: The function MUST return a 2D force vector, `ti.math.vec2(fx, fy)`. This force will be used to calculate the particle's acceleration.
+    - IMPORTANT: Forces should create MOVEMENT, not just scale velocity!
+    - BAD: `force = vel * multiplier` (just scales existing velocity)
+    - GOOD: `force = direction * magnitude` (creates actual movement force)
+    - For autonomous movement, use random walks, target seeking, or other active behaviors
 
 4.  Self-Contained Logic: The function should be self-contained. It should NOT access particle data via `tv.p.field[i]`. All necessary particle state is provided in the function arguments.
+    CRITICAL: In expert functions, use the PARAMETERS, not tv.p.field!
+    - CORRECT: Use `pos`, `vel`, `mass`, `species` parameters directly
+    - WRONG: Access `tv.p.field[i].pos` or `tv.p.field[i].vel`
+    - The whole point of parameters is to avoid accessing tv.p.field!
 
 5.  Global Context: You CAN use global Tolvera properties like `tv.x` and `tv.y` for screen dimensions if needed (e.g., for centering or boundary checks).
     - CRITICAL: Always use `tv.x` and `tv.y` to access screen dimensions. NEVER use `tv[0]` or `tv[1]` - Tolvera does NOT support subscript notation!
 
 6.  Taichi Best Practices:
     - Use Taichi math functions: `ti.sqrt`, `ti.sin`, `ti.cos`, `ti.atan2`, etc.
-    - NEVER use `ti.pi` or `ti.math.pi` - they don't exist!
+    - NEVER use `ti.pi` or `ti.math.pi` - they don't exist! Use 3.14159 instead.
     - For vector operations: use `.norm()` for magnitude, `.normalized()` for unit vector
+    - CRITICAL: ALWAYS check if a vector's norm is > 0.01 before calling .normalized() to avoid division by zero:
+      ```python
+      if vec.norm() > 0.01:
+          direction = vec.normalized()
+      else:
+          direction = ti.math.vec2(1.0, 0.0)  # Default direction
+      ```
     - For type casting, use `ti.cast(value, ti.f32)`
     - ALWAYS initialize force variable: `force = ti.math.vec2(0.0, 0.0)`
+    - CRITICAL VARIABLE SCOPING RULE
+      Variables defined inside if/else blocks are NOT accessible outside!
+      
+      THIS WILL CAUSE "Name 'activity_multiplier' is not defined" ERROR:
+      ```python
+      if day_night_cycle < 0.5:
+          activity_multiplier = 1.5  # WRONG: First definition inside if
+      else:
+          activity_multiplier = 1.0  # WRONG: First definition inside else
+      force = vel * activity_multiplier  # ERROR: activity_multiplier not defined
+      ```
+      
+      CORRECT PATTERN - YOU MUST ALWAYS DO THIS:
+      ```python
+      activity_multiplier = 1.0  # Define BEFORE if/else with default value
+      if day_night_cycle < 0.5:
+          activity_multiplier = 1.5  # Reassign existing variable
+      else:
+          activity_multiplier = 0.5  # Reassign existing variable
+      force = vel * activity_multiplier  # Works: activity_multiplier was defined before if/else
+      ```
+      
+      EVERY VARIABLE USED AFTER A CONDITIONAL MUST BE INITIALIZED BEFORE THE CONDITIONAL!
 
 7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
+
+8.  CRITICAL - Custom State Access: 
+    {state_context}
+    
+    CRITICAL STATE ACCESS RULES
+    
+    1. YOU MUST USE EXACTLY THE STATE NAMES SHOWN ABOVE - NO EXCEPTIONS!
+    2. YOU MUST ACCESS STATES FROM THE CORRECT CATEGORY!
+    3. NEVER MIX UP STATE CATEGORIES!
+    4. PARTICLE POSITION AND VELOCITY COME FROM FUNCTION PARAMETERS, NOT STATES!
+       - Use the `pos` parameter for position (NOT tv.s.llm_particle.field[i].position)
+       - Use the `vel` parameter for velocity (NOT tv.s.llm_particle.field[i].velocity)
+       - These are ALREADY PROVIDED as function arguments!
+    
+    STATE CATEGORY ACCESS PATTERNS:
+    - GLOBAL states: tv.s.llm_global.field[0].state_name
+    - PARTICLE states: tv.s.llm_particle.field[particle_idx].state_name  
+    - SPECIES states: tv.s.llm_species.field[species].state_name
+    
+    CATEGORY CONFUSION ERRORS - NEVER DO THIS
+    - WRONG: tv.s.llm_species.field[species].activity_level  (if activity_level is a PARTICLE state)
+    - WRONG: tv.s.llm_particle.field[particle_idx].day_cycle  (if day_cycle is a SPECIES state)
+    - WRONG: tv.s.llm_global.field[0].energy  (if energy is a PARTICLE state)
+    
+    CORRECT: Always check the state category in the documentation above!
+    - If a state is listed under "PARTICLE STATES", access it with tv.s.llm_particle.field[particle_idx]
+    - If a state is listed under "SPECIES STATES", access it with tv.s.llm_species.field[species]
+    - If a state is listed under "GLOBAL STATES", access it with tv.s.llm_global.field[0]
+    
+    COMMON MISTAKES TO AVOID
+    - DO NOT access home_pos unless it's listed above
+    - DO NOT access target_pos unless it's listed above
+    - DO NOT access any state not explicitly shown in the state context
+    - DO NOT access a state from the wrong category (e.g., particle state as species state)
+    - DO NOT try to access position/velocity from states - use the function parameters!
+    - DO NOT use tv.p.field[i] in expert functions - use parameters instead!
+    - If implementing "return home" without home_pos state, use screen center or a fixed position
 
 EXAMPLE 1: Gravity
 *User Request:* "Particles fall downward strongly."
@@ -37,7 +143,7 @@ EXAMPLE 1: Gravity
 *Generated Code:*
 ```python
 @ti.func
-def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     gravity_strength = 300.0
     return ti.math.vec2(0.0, -gravity_strength * mass)
 ```
@@ -48,7 +154,7 @@ EXAMPLE 2: Circular motion
 *Generated Code:*
 ```python
 @ti.func
-def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
     to_center = center - pos
     dist = to_center.norm()
@@ -68,7 +174,7 @@ EXAMPLE 3: Random exploration
 *Generated Code:*
 ```python
 @ti.func
-def expert_wander(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_wander(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     angle = ti.random() * 2 * pi
     force_magnitude = 150.0
     force = ti.math.vec2(ti.cos(angle) * force_magnitude, ti.sin(angle) * force_magnitude)
@@ -81,7 +187,7 @@ EXAMPLE 4: Repulsion/Fleeing (CRITICAL - shows AWAY movement)
 *Generated Code:*
 ```python
 @ti.func
-def expert_flee_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_flee_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
     away_from_center = pos - center  # Vector pointing AWAY from center
     dist = away_from_center.norm()
@@ -99,7 +205,7 @@ EXAMPLE 5: Attraction/Seeking (shows TOWARD movement)
 *Generated Code:*
 ```python
 @ti.func
-def expert_seek_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32) -> ti.math.vec2:
+def expert_seek_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
     to_center = center - pos  # Vector pointing TOWARD center
     dist = to_center.norm()
@@ -111,10 +217,155 @@ def expert_seek_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, speci
     return force
 ```
 
+EXAMPLE 6: Using Custom States with Conditionals
+*User Request:* "Particles behave differently based on their internal states."
+
+IMPORTANT: This example shows the PATTERN of using custom states. You MUST use the exact state names from your state_context, NOT the names shown here!
+
+*Example Pattern (DO NOT COPY THESE NAMES):*
+```python
+@ti.func
+def expert_state_based_behavior(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # ✅ NOTICE: Parameters are in CORRECT ORDER: pos, vel, mass, species, particle_idx
+    
+    # Access custom states using EXACT names from state_context
+    # Example: if state_context shows "time_of_day", use that exact name
+    
+    # CRITICAL: Initialize ALL variables BEFORE conditional blocks
+    force = ti.math.vec2(0.0, 0.0)
+    speed_multiplier = 1.0  # ✅ MUST initialize BEFORE if/else to avoid "Name not defined" error
+    
+    # Access states (use YOUR actual state names from state_context)
+    # state_value = tv.s.llm_global.field[0].<your_state_name>
+    
+    # Conditional logic - assign to pre-initialized variables
+    if some_condition:
+        speed_multiplier = 2.0  # ✅ Reassign existing variable
+    else:
+        speed_multiplier = 0.5  # ✅ Reassign existing variable
+    
+    # Now speed_multiplier can be used here safely
+    # Create actual movement force, not just velocity scaling
+    angle = ti.random() * 2 * 3.14159
+    direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
+    force = direction * 100.0 * speed_multiplier
+    
+    return force
+```
+
+Remember: The state names in this example are just placeholders. Use the EXACT names from the state_context section above!
+
+EXAMPLE 8: Return Home Behavior - Handling Missing States
+*User Request:* "Particles return home when tired"
+
+*Case A - When home_pos state does NOT exist (use fallback):*
+```python
+@ti.func
+def expert_return_home_fallback(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # ⚠️ NO home_pos state available - use screen center as "home"
+    home = ti.math.vec2(tv.x / 2, tv.y / 2)
+    
+    # Access tiredness state (assuming it exists in state_context)
+    tiredness = tv.s.llm_particle.field[particle_idx].tiredness
+    
+    # Calculate return force
+    to_home = home - pos
+    dist = to_home.norm()
+    force = ti.math.vec2(0.0, 0.0)
+    
+    if tiredness > 0.7 and dist > 1.0:
+        direction = to_home / dist
+        force = direction * 250.0 * tiredness
+    
+    return force
+```
+
+*Case B - When home_pos state EXISTS (listed in state_context):*
+```python
+@ti.func
+def expert_return_home(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # ✅ home_pos state is available - use actual home position
+    home = tv.s.llm_particle.field[particle_idx].home_pos
+    tiredness = tv.s.llm_particle.field[particle_idx].tiredness
+    
+    # Calculate return force
+    to_home = home - pos
+    dist = to_home.norm()
+    force = ti.math.vec2(0.0, 0.0)
+    
+    if tiredness > 0.7 and dist > 1.0:
+        direction = to_home / dist
+        force = direction * 300.0 * tiredness  # Stronger force since we have exact home
+    
+    return force
+```
+
+CRITICAL: Check the state_context section to see which states actually exist!
+
+EXAMPLE 7: Day/Night Activity Pattern (showing proper variable initialization and movement)
+*User Request:* "Particles move faster during day and rest at night"
+
+```python
+@ti.func
+def expert_day_night_activity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Initialize ALL variables that will be used after conditionals
+    force = ti.math.vec2(0.0, 0.0)
+    activity_level = 1.0  # ✅ MUST initialize before if/else
+    force_magnitude = 100.0  # ✅ MUST initialize before if/else
+    movement_direction = 0 # ✅ MUST initialize before if/else
+    
+    # Access your actual states from state_context
+    # day_phase = tv.s.llm_global.field[0].day_phase  # Example - use YOUR state names
+    
+    # Conditional logic for day/night
+    # IMPORTANT: 0.0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk
+    if day_phase > 0.25 and day_phase < 0.75:  # Daytime (dawn to dusk)
+        activity_level = 1.0  # Full activity during day
+        force_magnitude = 200.0
+    else:  # Nighttime
+        activity_level = 0.1  # Low activity at night
+        force_magnitude = 20.0
+    
+    # Create movement force - DON'T just multiply velocity!
+    # Use random walk for autonomous movement
+    angle = ti.random() * 2 * 3.14159
+    random_direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
+    
+    # Combine with slight tendency to maintain current direction
+    if vel.norm() > 0.01:
+        current_direction = vel.normalized()
+        # Mix random and current direction
+        movement_direction = (random_direction * 0.7 + current_direction * 0.3).normalized()
+    else:
+        movement_direction = random_direction
+    
+    # Apply force with activity level
+    force = movement_direction * force_magnitude * activity_level
+    
+    return force
+```
+
 IMPORTANT DIRECTION RULES:
 - "repel", "flee", "escape", "avoid" → Use (pos - target) to get direction AWAY
 - "seek", "chase", "attract", "follow" → Use (target - pos) to get direction TOWARD
 - Always normalize direction vectors before applying force magnitude
+
+⚠️ VECTOR NORMALIZATION SAFETY RULES:
+1. NEVER call .normalized() on a vector without checking its magnitude first
+2. ALWAYS use this pattern:
+   ```python
+   if vec.norm() > 0.01:
+       direction = vec.normalized()
+   else:
+       # Provide fallback behavior
+       direction = ti.math.vec2(1.0, 0.0)  # or random direction
+   ```
+3. Common cases needing safety checks:
+   - When normalizing velocity: particles might be stationary
+   - When normalizing position differences: particles might overlap
+   - Any time you divide by a vector's magnitude
+
+CRITICAL INSTRUCTION: Read the state_context section above carefully! You MUST use ONLY those exact state names.
 
 Now generate a Taichi function for the following behavior:
 **User Request:** "{description}"

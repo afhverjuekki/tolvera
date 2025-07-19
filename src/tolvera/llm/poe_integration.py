@@ -12,6 +12,7 @@ from .poe_core import PoEBehaviorSystem, SimpleProgrammaticExpert
 from .poe_experts import ExpertManager
 from .poe_synthesis import PoEExpertSynthesizer
 from .species_manager import SpeciesManager
+from .dynamic_state_manager import DynamicStateManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ class TolveraBehaviorAgent:
             description: str,
             synthesizer: PoEExpertSynthesizer,
             weight: float = 1.0,
-            use_decomposition: bool = None):
+            use_decomposition: bool = None,
+            use_states: bool = True):
         """
         Add an expert from a natural language description.
         
@@ -49,10 +51,14 @@ class TolveraBehaviorAgent:
             synthesizer: The synthesizer to use
             weight: Weight for the expert
             use_decomposition: Whether to use decomposition (None = use synthesizer default)
+            use_states: Whether to analyze and create states (default True)
             
         Returns:
             The expert if single behavior, or first expert if decomposed
         """
+        # Ensure synthesizer has access to Tölvera instance for state management
+        if use_states and not synthesizer.state_manager:
+            synthesizer.state_manager = DynamicStateManager(self.tv)
         # Check if we should use decomposition
         if use_decomposition is None:
             use_decomposition = synthesizer.enable_decomposition
@@ -66,8 +72,13 @@ class TolveraBehaviorAgent:
         # Step 1: Synthesize expert @ti.func
         logger.info(
             f"Step 1: Synthesizing expert function for: '{description}'")
-        # Use interaction synthesis method which automatically detects interaction keywords
-        result = await synthesizer.synthesize_interaction_expert(description)
+        
+        # Use state-aware synthesis if enabled
+        if use_states:
+            result = await synthesizer.synthesize_expert_with_states(description)
+        else:
+            # Use interaction synthesis method which automatically detects interaction keywords
+            result = await synthesizer.synthesize_interaction_expert(description)
 
         if result["success"]:
             expert = SimpleProgrammaticExpert(
@@ -80,6 +91,8 @@ class TolveraBehaviorAgent:
                 "raw_response", "")
             expert.metadata["is_interaction"] = result.get("is_interaction", False)
             expert.metadata["species_info"] = result.get("species_info", {})
+            expert.metadata['state_spec'] = result.get('state_spec', {})
+            expert.metadata['state_context'] = result.get('state_context', {})
 
             # Log the generated expert code
             logger.info(
@@ -122,6 +135,9 @@ class TolveraBehaviorAgent:
         expert.metadata["raw_llm_response"] = result.get("raw_response", "")
         expert.metadata["is_interaction"] = result.get("is_interaction", False)
         expert.metadata["species_info"] = result.get("species_info", {})
+        # IMPORTANT: Include state information for decomposed behaviors
+        expert.metadata['state_spec'] = result.get('state_spec', {})
+        expert.metadata['state_context'] = result.get('state_context', {})
         
         if result.get("is_decomposed", False):
             expert.metadata["is_decomposed"] = True

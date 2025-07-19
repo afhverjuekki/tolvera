@@ -20,6 +20,12 @@ class TaichiErrorDetector:
              'Uninitialized variable: possible use before definition',
              'error',
              'Initialize the variable before using it, e.g., force = ti.math.vec2(0.0, 0.0)'),
+            
+            # Variable defined only inside conditional blocks
+            (r'if\s+.*?:\s*\n\s+(\w+)\s*=(?!\s*\1).*?\n.*?else\s*:\s*\n\s+\1\s*=.*?\n.*?\n.*?\1',
+             'Variable defined inside conditional may not be accessible',
+             'error',
+             'Initialize variables before conditional blocks to ensure they are always defined'),
 
             # Using ti.norm() instead of .norm()
             (r'ti\.norm\s*\(',
@@ -44,6 +50,12 @@ class TaichiErrorDetector:
              'Potential division by zero: dist not checked',
              'warning',
              'Add a check before division: if dist > 0.0: direction = to_other / dist'),
+            
+            # Unsafe vector normalization without magnitude check
+            (r'(\w+)\.normalized\(\)(?!.*?if.*?\.norm\(\)\s*>)',
+             'Unsafe vector normalization: no magnitude check',
+             'error',
+             'Check magnitude before normalizing: if vec.norm() > 0.01: direction = vec.normalized()'),
 
             # Using Python tuples instead of ti.math.vec2
             (r'force\s*=\s*\([\d.]+\s*,\s*[\d.]+\s*\)',
@@ -81,11 +93,73 @@ class TaichiErrorDetector:
              'error',
              'Use tv.x for width and tv.y for height instead of tv[0] and tv[1]'),
 
+            # Wrong expert function parameter order - species first
+            (r'def\s+expert_\w+\s*\(\s*species\s*:\s*ti\.i32\s*,\s*pos\s*:',
+             'Wrong parameter order: species cannot be first parameter',
+             'error',
+             'Parameter order must be: (pos, vel, mass, species, particle_idx), NOT (species, pos, ...)'),
+            
+            # Wrong expert function parameter order - vel before pos
+            (r'def\s+expert_\w+\s*\(\s*vel\s*:\s*ti\.math\.vec2\s*,\s*pos\s*:',
+             'Wrong parameter order: vel cannot come before pos',
+             'error',
+             'Parameter order must be: (pos, vel, mass, species, particle_idx)'),
+            
+            # Wrong expert function parameter order - species before mass
+            (r'def\s+expert_\w+\s*\(\s*pos\s*:\s*ti\.math\.vec2\s*,\s*vel\s*:\s*ti\.math\.vec2\s*,\s*species\s*:',
+             'Wrong parameter order: species must come after mass',
+             'error',
+             'Parameter order must be: (pos, vel, mass, species, particle_idx)'),
+            
+            # Detect parameter type mismatch in kernel calls
+            (r'expert_\w+\s*\(\s*species\s*,\s*pos\s*,\s*vel\s*,\s*mass\s*,\s*\w+\s*\)',
+             'Expert function called with wrong parameter order',
+             'error',
+             'Call must match definition: expert_name(pos, vel, mass, species, particle_idx)'),
+
             # Force magnitude too weak
             (r'force\s*[+*]=?\s*[^*]*\*\s*([0-9.]+)(?!\d)',
              'Force magnitude may be too weak',
              'info',
              'Consider using force magnitudes between 50-400 for visible effects'),
+            
+            # State access errors
+            (r"AttributeError.*'_IntermediateStruct\d+'.*has no attribute '(\w+)'",
+             "Accessing non-existent state: {1}",
+             'error',
+             "State '{1}' does not exist. Check available states in state_context."),
+            
+            (r"tv\.s\.llm_\w+\.field\[\w+\]\.(\w+).*#.*(?:ERROR|error|Error)",
+             "Attempting to use non-existent state: {1}",
+             'error',  
+             "State '{1}' not found. Only use states listed in state_context."),
+            
+            # Common state property mistakes
+            (r'tv\.s\.llm_particle\.field\[\w+\]\.position',
+             "'position' is not a custom state property",
+             'error',
+             "Use tv.p.field[i].pos for particle position"),
+            
+            (r'tv\.s\.llm_particle\.field\[\w+\]\.velocity',
+             "'velocity' is not a custom state property",
+             'error',
+             "Use tv.p.field[i].vel for particle velocity"),
+            
+            (r'ti\.math\.length\s*\(',
+             'ti.math.length does not exist',
+             'error',
+             'Use .norm() method on vectors, e.g., vec.norm()'),
+            
+            # AttributeError patterns for position/velocity
+            (r"AttributeError.*position",
+             "AttributeError: 'position' not found",
+             'error',
+             "Particle position is accessed via tv.p.field[i].pos, not custom states"),
+            
+            (r"AttributeError.*velocity",
+             "AttributeError: 'velocity' not found",
+             'error',
+             "Particle velocity is accessed via tv.p.field[i].vel, not custom states"),
         ]
 
     def _create_error_dict(self,

@@ -42,8 +42,17 @@ CRITICAL TAICHI GUIDELINES:
 3. Common Patterns:
    - Distance calculation: `to_target = target - pos; dist = to_target.norm()`
    - Safe normalization: `if dist > 0.01: direction = to_target / dist`
+   - ⚠️ CRITICAL: ALWAYS check magnitude before using .normalized():
+     ```
+     if vel.norm() > 0.01:
+         direction = vel.normalized()
+     else:
+         # Provide fallback for zero/near-zero vectors
+         angle = ti.random() * 2 * 3.14159
+         direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
+     ```
    - Screen center: `center = ti.math.vec2(tv.x / 2, tv.y / 2)`
-   - Random angles: `angle = ti.random() * 2 * pi` (after importing pi)
+   - Random angles: `angle = ti.random() * 2 * 3.14159` (use literal pi value)
    - Corner positions:
      * Upper-left: `ti.math.vec2(50.0, 50.0)`
      * Upper-right: `ti.math.vec2(tv.x - 50.0, 50.0)`
@@ -107,5 +116,13 @@ CRITICAL TAICHI GUIDELINES:
          force = ti.math.vec2(-1.0, 0.0) * 100.0
      return force  # Only return at the end
      ```
+
+9. CRITICAL - Function Signature Parameter Order:
+   🚨 THE PARAMETER ORDER IS FIXED AND CANNOT BE CHANGED! 🚨
+   - ALL expert functions MUST have exactly this signature:
+     `def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:`
+   - Parameter order is ALWAYS: pos, vel, mass, species, particle_idx
+   - NEVER put species first, even if the behavior description mentions species first!
+   - This is a HARD REQUIREMENT - code will fail compilation if parameter order is wrong!
 
 REMEMBER: Generate ONLY the function code. No explanations, no markdown formatting.

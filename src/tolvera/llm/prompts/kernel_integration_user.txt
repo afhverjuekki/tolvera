@@ -28,6 +28,7 @@ def apply_all_experts():
             total_force = ti.math.vec2(0.0, 0.0)
             
             # === ACCUMULATE FORCES FROM ALL EXPERTS ===
+            # Expert functions now take particle_idx as last parameter
 {expert_calls_str}
             
             # Apply the combined force using F = ma

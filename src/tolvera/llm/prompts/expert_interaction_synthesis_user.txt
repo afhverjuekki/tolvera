@@ -24,6 +24,33 @@ CRITICAL INSTRUCTIONS:
 
 7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
 
+8. CRITICAL - Custom State Access: 
+    {state_context}
+    
+    CRITICAL STATE ACCESS RULES
+    
+    1. YOU MUST USE EXACTLY THE STATE NAMES SHOWN ABOVE - NO EXCEPTIONS!
+    2. YOU MUST ACCESS STATES FROM THE CORRECT CATEGORY!
+    3. NEVER MIX UP STATE CATEGORIES!
+    
+    STATE CATEGORY ACCESS PATTERNS:
+    - GLOBAL states: tv.s.llm_global.field[0].state_name
+    - PARTICLE states: tv.s.llm_particle.field[p1.i].state_name or tv.s.llm_particle.field[p2.i].state_name
+    - SPECIES states: tv.s.llm_species.field[p1.species].state_name or tv.s.llm_species.field[p2.species].state_name
+    
+    CATEGORY CONFUSION ERRORS - NEVER DO THIS
+    - WRONG: tv.s.llm_species.field[p1.species].activity_level  (if activity_level is a PARTICLE state)
+    - WRONG: tv.s.llm_particle.field[p1.i].day_cycle  (if day_cycle is a SPECIES state)
+    - WRONG: tv.s.llm_global.field[0].energy  (if energy is a PARTICLE state)
+    
+    CORRECT: Always check the state category in the documentation above!
+    - If a state is listed under "PARTICLE STATES", access it with tv.s.llm_particle.field[p.i]
+    - If a state is listed under "SPECIES STATES", access it with tv.s.llm_species.field[p.species]
+    - If a state is listed under "GLOBAL STATES", access it with tv.s.llm_global.field[0]
+    
+    - ONLY use states that are documented above. Do not assume other states exist.
+    - If no custom states are shown, use only the standard particle properties.
+
 EXAMPLE 1: Species Attraction
 *User Request:* "Species 0 attracts species 1."
 
@@ -89,6 +116,32 @@ def expert_mutual_repel(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
             force = -(to_other / dist) * (400.0 / (dist + 1.0))  # Strong repulsion with distance falloff
     return force
 ```
+
+EXAMPLE 5: Using Custom States in Interactions
+*User Request:* "Species interactions vary with custom states."
+
+IMPORTANT: This example shows the PATTERN of using custom states. You MUST use the exact state names from your state_context, NOT the names shown here!
+
+*Example Pattern (DO NOT COPY THESE NAMES):*
+```python
+@ti.func
+def expert_state_based_interaction(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    # Initialize force variable
+    force = ti.math.vec2(0.0, 0.0)
+    
+    # Access custom states using EXACT names from state_context
+    # Example: if state_context shows "activity_level", use that exact name
+    # For global states: tv.s.llm_global.field[0].<your_state_name>
+    # For species states: tv.s.llm_species.field[p1.species].<your_state_name>
+    # For particle states: tv.s.llm_particle.field[particle_idx].<your_state_name>
+    
+    # Calculate interaction based on states
+    # This is just an example pattern - adapt to your actual behavior
+    
+    return force
+```
+
+Remember: The state names in this example are just placeholders. Use the EXACT names from the state_context section above!
 
 User Request: {description}
 
