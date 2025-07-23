@@ -75,7 +75,8 @@ class PoEBehaviorSystem:
 
         start_time = time.time()
         try:
-            result = await synthesizer.synthesize_integration_kernel(expert_info, boundary_mode, state_context)
+            result = await synthesizer.synthesize_integration_kernel(
+                expert_info, boundary_mode, state_context)
             synthesis_time_ms = (time.time() - start_time) * 1000
 
             # None of this is necessary, but it's nice to have for the CSV
@@ -118,6 +119,14 @@ class PoEBehaviorSystem:
                 logger.info("Compiling combined expert and kernel code")
                 logger.debug(f"Combined Code:\n{all_code}")
 
+                # Validate indentation before compilation
+                validation_errors = self._validate_code_indentation(all_code)
+                if validation_errors:
+                    logger.error(f"Code indentation validation failed: {validation_errors}")
+                    # Try to fix common indentation issues
+                    all_code = self._fix_common_indentation_issues(all_code)
+                    logger.info("Attempted to fix indentation issues")
+
                 # Create a fresh namespace
                 namespace = {'ti': ti, 'np': np, 'tv': self.tv}
 
@@ -127,8 +136,12 @@ class PoEBehaviorSystem:
 
                 # Assign functions to experts
                 for expert in self.experts:
-                    if expert.name in namespace:
-                        expert.function = namespace[expert.name]
+                    func_name = f"expert_{expert.name}"
+                    if func_name in namespace:
+                        expert.function = namespace[func_name]
+                        logger.debug(f"Assigned function {func_name} to expert {expert.name}")
+                    else:
+                        logger.warning(f"Could not find function {func_name} in namespace for expert {expert.name}")
 
                 self._integration_kernel = namespace[result['name']]
 
@@ -198,3 +211,35 @@ class PoEBehaviorSystem:
         self.generated_expert_code.clear()
         self._integration_kernel = None
         logger.info("Cleared all experts and integration kernel")
+    
+    def _validate_code_indentation(self, code: str) -> List[str]:
+        errors = []
+        lines = code.split('\n')
+        
+        for i, line in enumerate(lines, 1):
+            if line.strip():  # Skip empty lines
+                # Check for inconsistent indentation (mixing tabs and spaces)
+                if '\t' in line and ' ' in line[:len(line) - len(line.lstrip())]:
+                    errors.append(f"Line {i}: Mixed tabs and spaces in indentation")
+                
+                # Check for unusual indentation levels
+                indent = len(line) - len(line.lstrip())
+                if indent % 4 != 0 and '\t' not in line:
+                    errors.append(f"Line {i}: Unusual indentation level ({indent} spaces)")
+        
+        return errors
+    
+    def _fix_common_indentation_issues(self, code: str) -> str:
+        lines = code.split('\n')
+        fixed_lines = []
+        
+        for line in lines:
+            # Convert tabs to 4 spaces
+            if '\t' in line:
+                # Count leading tabs
+                leading_tabs = len(line) - len(line.lstrip('\t'))
+                line = ' ' * (4 * leading_tabs) + line.lstrip('\t')
+            
+            fixed_lines.append(line)
+        
+        return '\n'.join(fixed_lines)

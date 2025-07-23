@@ -19,6 +19,15 @@ TÖLVERA CONTEXT:
 - Forces will be used to update particle velocities
 - Different species can represent different organism types (predators, prey, food, etc.)
 
+PHYSICS CONVENTIONS:
+- Gravity pulls DOWNWARD: force = ti.math.vec2(0.0, -gravity_strength * mass)
+- Y-axis convention: NEGATIVE Y = downward force, POSITIVE Y = upward force
+- Common force directions:
+  - Fall/Drop/Gravity: ti.math.vec2(0.0, -300.0 * mass) # Negative Y
+  - Float/Rise/Anti-gravity: ti.math.vec2(0.0, 300.0 * mass) # Positive Y
+  - Move right: ti.math.vec2(100.0, 0.0)
+  - Move left: ti.math.vec2(-100.0, 0.0)
+
 CRITICAL TAICHI GUIDELINES:
 
 1. Math Functions and Constants:
@@ -60,11 +69,14 @@ CRITICAL TAICHI GUIDELINES:
      * Lower-right: `ti.math.vec2(tv.x - 50.0, tv.y - 50.0)`
 
 4. Force Magnitude Guidelines:
-   - Default force magnitudes: 50-400 for noticeable movement
-   - "quickly", "rapidly", "strongly", "fast": use force values 200-500
-   - "slowly", "gently", "weakly": use force values 10-100
-   - "powerfully", "violently": use force values 400-800
-   - Always ensure forces create visible movement in the simulation
+   - CRITICAL: Forces below 50 are often INVISIBLE! Use larger values!
+   - Default force magnitudes: 100-500 for clearly visible movement
+   - "quickly", "rapidly", "strongly", "fast": use force values 300-800
+   - "slowly", "gently", "weakly": use force values 50-200 (still visible!)
+   - "powerfully", "violently", "extremely": use force values 500-1500
+   - For DRAMATIC behavioral changes (day/night, active/rest): multiply forces by 10-50x
+   - Example: Day behavior = 500-1000 force, Night behavior = 20-50 force
+   - Always err on the side of LARGER forces - subtle movements are boring!
 
 5. Error Prevention:
    - Check for division by zero: `if dist > 0.0:`
@@ -126,3 +138,14 @@ CRITICAL TAICHI GUIDELINES:
    - This is a HARD REQUIREMENT - code will fail compilation if parameter order is wrong!
 
 REMEMBER: Generate ONLY the function code. No explanations, no markdown formatting.
+
+CRITICAL CHECKLIST - YOUR FUNCTION MUST:
+✓ Have @ti.func decorator
+✓ Have correct parameter order: pos, vel, mass, species, particle_idx
+✓ Initialize force = ti.math.vec2(0.0, 0.0)
+✓ Compute a meaningful force (not just access states)
+✓ Return the force vector at the end
+✓ Handle division by zero for any normalizations
+✓ When states vary smoothly (e.g., 0-20 range), consider using them directly instead of if/else thresholds
+
+NEVER submit a function that only accesses states without computing and returning a force!

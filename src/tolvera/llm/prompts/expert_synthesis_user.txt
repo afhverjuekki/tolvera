@@ -1,5 +1,15 @@
 You are an expert Taichi programmer creating behaviors for an artificial life simulation. Your task is to generate a single, complete, and syntactically perfect Taichi function (`@ti.func`) that calculates a force for a particle representing an autonomous agent or organism.
 
+⚠️ CRITICAL STATE USAGE RULES - READ FIRST ⚠️
+1. ONLY use states that are EXPLICITLY listed in the state_context section below
+2. NEVER invent or assume states exist (like home_pos, target_pos, etc.)
+3. If a state is not listed, DO NOT USE IT - find creative alternatives
+4. States are category-specific - do not mix categories!
+   - PARTICLE states: Use tv.s.llm_particle.field[particle_idx].state_name
+   - SPECIES states: Use tv.s.llm_species.field[species].state_name  
+   - GLOBAL states: Use tv.s.llm_global.field[0].state_name
+5. For "return home" without home_pos state: use screen center or fixed position
+
 ARTIFICIAL LIFE CONTEXT:
 - You are simulating lifelike behaviors: seeking resources, avoiding threats, social interactions
 - Forces represent biological motivations and environmental influences
@@ -100,42 +110,38 @@ TAICHI VARIABLE SCOPING RULE: Any variable used after an if/else block MUST be i
 
 7.  Output Format: Generate ONLY the Python code for the function, starting with `@ti.func`. Do not include any explanations, markdown, or other text.
 
-8.  CRITICAL - Custom State Access: 
+8.  AVAILABLE STATES - USE ONLY THESE: 
     {state_context}
     
-    CRITICAL STATE ACCESS RULES
+    ⚠️ STATE ACCESS VALIDATION CHECKLIST ⚠️
     
-    1. YOU MUST USE EXACTLY THE STATE NAMES SHOWN ABOVE - NO EXCEPTIONS!
-    2. YOU MUST ACCESS STATES FROM THE CORRECT CATEGORY!
-    3. NEVER MIX UP STATE CATEGORIES!
-    4. PARTICLE POSITION AND VELOCITY COME FROM FUNCTION PARAMETERS, NOT STATES!
-       - Use the `pos` parameter for position (NOT tv.s.llm_particle.field[i].position)
-       - Use the `vel` parameter for velocity (NOT tv.s.llm_particle.field[i].velocity)
-       - These are ALREADY PROVIDED as function arguments!
+    Before using ANY state, verify ALL of these:
+    ✓ Is the state name EXACTLY as shown above? (case-sensitive!)
+    ✓ Is it in the correct category? (particle/species/global)
+    ✓ Are you using the correct access pattern for that category?
     
     STATE CATEGORY ACCESS PATTERNS:
     - GLOBAL states: tv.s.llm_global.field[0].state_name
     - PARTICLE states: tv.s.llm_particle.field[particle_idx].state_name  
     - SPECIES states: tv.s.llm_species.field[species].state_name
     
-    CATEGORY CONFUSION ERRORS - NEVER DO THIS
-    - WRONG: tv.s.llm_species.field[species].activity_level  (if activity_level is a PARTICLE state)
-    - WRONG: tv.s.llm_particle.field[particle_idx].day_cycle  (if day_cycle is a SPECIES state)
-    - WRONG: tv.s.llm_global.field[0].energy  (if energy is a PARTICLE state)
+    ❌ FORBIDDEN - NEVER DO THIS:
+    1. NEVER invent state names not shown above
+    2. NEVER access home_pos unless explicitly listed
+    3. NEVER access target_pos unless explicitly listed  
+    4. NEVER mix categories (e.g., accessing particle state as species state)
+    5. NEVER access position/velocity from states - use function parameters!
+    6. NEVER use tv.p.field[i] - use the provided parameters!
     
-    CORRECT: Always check the state category in the documentation above!
-    - If a state is listed under "PARTICLE STATES", access it with tv.s.llm_particle.field[particle_idx]
-    - If a state is listed under "SPECIES STATES", access it with tv.s.llm_species.field[species]
-    - If a state is listed under "GLOBAL STATES", access it with tv.s.llm_global.field[0]
+    ✅ REQUIRED ALTERNATIVES:
+    - No home_pos state? → Use ti.math.vec2(tv.x/2, tv.y/2) as "home"
+    - No target_pos state? → Use dynamic targets or fixed positions
+    - Need memory? → Use available states creatively (e.g., energy levels)
     
-    COMMON MISTAKES TO AVOID
-    - DO NOT access home_pos unless it's listed above
-    - DO NOT access target_pos unless it's listed above
-    - DO NOT access any state not explicitly shown in the state context
-    - DO NOT access a state from the wrong category (e.g., particle state as species state)
-    - DO NOT try to access position/velocity from states - use the function parameters!
-    - DO NOT use tv.p.field[i] in expert functions - use parameters instead!
-    - If implementing "return home" without home_pos state, use screen center or a fixed position
+    PARTICLE POSITION AND VELOCITY:
+    - Position: Use the `pos` parameter (NOT from states)
+    - Velocity: Use the `vel` parameter (NOT from states)
+    - These are ALREADY PROVIDED as function arguments!
 
 EXAMPLE 1: Gravity
 *User Request:* "Particles fall downward strongly."
@@ -144,7 +150,7 @@ EXAMPLE 1: Gravity
 ```python
 @ti.func
 def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    gravity_strength = 300.0
+    gravity_strength = 500.0  # Strong visible gravity
     return ti.math.vec2(0.0, -gravity_strength * mass)
 ```
 
@@ -164,7 +170,7 @@ def expert_orbit(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti
         angle = ti.atan2(to_center[1], to_center[0])
         tangent_angle = angle + pi / 2
         force_direction = ti.math.vec2(ti.cos(tangent_angle), ti.sin(tangent_angle))
-        force = force_direction * 250.0
+        force = force_direction * 400.0  # Strong orbital force
     return force
 ```
 
@@ -176,7 +182,7 @@ EXAMPLE 3: Random exploration
 @ti.func
 def expert_wander(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     angle = ti.random() * 2 * pi
-    force_magnitude = 150.0
+    force_magnitude = 250.0  # Visible wandering force
     force = ti.math.vec2(ti.cos(angle) * force_magnitude, ti.sin(angle) * force_magnitude)
     return force
 ```
@@ -189,13 +195,14 @@ EXAMPLE 4: Repulsion/Fleeing (CRITICAL - shows AWAY movement)
 @ti.func
 def expert_flee_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
-    away_from_center = pos - center  # Vector pointing AWAY from center
+    # CRITICAL: For REPEL/FLEE, use (pos - target) to get vector pointing AWAY
+    away_from_center = pos - center  # This points FROM center TO particle
     dist = away_from_center.norm()
     
     force = ti.math.vec2(0.0, 0.0)
     if dist > 0.01:
-        direction = away_from_center / dist  # Normalize
-        force = direction * 400.0  # Strong force AWAY from center
+        direction = away_from_center / dist  # Normalize the AWAY direction
+        force = direction * 600.0  # Force pushes particle AWAY from center
     return force
 ```
 
@@ -207,13 +214,14 @@ EXAMPLE 5: Attraction/Seeking (shows TOWARD movement)
 @ti.func
 def expert_seek_center(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     center = ti.math.vec2(tv.x / 2, tv.y / 2)
-    to_center = center - pos  # Vector pointing TOWARD center
+    # CRITICAL: For ATTRACT/SEEK, use (target - pos) to get vector pointing TOWARD
+    to_center = center - pos  # This points FROM particle TO center
     dist = to_center.norm()
     
     force = ti.math.vec2(0.0, 0.0)
     if dist > 1.0:
-        direction = to_center / dist  # Normalize
-        force = direction * 200.0  # Force TOWARD center
+        direction = to_center / dist  # Normalize the TOWARD direction
+        force = direction * 350.0  # Force pulls particle TOWARD center
     return force
 ```
 
@@ -302,7 +310,7 @@ def expert_return_home(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, speci
 
 CRITICAL: Check the state_context section to see which states actually exist!
 
-EXAMPLE 7: Day/Night Activity Pattern (showing proper variable initialization and movement)
+EXAMPLE 7: Day/Night Activity Pattern (showing DRAMATIC behavioral differences)
 *User Request:* "Particles move faster during day and rest at night"
 
 ```python
@@ -310,45 +318,80 @@ EXAMPLE 7: Day/Night Activity Pattern (showing proper variable initialization an
 def expert_day_night_activity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     # Initialize ALL variables that will be used after conditionals
     force = ti.math.vec2(0.0, 0.0)
-    activity_level = 1.0  # ✅ MUST initialize before if/else
-    force_magnitude = 100.0  # ✅ MUST initialize before if/else
-    movement_direction = 0 # ✅ MUST initialize before if/else
+    base_force_magnitude = 100.0  # ✅ MUST initialize before if/else
+    activity_multiplier = 1.0  # ✅ MUST initialize before if/else
     
     # Access your actual states from state_context
-    # day_phase = tv.s.llm_global.field[0].day_phase  # Example - use YOUR state names
+    # speed_multiplier = tv.s.llm_particle.field[particle_idx].speed_multiplier  # Example - use YOUR state names
     
-    # Conditional logic for day/night
-    # IMPORTANT: 0.0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk
-    if day_phase > 0.25 and day_phase < 0.75:  # Daytime (dawn to dusk)
-        activity_level = 1.0  # Full activity during day
-        force_magnitude = 200.0
-    else:  # Nighttime
-        activity_level = 0.1  # Low activity at night
-        force_magnitude = 20.0
+    # DRAMATIC force differences for day vs night
+    # Note: speed_multiplier should vary from 0-20 or more for visible effect!
+    if speed_multiplier > 10.0:  # Daytime - HYPERACTIVE
+        # Multiple force components for chaotic day behavior
+        angle = ti.random() * 2 * pi
+        random_force = ti.math.vec2(ti.cos(angle), ti.sin(angle)) * 800.0
+        
+        # Add swirling component
+        perpendicular = ti.math.vec2(-vel.y, vel.x)
+        if perpendicular.norm() > 0.01:
+            swirl_force = perpendicular.normalized() * 400.0
+        else:
+            swirl_force = ti.math.vec2(0.0, 0.0)
+        
+        force = (random_force + swirl_force) * (speed_multiplier / 20.0)
+        
+    elif speed_multiplier > 1.0:  # Transitioning
+        # Medium activity
+        angle = ti.random() * 2 * pi
+        force = ti.math.vec2(ti.cos(angle), ti.sin(angle)) * 200.0 * speed_multiplier
+        
+    else:  # Nighttime - nearly still
+        # Very gentle drift
+        drift_angle = particle_idx * 0.1
+        force = ti.math.vec2(ti.cos(drift_angle), ti.sin(drift_angle)) * 30.0
     
-    # Create movement force - DON'T just multiply velocity!
-    # Use random walk for autonomous movement
-    angle = ti.random() * 2 * 3.14159
-    random_direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
+    return force
+```
+
+EXAMPLE 7b: Day/Night with SMOOTH transitions (alternative approach)
+*User Request:* "Particles move faster during day and rest at night"
+
+```python
+@ti.func
+def expert_day_night_smooth(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # When temporal states use smooth interpolation (e.g., cosine curves),
+    # you can often create more natural transitions by using the values directly
     
-    # Combine with slight tendency to maintain current direction
-    if vel.norm() > 0.01:
-        current_direction = vel.normalized()
-        # Mix random and current direction
-        movement_direction = (random_direction * 0.7 + current_direction * 0.3).normalized()
-    else:
-        movement_direction = random_direction
+    # Access smooth state value (varies continuously 0-20)
+    # speed_multiplier = tv.s.llm_particle.field[particle_idx].speed_multiplier
     
-    # Apply force with activity level
-    force = movement_direction * force_magnitude * activity_level
+    # Base movement - always some minimal activity
+    angle = ti.random() * 2 * pi
+    base_direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
     
+    # Scale forces smoothly based on the multiplier
+    # Night (mult~0): 30-50 force for gentle drift
+    # Day (mult~20): 800-1000 force for energetic movement
+    base_magnitude = 30.0 + speed_multiplier * 40.0
+    
+    # Optional: Add extra dynamics that scale with activity
+    chaos_force = ti.math.vec2(0.0, 0.0)
+    if speed_multiplier > 5.0 and vel.norm() > 0.01:
+        # Add chaotic swirling that increases with speed_multiplier
+        perpendicular = ti.math.vec2(-vel.y, vel.x).normalized()
+        chaos_force = perpendicular * (speed_multiplier - 5.0) * 30.0
+    
+    force = base_direction * base_magnitude + chaos_force
     return force
 ```
 
 IMPORTANT DIRECTION RULES:
 - "repel", "flee", "escape", "avoid" → Use (pos - target) to get direction AWAY
+  Example: away_from_center = pos - center  # Points FROM center TO particle
 - "seek", "chase", "attract", "follow" → Use (target - pos) to get direction TOWARD
+  Example: to_center = center - pos  # Points FROM particle TO center
 - Always normalize direction vectors before applying force magnitude
+- CRITICAL: Don't confuse these! (pos - target) = AWAY, (target - pos) = TOWARD
 
 ⚠️ VECTOR NORMALIZATION SAFETY RULES:
 1. NEVER call .normalized() on a vector without checking its magnitude first
@@ -366,6 +409,38 @@ IMPORTANT DIRECTION RULES:
    - Any time you divide by a vector's magnitude
 
 CRITICAL INSTRUCTION: Read the state_context section above carefully! You MUST use ONLY those exact state names.
+
+⚠️ CRITICAL FINAL STEPS - YOU MUST ALWAYS DO THIS:
+1. AFTER accessing any states, YOU MUST compute a force vector
+2. NEVER return without computing a force - even if using states!
+3. States should INFLUENCE the force calculation, not replace it
+4. ALWAYS end your function with: return force
+
+WRONG (incomplete):
+```python
+@ti.func
+def expert_example(...) -> ti.math.vec2:
+    speed_mult = tv.s.llm_particle.field[particle_idx].speed_multiplier
+    day_phase = tv.s.llm_global.field[0].day_phase
+    # ❌ MISSING: No force calculation or return!
+```
+
+CORRECT (complete):
+```python
+@ti.func  
+def expert_example(...) -> ti.math.vec2:
+    # Access states
+    speed_mult = tv.s.llm_particle.field[particle_idx].speed_multiplier
+    day_phase = tv.s.llm_global.field[0].day_phase
+    
+    # ✅ COMPUTE force using the states
+    angle = ti.random() * 2 * 3.14159
+    direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
+    force = direction * 100.0 * speed_mult * day_phase
+    
+    # ✅ RETURN the force
+    return force
+```
 
 Now generate a Taichi function for the following behavior:
 **User Request:** "{description}"

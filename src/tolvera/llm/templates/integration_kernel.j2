@@ -1,0 +1,59 @@
+{# Jinja2 template for generating Tölvera integration kernel with typed holes approach #}
+{# This template is designed to work with the existing SpeciesManager and BehaviorDecomposer systems #}
+@ti.kernel
+def apply_all_experts():
+    """Main kernel that integrates all expert forces including interactions."""
+    dt = 0.016  # ~60fps timestep
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # TYPED CONTEXT: Particle state
+            pos = tv.p.field[i].pos  # type: ti.math.vec2
+            vel = tv.p.field[i].vel  # type: ti.math.vec2
+            mass = tv.p.field[i].mass  # type: ti.f32
+            species = tv.p.field[i].species  # type: ti.i32
+            
+            # TYPED HOLE[ti.math.vec2]: Initialize total force
+            total_force = ti.math.vec2(0.0, 0.0)
+            
+            {% if state_access_code %}
+            # Type-annotated state access (read-only for force calculations)
+            # These states influence forces but are NOT modified here
+            {{ state_access_code | indent(12) }}
+            {% endif %}
+            
+            # === SINGLE-PARTICLE FORCES ===
+            {% if single_particle_experts %}
+            # Apply single-particle experts
+            {{ single_expert_calls | indent(12) }}
+            {% else %}
+            # No single-particle experts
+            {% endif %}
+            
+            {% if interaction_experts %}
+            # === INTERACTION FORCES ===
+            # Apply interaction experts
+            for j in range(tv.pn):
+                if i != j and tv.p.field[j].active > 0:
+                    # TYPED CONTEXT: Second particle
+                    p1 = tv.p.field[i]  # type: Particle struct
+                    p2 = tv.p.field[j]  # type: Particle struct
+                    
+                    {{ interaction_expert_calls | indent(20) }}
+            {% endif %}
+            
+            # TYPED OPERATIONS: Physics update
+            # Apply accumulated forces to velocity (temporal states already influenced force calculation)
+            # Update velocity with damping
+            tv.p.field[i].vel = tv.p.field[i].vel * 0.99 + total_force * dt
+            
+            # Update position based on velocity
+            new_pos = tv.p.field[i].pos + tv.p.field[i].vel * dt
+            
+            {% if boundary_code %}
+            # Boundary handling
+{{ boundary_code }}
+            {% else %}
+            # No boundary handling - just update position
+            tv.p.field[i].pos = new_pos
+            {% endif %}

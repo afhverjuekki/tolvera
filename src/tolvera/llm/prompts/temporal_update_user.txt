@@ -117,27 +117,33 @@ def update_temporal_states():
     # Example particle state update (MUST iterate over ALL particles):
     # for i in range(tv.pn):
     #     # ⚠️ CRITICAL: Initialize ALL variables at the START of the loop BEFORE any conditionals!
-    #     speed = 0.0  # ✅ Initialize BEFORE conditional
+    #     speed_multiplier = 0.0  # ✅ Initialize BEFORE conditional
     #     activity_level = 1.0  # ✅ Initialize BEFORE conditional
     #     
-    #     # ONLY access states that are actually in particle_states!
-    #     # Check the state specification to see which states belong to particles
-    #     # Example: If 'particle_property' is in particle_states:
-    #     tv.s.llm_particle.field[i].particle_property = some_value
-    #     
-    #     # If you need particle position or velocity:
-    #     pos = tv.p.field[i].pos  # ✅ CORRECT way to get position
-    #     vel = tv.p.field[i].vel  # ✅ CORRECT way to get velocity
-    #     
-    #     # Example with conditional (variable initialized BEFORE):
-    #     # if tv.s.llm_global.field[0].is_daytime == 1:
-    #     #     speed = tv.s.llm_particle.field[i].base_speed * 2.0  # ✅ Reassign
+    #     # SMOOTH TRANSITIONS for day/night (if you have day_night_cycle state):
+    #     # BORING BINARY (DON'T DO THIS):
+    #     # if tv.s.llm_global.field[0].day_night_cycle > 0.5:
+    #     #     speed_multiplier = 20.0  # Sudden jump
     #     # else:
-    #     #     speed = tv.s.llm_particle.field[i].base_speed * 0.5  # ✅ Reassign
-    #     # tv.s.llm_particle.field[i].current_speed = speed  # ✅ Can use speed here
+    #     #     speed_multiplier = 0.0   # Sudden drop
+    #     
+    #     # DRAMATIC SMOOTH TRANSITION (DO THIS INSTEAD):
+    #     # day_phase = tv.s.llm_global.field[0].day_night_cycle
+    #     # cycle_radians = day_phase * 2.0 * 3.14159
+    #     # smooth_multiplier = (ti.cos(cycle_radians) + 1.0) * 0.5  # 0 to 1 smooth
+    #     # speed_multiplier = smooth_multiplier * 20.0  # Scale up to 0-20 for dramatic effect
+    #     # tv.s.llm_particle.field[i].speed_multiplier = speed_multiplier
+    #     
+    #     # Example: Different species with opposite patterns
+    #     # species = tv.p.field[i].species
+    #     # if species == 0:  # Diurnal species
+    #     #     speed_multiplier = smooth_multiplier * 30.0  # Very active during day
+    #     # elif species == 1:  # Nocturnal species  
+    #     #     speed_multiplier = (1.0 - smooth_multiplier) * 25.0  # Active at night
     #     
     #     # Example: Update distance_to_target based on current position
     #     # target = tv.s.llm_particle.field[i].target_pos  # Custom state
+    #     # pos = tv.p.field[i].pos  # ✅ CORRECT way to get position
     #     # distance = (target - pos).norm()  # Use tv.p.field[i].pos!
     #     # tv.s.llm_particle.field[i].distance_to_target = distance
 ```

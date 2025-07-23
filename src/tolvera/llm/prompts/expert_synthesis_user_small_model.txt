@@ -1,7 +1,22 @@
+⚠️ CRITICAL STATE RULES - READ FIRST ⚠️
+
+1. ONLY use states EXACTLY as listed in {state_context} below
+2. NEVER invent states (no home_pos, target_pos unless listed!)
+3. Check state category before use:
+   - PARTICLE: tv.s.llm_particle.field[particle_idx].name
+   - SPECIES: tv.s.llm_species.field[species].name
+   - GLOBAL: tv.s.llm_global.field[0].name
+
 CRITICAL PARAMETER ORDER - READ THIS FIRST
 
 FUNCTION SIGNATURE MUST BE EXACTLY:
 def expert_NAME(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+
+⚠️ CRITICAL: Replace "NAME" with a descriptive word!
+Examples:
+- For "particles fall downward" → def expert_gravity(...)
+- For "particles drift randomly" → def expert_drift(...)
+- For "particles chase each other" → def expert_chase(...)
 
 PARAMETER ORDER (NEVER CHANGE THIS):
 1. pos (position)
@@ -18,9 +33,10 @@ Generate a Taichi function that calculates a force for a particle.
 
 REQUIREMENTS:
 1. Start with @ti.func decorator
-2. Use EXACT parameter order shown above
-3. Return ti.math.vec2 force vector
-4. Initialize variables BEFORE if/else blocks
+2. Replace "NAME" with a descriptive word (e.g., gravity, drift, chase)
+3. Use EXACT parameter order shown above
+4. Return ti.math.vec2 force vector
+5. Initialize variables BEFORE if/else blocks
 
 VARIABLE SCOPING RULE:
 Variables used after if/else MUST be initialized BEFORE:
@@ -46,26 +62,33 @@ force = vel * multiplier  # OK
 
 {state_context}
 
+⚠️ STATE VALIDATION CHECKLIST ⚠️
+Before using ANY state:
+✓ Is it listed above? If NO → DON'T USE IT!
+✓ Correct category? particle/species/global
+✓ Correct access pattern?
+
+❌ NEVER USE THESE (unless listed above):
+- home_pos
+- target_pos  
+- previous_pos
+- memory states
+- Any state you think "should" exist
+
+✅ ALTERNATIVES:
+- No home_pos? → Use ti.math.vec2(tv.x/2, tv.y/2)
+- No target? → Use random or fixed positions
+- Need memory? → Use existing states creatively
+
 BEHAVIOR IMPLEMENTATION NOTES
 When implementing behaviors that mention specific species:
 - "species 0 active during day, species 1 nocturnal" means they should have OPPOSITE activity patterns
 - "species 0 chases species 1" means force calculation should check both species
 - States are updated elsewhere - your job is to USE the states, not SET them
-- Access species-specific states using: tv.s.llm_species.field[species].state_name
-- Access global states using: tv.s.llm_global.field[0].state_name
-
-CRITICAL STATE USAGE RULES
-1. ONLY use states that are EXPLICITLY listed in the state context above
-2. NEVER invent or assume states exist (like home_pos, target_pos, etc.)
-3. If you need a state that doesn't exist, work around it creatively
-4. For "return home" behaviors without home_pos state:
-   - Use the center of the screen as "home"
-   - Or use the particle's initial spawn area
-   - DO NOT try to access non-existent home_pos state!
 
 === SIMPLE EXAMPLES ===
 
-GRAVITY:
+GRAVITY (replace NAME with "gravity"):
 @ti.func
 def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
     return ti.math.vec2(0.0, -300.0 * mass)
@@ -99,6 +122,28 @@ def expert_species_activity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
     
     # Scale by THIS species' activity level
     return base_force * activity
+
+DAY/NIGHT BEHAVIOR (using states):
+@ti.func
+def expert_day_night(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Access states
+    day_phase = tv.s.llm_global.field[0].day_night_cycle
+    speed_mult = tv.s.llm_particle.field[particle_idx].speed_multiplier
+    
+    # CRITICAL: Initialize force BEFORE conditionals!
+    force = ti.math.vec2(0.0, 0.0)
+    
+    # Random movement
+    angle = ti.random() * 2 * 3.14159
+    base_force = ti.math.vec2(ti.cos(angle), ti.sin(angle)) * 150.0
+    
+    # Scale based on day/night
+    if day_phase > 0.5:  # Day
+        force = base_force * speed_mult
+    else:  # Night
+        force = base_force * 0.1
+    
+    return force
 
 RETURN HOME (without home_pos state):
 @ti.func
@@ -141,3 +186,5 @@ REMEMBER:
 - EXACT parameter order: pos, vel, mass, species, particle_idx
 - Return ti.math.vec2
 - Initialize variables BEFORE conditionals
+- ALWAYS compute and return a force (even after accessing states!)
+- States should modify force calculation, not replace it

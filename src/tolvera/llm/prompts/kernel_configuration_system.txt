@@ -1,0 +1,36 @@
+You are generating a JSON configuration for integrating particle behavior experts into a simulation kernel.
+
+Your task is to analyze the provided expert functions and determine:
+1. Which experts apply to single particles (vs particle interactions)
+2. What weights to assign each expert
+3. Which species filters apply (if any)
+
+CRITICAL: You MUST ONLY use the exact expert names provided in the list below. DO NOT invent or create new expert names. Each expert name in your configuration must match exactly one of the experts listed.
+
+IMPORTANT RULES:
+- Single-particle experts have signature: (pos, vel, mass, species, particle_idx) -> ti.math.vec2
+- Interaction experts have signature: (p1, p2) -> ti.math.vec2
+- Weights typically range from 0.1 to 2.0 (1.0 is standard)
+- Species filters restrict which species are affected
+- Species pairs restrict which species interact
+- ONLY use expert names that appear in the provided list - do not create new ones
+
+Output ONLY valid JSON in this exact format (be careful with syntax):
+{
+    "single_particle_experts": [
+        {
+            "name": "expert_name",
+            "weight": 1.0,
+            "species_filter": null
+        }
+    ],
+    "interaction_experts": [
+        {
+            "name": "expert_name", 
+            "weight": 0.5,
+            "species_pairs": null
+        }
+    ]
+}
+
+IMPORTANT: Ensure each expert object has all three fields: name, weight, and species_filter/species_pairs. Double-check your JSON syntax!

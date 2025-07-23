@@ -15,6 +15,7 @@ import taichi as ti
 from tolvera import Tolvera, run
 from src.tolvera.llm.poe_integration import TolveraBehaviorAgent
 from src.tolvera.llm.poe_synthesis import PureLLMSynthesizer, PoEExpertSynthesizer
+from src.tolvera.llm.state_code_generator import StateCodeGenerator
 import logging
 import datetime
 import os
@@ -26,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def save_generated_sketch_to_file(agent, tv_config, filename=None):
+def save_generated_sketch_to_file(agent, tv_config, filename=None, state_update_code=None):
     sketch_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_sketches")
     os.makedirs(sketch_dir, exist_ok=True)
     
@@ -110,14 +111,42 @@ init_particles()
     
     expert_code = "\n\n".join(agent.poe_system.generated_expert_code.values())
     kernel_code = agent.poe_system.generated_kernel_code or ""
+    
+    # Generate state initialization code using the template
+    state_init_code = ""
+    if hasattr(agent, 'poe_system') and hasattr(agent.poe_system, 'experts'):
+        # First check if any experts have state specs
+        has_states = False
+        for expert in agent.poe_system.experts:
+            state_spec = expert.metadata.get('state_spec', {})
+            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+                has_states = True
+                print(f"DEBUG: Expert {expert.name} has states in categories: {[cat for cat in ['global_states', 'particle_states', 'species_states'] if state_spec.get(cat, {})]}")
+                print(f"DEBUG: State spec content: {state_spec}")
+        
+        if has_states:
+            state_init_code = StateCodeGenerator.generate_from_experts(agent.poe_system)
+            print(f"DEBUG: Generated state init code length: {len(state_init_code)}")
+            if state_init_code:
+                print(f"DEBUG: First 200 chars of state init code: {repr(state_init_code[:200])}")
+        else:
+            print("DEBUG: No experts have state specifications")
 
+    # Conditionally include temporal update call
+    temporal_update_call = ""
+    if state_update_code and state_update_code.strip() != "@ti.kernel\ndef update_temporal_states():\n    pass":
+        temporal_update_call = """
+        # Update temporal states
+        update_temporal_states()
+        """
+    
     render_loop = f'''
     @tv.render
     def _():
         tv.px.diffuse(0.99)
         
         tv.p()
-        
+        {temporal_update_call}
         apply_all_experts()
         
         tv.px.particles(tv.p, tv.s.species())
@@ -132,6 +161,15 @@ if __name__ == "__main__":
         
         indented_init = "\n".join(["    " + line for line in init_code.splitlines() if line.strip()])
         f.write(indented_init + "\n\n")
+        
+        # Add state initialization if present
+        if state_init_code:
+            f.write(state_init_code)
+        
+        # Add temporal update code if provided
+        if state_update_code:
+            indented_update = "\n".join(["    " + line for line in state_update_code.splitlines()])
+            f.write(f"    # ***** Temporal State Update *****\n{indented_update}\n\n")
 
         indented_experts = "\n".join(["    " + line for line in expert_code.splitlines()])
         f.write(f"    # ***** Generated Expert Functions *****\n{indented_experts}\n\n")
@@ -160,7 +198,7 @@ async def demo_simple_behaviors():
     agent = TolveraBehaviorAgent(tv)
     
     print("Initializing LLM synthesizer...")
-    synthesizer = PureLLMSynthesizer(model_name="qwen3:4b", enable_decomposition=False)
+    synthesizer = PureLLMSynthesizer(model_name="qwen3:4b", enable_decomposition=False, tolvera_instance=tv)
     
     @ti.kernel
     def init_particles():
@@ -184,13 +222,15 @@ async def demo_simple_behaviors():
         ("particles move to the right", 20),
         ("particles rapidly repel the center of the screen", 30),
         ("particles drift randomly", 75),
+        ("particles move faster during the day and rest at night", 50),
+        ("particles gradually lose energy over time but also bounce around randomly", 30),
     ]
     
     print("\nAvailable behaviors:")
     for i, (desc, weight) in enumerate(behaviors, 1):
         print(f"{i}. {desc} (weight: {weight})")
     
-    choice = input("\nWhich behavior would you like to generate? (1-5): ").strip()
+    choice = input(f"\nWhich behavior would you like to generate? (1-{len(behaviors)}): ").strip()
     
     try:
         choice_idx = int(choice) - 1
@@ -216,7 +256,8 @@ async def demo_simple_behaviors():
             description,
             synthesizer.synthesizer,
             weight=weight,
-            use_decomposition=False
+            use_decomposition=False,
+            use_states=True  # Enable state synthesis
         )
         successful_experts.append((expert.name, description))
         
@@ -234,7 +275,33 @@ async def demo_simple_behaviors():
         return
     
     if successful_experts:
-        filename = save_generated_sketch_to_file(agent, tv_config)
+        # Check if temporal states were created and generate update code
+        state_update_code = None
+        
+        # The StateSynthesizer will determine if temporal updates are needed
+        # based on the states present in any expert
+        for expert in agent.poe_system.experts:
+            state_spec = expert.metadata.get('state_spec', {})
+            
+            # Only process if there are actual states defined
+            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+                # Get temporal config from the state manager if available
+                temporal_config = None
+                if synthesizer.synthesizer.state_manager and hasattr(synthesizer.synthesizer.state_manager, 'temporal_config'):
+                    temporal_config = synthesizer.synthesizer.state_manager.temporal_config
+                
+                # Let the state synthesizer determine if temporal updates are needed
+                behavior_desc = expert.metadata.get('description', '')
+                update_code = await synthesizer.synthesizer.state_synthesizer.generate_state_update_code(
+                    state_spec, temporal_config, behavior_desc
+                )
+                
+                # If we got temporal update code, use it
+                if update_code and update_code.strip() != "@ti.kernel\ndef update_temporal_states():\n    pass":
+                    state_update_code = update_code
+                    break
+        
+        filename = save_generated_sketch_to_file(agent, tv_config, state_update_code=state_update_code)
         
         print("Active Experts:")
         for info in agent.get_expert_info():
@@ -280,7 +347,7 @@ async def demo_species_interactions():
     
     print("Initializing LLM synthesizer with decomposition support...")
     
-    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True)
+    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True, tolvera_instance=tv)
     
     # Start with a simple single-species initialization
     @ti.kernel
@@ -312,6 +379,8 @@ async def demo_species_interactions():
         ("particles fall downward gently", 30),
         ("particles drift slightly to the right", 25),
         ("particles drift randomly", 75),
+        ("species 0 becomes more active during the day while species 1 is nocturnal", 50),
+        ("particles remember their home position and return when tired", 40),
     ]
     
     print("\nAvailable INTERACTION behaviors:")
@@ -354,7 +423,8 @@ async def demo_species_interactions():
                 description,
                 synthesizer_engine,
                 weight=weight,
-                use_decomposition=True
+                use_decomposition=True,
+                use_states=True  # Enable state synthesis
             )
             successful_experts.append((expert.name, description, expert.metadata.get("is_interaction", False)))
             
@@ -424,7 +494,32 @@ async def demo_species_interactions():
         if has_interactions:
             print("Interaction experts detected! The kernel will include nested loops for particle-particle forces.")
         
-        filename = save_generated_sketch_to_file(agent, tv_config)
+        # Check if temporal states were created and generate update code
+        state_update_code = None
+        
+        # The StateSynthesizer will determine if temporal updates are needed
+        for expert in agent.poe_system.experts:
+            state_spec = expert.metadata.get('state_spec', {})
+            
+            # Only process if there are actual states defined
+            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+                # Get temporal config from the state manager if available
+                temporal_config = None
+                if synthesizer_engine.state_manager and hasattr(synthesizer_engine.state_manager, 'temporal_config'):
+                    temporal_config = synthesizer_engine.state_manager.temporal_config
+                
+                # Let the state synthesizer determine if temporal updates are needed
+                behavior_desc = expert.metadata.get('description', '')
+                update_code = await synthesizer_engine.state_synthesizer.generate_state_update_code(
+                    state_spec, temporal_config, behavior_desc
+                )
+                
+                # If we got temporal update code, use it
+                if update_code and update_code.strip() != "@ti.kernel\ndef update_temporal_states():\n    pass":
+                    state_update_code = update_code
+                    break
+        
+        filename = save_generated_sketch_to_file(agent, tv_config, state_update_code=state_update_code)
         
         print("Active Experts:")
         for info in agent.get_expert_info():
@@ -472,7 +567,7 @@ async def demo_custom_behavior():
     
     agent = TolveraBehaviorAgent(tv)
     
-    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True)
+    synthesizer_engine = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True, tolvera_instance=tv)
     
     @ti.kernel
     def init_particles_default():
@@ -499,6 +594,10 @@ async def demo_custom_behavior():
     print("  - species 0 chases species 1")
     print("  - species 2 protects species 0 from species 1")
     print("  - all species repel each other")
+    print("\nTemporal examples:")
+    print("  - particles move faster during the day and rest at night")
+    print("  - particles gradually lose energy over time")
+    print("  - species 0 is active at dawn while species 1 is nocturnal")
     
     behaviors = []
     while True:
@@ -527,7 +626,8 @@ async def demo_custom_behavior():
                 description,
                 synthesizer_engine,
                 weight=weight,
-                use_decomposition=True
+                use_decomposition=True,
+                use_states=True  # Enable state synthesis
             )
             print(f"Added: {expert.name}")
             successful_experts.append(expert)
@@ -584,8 +684,33 @@ async def demo_custom_behavior():
                     ]
                     tv.s.species.field[species_id].rgba = color
         
+        # Check if temporal states were created and generate update code
+        state_update_code = None
+        
+        # The StateSynthesizer will determine if temporal updates are needed
+        for expert in agent.poe_system.experts:
+            state_spec = expert.metadata.get('state_spec', {})
+            
+            # Only process if there are actual states defined
+            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+                # Get temporal config from the state manager if available
+                temporal_config = None
+                if synthesizer_engine.state_manager and hasattr(synthesizer_engine.state_manager, 'temporal_config'):
+                    temporal_config = synthesizer_engine.state_manager.temporal_config
+                
+                # Let the state synthesizer determine if temporal updates are needed
+                behavior_desc = expert.metadata.get('description', '')
+                update_code = await synthesizer_engine.state_synthesizer.generate_state_update_code(
+                    state_spec, temporal_config, behavior_desc
+                )
+                
+                # If we got temporal update code, use it
+                if update_code and update_code.strip() != "@ti.kernel\ndef update_temporal_states():\n    pass":
+                    state_update_code = update_code
+                    break
+        
         # Save the generated sketch to a file
-        filename = save_generated_sketch_to_file(agent, tv_config)
+        filename = save_generated_sketch_to_file(agent, tv_config, state_update_code=state_update_code)
         
         # Ask user what to do next
         print("\n" + "="*60)

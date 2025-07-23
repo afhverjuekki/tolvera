@@ -123,6 +123,12 @@ class TaichiErrorDetector:
              'info',
              'Consider using force magnitudes between 50-400 for visible effects'),
             
+            # Function accesses states but doesn't compute force
+            (r'tv\.s\.llm_\w+\.field.*\n(?!.*force\s*=).*$',
+             'Function accesses states but may not compute force',
+             'warning',
+             'After accessing states, compute a force using those values'),
+            
             # State access errors
             (r"AttributeError.*'_IntermediateStruct\d+'.*has no attribute '(\w+)'",
              "Accessing non-existent state: {1}",

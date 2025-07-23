@@ -18,6 +18,32 @@ Available context:
 
 Remember: The kernel should be self-contained and efficient for GPU execution.
 
+CRITICAL - TEMPORAL STATES INFLUENCE PHYSICS INDIRECTLY:
+- Temporal updates should ONLY modify custom states in tv.s.llm_* containers
+- NEVER directly modify particle positions (tv.p.field[i].pos) or velocities (tv.p.field[i].vel)
+- Expert functions will READ these temporal states to modulate their forces
+- Physics properties (pos, vel) are updated ONLY by applying forces in the integration kernel
+- USE DRAMATIC STATE RANGES: Instead of 0-1, use 0-20, 0-50, or even 0-100 for visible effects!
+
+Flow: Temporal States → Expert Forces → Physics Update
+Example: speed_multiplier=20.0 → force *= speed_multiplier → dramatic movement
+Example: tiredness=0.9 → force *= (1.0 - tiredness) → reduced movement
+
+Appropriate temporal updates:
+- Update energy/hunger/tiredness levels over time
+- Update time-of-day or phase cycles WITH SMOOTH TRANSITIONS:
+  * Use cosine/sine for smooth day/night: (ti.cos(time * 2 * pi) + 1.0) * 0.5
+  * Binary transitions (if > 0.5) are BORING - use smooth curves!
+  * For dramatic effects, multiply smooth values by 10-50: smooth_value * 20.0
+- Update memory decay or accumulated values
+- Update species-specific activity patterns
+- Track state changes (e.g., increment counters)
+
+INAPPROPRIATE updates (NEVER do these):
+- Directly setting tv.p.field[i].pos or vel
+- Overwriting physics calculations
+- Modifying core particle properties (mass, size, etc.)
+
 CRITICAL Taichi Rule: Variables MUST be initialized before use in conditionals:
 WRONG:
 ```python

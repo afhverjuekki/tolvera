@@ -1,0 +1,47 @@
+# ⚠️⚠️⚠️ CRITICAL: STATE CATEGORY AND NAME REQUIREMENTS ⚠️⚠️⚠️
+# 1. YOU MUST USE THESE EXACT STATE NAMES - NO EXCEPTIONS!
+# 2. YOU MUST ACCESS STATES FROM THE CORRECT CATEGORY!
+# Using wrong state names or wrong category will cause compilation errors.
+#
+# Example of WRONG usage (compilation errors):
+#   activity = tv.s.llm_species.field[s].activity_level  # ❌ ERROR if 'activity_level' is a particle state
+#   day_cycle = tv.s.llm_particle.field[i].day_cycle     # ❌ ERROR if 'day_cycle' is a species state
+#   invalid_state = tv.s.llm_global.field[0].nonexistent # ❌ ERROR state doesn't exist
+#   position = tv.s.llm_particle.field[i].position       # ❌ ERROR 'position' not a custom state!
+#
+# Example of CORRECT usage:
+#   # Check the category below, then use the exact access pattern shown
+#   time_of_day = tv.s.llm_global.field[0].time_of_day      # ✓ If 'time_of_day' is in GLOBAL STATES
+#   activity = tv.s.llm_particle.field[i].activity_level    # ✓ If 'activity_level' is in PARTICLE STATES
+#   day_cycle = tv.s.llm_species.field[s].day_cycle         # ✓ If 'day_cycle' is in SPECIES STATES
+#   pos = tv.p.field[i].pos                                 # ✓ Core particle position
+#   vel = tv.p.field[i].vel                                 # ✓ Core particle velocity
+
+# ⚠️⚠️⚠️ CORE PARTICLE PROPERTIES (NOT CUSTOM STATES!) ⚠️⚠️⚠️
+# These are built-in properties accessed via tv.p.field[i]:
+#   pos: ti.math.vec2 - Current position (NOT 'position'!)
+#   vel: ti.math.vec2 - Current velocity (NOT 'velocity'!)
+#   species: ti.i32 - Species ID
+#   active: ti.f32 - Activity level (0.0-1.0)
+#   ppos: ti.math.vec2 - Previous position
+#   pvel: ti.math.vec2 - Previous velocity
+#   mass: ti.f32 - Particle mass
+#   size: ti.f32 - Particle size
+#   speed: ti.f32 - Particle speed limit
+#
+# NEVER access core properties as custom states:
+#   ❌ WRONG: tv.s.llm_particle.field[i].position
+#   ✓ CORRECT: tv.p.field[i].pos
+
+# AVAILABLE CUSTOM STATES FOR THIS BEHAVIOR:
+# These states were designed specifically for your behavior description.
+# PAY ATTENTION TO WHICH CATEGORY EACH STATE BELONGS TO!
+
+{state_sections}
+
+{temporal_section}
+
+# Usage hints:
+# - Access states early in your function to use them in calculations
+# - States persist across frames, enabling memory and evolution
+# - Combine states creatively to produce emergent behaviors
