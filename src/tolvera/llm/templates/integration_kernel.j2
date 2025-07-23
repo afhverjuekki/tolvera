@@ -22,8 +22,8 @@ def apply_all_experts():
             {{ state_access_code | indent(12) }}
             {% endif %}
             
-            # === SINGLE-PARTICLE FORCES ===
             {% if single_particle_experts %}
+            # === SINGLE-PARTICLE FORCES ===
             # Apply single-particle experts
             {{ single_expert_calls | indent(12) }}
             {% else %}
