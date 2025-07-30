@@ -123,10 +123,23 @@ class BehaviorType(str, Enum):
     INTERACTION = "INTERACTION"
 
 
+class ExpertType(str, Enum):
+    FORCE = "FORCE"
+    STATE_TRANSITION = "STATE_TRANSITION"
+    SENSOR = "SENSOR"
+    DEPOSIT = "DEPOSIT"
+
+
 class BehaviorClassification(BaseModel):
     behavior_type: BehaviorType = Field(description="Type of behavior (SINGLE or INTERACTION)")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence level of classification")
     reasoning: str = Field(description="Explanation for the classification")
+
+
+class ExpertClassification(BaseModel):
+    expert_type: ExpertType = Field(description="Type of expert function to generate")
+    force_subtype: Optional[BehaviorType] = Field(None, description="For FORCE experts: SINGLE or INTERACTION")
+    reasoning: str = Field(description="Brief explanation for the classification")
 
 
 class SubBehavior(BaseModel):
@@ -140,3 +153,23 @@ class BehaviorDecomposition(BaseModel):
     complexity_score: float = Field(ge=0.0, le=1.0, description="Complexity score (0=simple, 1=very complex)")
     reasoning: str = Field(description="Explanation for decomposition decision")
     sub_behaviors: List[SubBehavior] = Field(default_factory=list, description="List of sub-behaviors if decomposed")
+
+
+# Kernel Configuration Models
+class ExpertConfig(BaseModel):
+    name: str = Field(description="Expert function name")
+    weight: float = Field(default=1.0, ge=0.1, le=1000.0, description="Weight/strength of this expert's contribution")
+    species_filter: Optional[List[int]] = Field(None, description="List of species IDs this expert applies to (None = all)")
+    species_pairs: Optional[List[List[int]]] = Field(None, description="Species pairs for interaction experts")
+
+
+class KernelConfiguration(BaseModel):
+    single_particle_experts: List[ExpertConfig] = Field(
+        default_factory=list,
+        description="Experts that apply forces to individual particles"
+    )
+    interaction_experts: List[ExpertConfig] = Field(
+        default_factory=list, 
+        description="Experts that compute forces between pairs of particles"
+    )
+    success: bool = Field(default=True, description="Whether configuration generation was successful")

@@ -18,6 +18,8 @@ Examples:
 - For "particles drift randomly" → def expert_drift(...)
 - For "particles chase each other" → def expert_chase(...)
 
+⚠️ SPECIES CONDITIONALS: Only use "if species == X:" when the user specifically mentions different behavior for different species! For simple behaviors like "drift randomly" or "fall with gravity", apply to ALL particles.
+
 PARAMETER ORDER (NEVER CHANGE THIS):
 1. pos (position)
 2. vel (velocity) 
@@ -91,7 +93,7 @@ When implementing behaviors that mention specific species:
 GRAVITY (replace NAME with "gravity"):
 @ti.func
 def expert_gravity(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    return ti.math.vec2(0.0, -300.0 * mass)
+    return ti.math.vec2(0.0, -300.0 * mass)  # Negative Y = downward
 
 RANDOM MOVEMENT:
 @ti.func

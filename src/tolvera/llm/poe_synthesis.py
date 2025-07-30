@@ -324,12 +324,18 @@ Return ONLY the corrected @ti.func code, no explanations."""
         else:
             logger.warning(f"Skipping state creation: state_spec={bool(state_spec)}, manager={bool(self.state_manager)}")
         
-        # Step 3: Synthesize expert with state context, routing to interaction if needed
+        # Step 3: Synthesize expert with state context, routing to appropriate type
         classification = await self.classify_behavior(description)
         
         if classification == "INTERACTION":
             result = await self.synthesize_interaction_expert(description, state_context)
-        else:
+        elif classification == "STATE_TRANSITION":
+            result = await self.synthesize_state_transition_expert(description, state_context)
+        elif classification == "SENSOR":
+            result = await self.synthesize_sensor_expert(description, state_context)
+        elif classification == "DEPOSIT":
+            result = await self.synthesize_deposit_expert(description, state_context)
+        else:  # SINGLE or default
             result = await self.synthesize_expert(description, state_context)
         
         # Add state information to result
@@ -485,8 +491,29 @@ Return ONLY the corrected @ti.func code, no explanations."""
             # Check if LLM forgot to replace NAME placeholder
             if name == "NAME":
                 logger.warning("LLM did not replace NAME placeholder in function signature")
-                # Try to generate a name from the description
-                name = self._generate_name_from_description(description)
+                # Ask LLM to provide a proper name
+                name_prompt = f"""The following expert function uses 'NAME' as a placeholder:
+
+{code}
+
+Based on the behavior description: "{description}"
+
+Please provide ONLY a suitable function name (lowercase with underscores, no 'expert_' prefix).
+Examples: center_attraction, upward_drift, species_repulsion"""
+                
+                messages = [{'role': 'user', 'content': name_prompt}]
+                try:
+                    name_response = await self.client.chat(messages, temperature=0.1, max_tokens=20)
+                    suggested_name = name_response.strip().lower().replace(' ', '_')
+                    # Clean up the name
+                    suggested_name = re.sub(r'[^a-z0-9_]', '', suggested_name)
+                    if suggested_name:
+                        name = suggested_name
+                    else:
+                        name = "behavior"  # Fallback
+                except:
+                    name = "behavior"  # Fallback
+                
                 # Fix the code to use the generated name
                 code = code.replace("expert_NAME", f"expert_{name}")
 
@@ -513,6 +540,11 @@ Return ONLY the corrected @ti.func code, no explanations."""
                 "name": name,
                 "code": code,
                 "description": description,
+                "metadata": {
+                    "type": "force",
+                    "returns": "ti.math.vec2",
+                    "description": description
+                },
                 "errors": [],
                 "raw_response": response,
                 "detected_errors": detected_errors if detected_errors else [],
@@ -572,24 +604,59 @@ Return ONLY the corrected @ti.func code, no explanations."""
             boundary_mode = BoundaryMode.NONE
         boundary_code = self.boundary_manager.get_boundary_code(boundary_mode, use_new_pos=True)
         
-        # Step 5: Load and render template
+        # Step 5: Select appropriate template based on expert types
+        template_name = self._select_kernel_template(expert_info)
+        
+        # Step 6: Categorize experts if using multi-modal template
+        if template_name == 'integration_kernel_multimodal.j2':
+            categorized = self._categorize_experts_by_type(expert_info)
+            
+            # Generate calls for each type
+            sensor_experts = self._prepare_sensor_experts(categorized['sensor'])
+            state_transition_experts = self._prepare_state_transition_experts(categorized['state_transition'])
+            deposit_experts = self._prepare_deposit_experts(categorized['deposit'])
+            
+            # Force experts are from the categorized results
+            single_experts = categorized['force_single']
+            interaction_experts = categorized['force_interaction']
+            
+            # Re-generate expert calls for force experts only
+            single_expert_calls = self._generate_single_expert_calls(single_experts)
+            interaction_expert_calls = self._generate_interaction_expert_calls(interaction_experts)
+            
+            template_data = {
+                'single_particle_experts': single_experts,
+                'single_expert_calls': single_expert_calls,
+                'interaction_experts': interaction_experts,
+                'interaction_expert_calls': interaction_expert_calls,
+                'sensor_experts': sensor_experts,
+                'state_transition_experts': state_transition_experts,
+                'deposit_experts': deposit_experts,
+                'state_access_code': state_access_code,
+                'boundary_code': boundary_code
+            }
+        else:
+            # Standard force-only template
+            template_data = {
+                'single_particle_experts': single_experts,
+                'single_expert_calls': single_expert_calls,
+                'interaction_experts': interaction_experts,
+                'interaction_expert_calls': interaction_expert_calls,
+                'state_access_code': state_access_code,
+                'boundary_code': boundary_code
+            }
+        
+        # Step 7: Load and render template
         import jinja2
         import os
         
         template_dir = os.path.join(os.path.dirname(__file__), 'templates')
         env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir))
-        template = env.get_template('integration_kernel.j2')
+        template = env.get_template(template_name)
         
-        kernel_code = template.render(
-            single_particle_experts=single_experts,
-            single_expert_calls=single_expert_calls,
-            interaction_experts=interaction_experts,
-            interaction_expert_calls=interaction_expert_calls,
-            state_access_code=state_access_code,
-            boundary_code=boundary_code
-        )
+        kernel_code = template.render(**template_data)
         
-        # Step 6: Validate state usage in kernel
+        # Step 8: Validate state usage in kernel
         invalid_state_refs = self._validate_state_usage(kernel_code, state_context)
         if invalid_state_refs:
             logger.warning(f"Found invalid state references in integration kernel: {invalid_state_refs}")
@@ -602,7 +669,7 @@ Return ONLY the corrected @ti.func code, no explanations."""
             if invalid_state_refs:
                 logger.error(f"Still has invalid state references after fix: {invalid_state_refs}")
         
-        # Step 7: Validate generated code
+        # Step 9: Validate generated code
         is_valid, errors = self._validate_kernel_code(kernel_code)
         if not is_valid:
             logger.error(f"Template generated invalid kernel: {errors}")
@@ -648,6 +715,41 @@ Return ONLY the corrected @ti.func code, no explanations."""
         """Get JSON configuration for kernel integration from LLM."""
         logger.info("Getting kernel configuration from LLM")
         
+        from .state_models import KernelConfiguration, ExpertConfig
+        
+        # Pre-classify experts based on metadata to avoid LLM classification errors
+        single_particle_experts = []
+        interaction_experts = []
+        
+        for expert in expert_info:
+            expert_config = ExpertConfig(
+                name=expert['name'],
+                weight=expert.get('weight', 1.0),
+                species_filter=None,
+                species_pairs=None
+            )
+            
+            # Use metadata to determine classification
+            if expert.get('is_interaction', False):
+                interaction_experts.append(expert_config)
+                logger.debug(f"Pre-classified {expert['name']} as interaction expert based on metadata")
+            else:
+                single_particle_experts.append(expert_config)
+                logger.debug(f"Pre-classified {expert['name']} as single-particle expert based on metadata")
+        
+        # Create initial configuration from metadata
+        config = KernelConfiguration(
+            single_particle_experts=single_particle_experts,
+            interaction_experts=interaction_experts,
+            success=True
+        )
+        
+        # If we have a simple case, skip LLM altogether
+        if len(expert_info) <= 2:
+            logger.info("Using metadata-based configuration for simple case")
+            return config.model_dump()
+        
+        # For complex cases, ask LLM to adjust weights and species filters only
         system_prompt = load_prompt("kernel_configuration_system")
         
         # Build expert descriptions
@@ -683,63 +785,46 @@ Return ONLY the corrected @ti.func code, no explanations."""
         ]
         
         try:
-            response = await self.client.chat(messages, temperature=0.1)
+            # Use structured output for reliable JSON parsing
+            llm_config = await self.client.chat_structured(
+                messages, 
+                KernelConfiguration,
+                temperature=0.1
+            )
             
-            # Log the raw response for debugging
-            logger.debug(f"Kernel config raw response: {repr(response[:500])}...")
+            logger.info("Successfully got structured kernel configuration from LLM")
             
-            # Parse JSON response
-            import json
-            config = json.loads(response)
+            # Validate and fix any classification errors
+            single_names = {e.name for e in llm_config.single_particle_experts}
+            interaction_names = {e.name for e in llm_config.interaction_experts}
+            duplicates = single_names & interaction_names
             
-            # Validate configuration
-            if 'single_particle_experts' not in config:
-                config['single_particle_experts'] = []
-            if 'interaction_experts' not in config:
-                config['interaction_experts'] = []
-            
-            # Match expert names from expert_info
-            for expert in expert_info:
-                found = False
-                if expert.get('is_interaction'):
-                    for cfg in config['interaction_experts']:
-                        if cfg['name'] == expert['name']:
-                            found = True
-                            # Preserve species info
-                            if expert.get('species_info'):
-                                cfg['species_info'] = expert['species_info']
-                            break
-                else:
-                    for cfg in config['single_particle_experts']:
-                        if cfg['name'] == expert['name']:
-                            found = True
-                            if expert.get('species_info'):
-                                cfg['species_info'] = expert['species_info']
-                            break
+            if duplicates:
+                logger.warning(f"LLM placed experts in both categories: {duplicates}. Using metadata to fix.")
                 
-                if not found:
-                    # Add missing expert with default config
-                    if expert.get('is_interaction'):
-                        config['interaction_experts'].append({
-                            'name': expert['name'],
-                            'weight': expert.get('weight', 1.0),
-                            'species_pairs': None,
-                            'species_info': expert.get('species_info', {})
-                        })
-                    else:
-                        config['single_particle_experts'].append({
-                            'name': expert['name'],
-                            'weight': expert.get('weight', 1.0),
-                            'species_filter': None,
-                            'species_info': expert.get('species_info', {})
-                        })
+                # Remove duplicates based on metadata
+                for expert in expert_info:
+                    if expert['name'] in duplicates:
+                        if expert.get('is_interaction', False):
+                            # Remove from single particle list
+                            llm_config.single_particle_experts = [
+                                e for e in llm_config.single_particle_experts 
+                                if e.name != expert['name']
+                            ]
+                            logger.info(f"Removed {expert['name']} from single_particle_experts (is interaction)")
+                        else:
+                            # Remove from interaction list
+                            llm_config.interaction_experts = [
+                                e for e in llm_config.interaction_experts 
+                                if e.name != expert['name']
+                            ]
+                            logger.info(f"Removed {expert['name']} from interaction_experts (is single)")
+                
+            # Convert to dictionary for compatibility with rest of code
+            return llm_config.model_dump()
             
-            config['success'] = True
-            return config
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse kernel configuration JSON: {e}")
-            logger.error(f"Response was: {repr(response[:1000])}")
+        except Exception as e:
+            logger.error(f"Failed to get kernel configuration: {e}")
             # Try to extract the expert names from the malformed JSON for a simpler retry
             if len(expert_info) > 3:
                 logger.warning("Too many experts may be causing JSON issues, trying simpler format")
@@ -776,9 +861,17 @@ Return ONLY the corrected @ti.func code, no explanations."""
         
         calls = []
         for expert in experts:
+            # Safety check: verify this is not an interaction expert
+            if expert.get('is_interaction', False):
+                logger.warning(f"Expert {expert['name']} is marked as interaction but found in single-particle list. Skipping.")
+                continue
+            
             species_info = expert.get('species_info', {})
             species_filter = expert.get('species_filter')
             weight = expert.get('weight', 1.5)
+            
+            # Add comment about expected signature
+            calls.append(f"# Expert {expert['name']} expects: (pos, vel, mass, species, particle_idx) -> ti.math.vec2")
             
             # Use species filter if provided, otherwise check species_info
             if species_filter:
@@ -803,6 +896,158 @@ Return ONLY the corrected @ti.func code, no explanations."""
         
         return "\n".join(calls)
     
+    def _select_kernel_template(self, experts: List[Dict]) -> str:
+        """Select the appropriate kernel template based on expert types."""
+        expert_types = set()
+        for expert in experts:
+            # Check metadata first, then expert_type field, then is_interaction
+            if expert.get('metadata', {}).get('type'):
+                expert_types.add(expert['metadata']['type'])
+            elif expert.get('expert_type'):
+                expert_types.add(expert['expert_type'])
+            elif expert.get('is_interaction'):
+                expert_types.add('force')  # Interaction experts are force-type
+            else:
+                expert_types.add('force')  # Default to force
+        
+        logger.info(f"Expert types detected: {expert_types}")
+        
+        # If we have any non-force experts, use multi-modal template
+        if expert_types - {'force'}:
+            logger.info("Using multi-modal integration kernel template")
+            return 'integration_kernel_multimodal.j2'
+        else:
+            logger.info("Using standard force-only integration kernel template")
+            return 'integration_kernel.j2'
+    
+    def _categorize_experts_by_type(self, expert_info: List[Dict]) -> Dict[str, List[Dict]]:
+        """Categorize experts by their type for multi-modal kernel."""
+        categories = {
+            'force_single': [],
+            'force_interaction': [],
+            'sensor': [],
+            'state_transition': [],
+            'deposit': []
+        }
+        
+        for expert in expert_info:
+            # CRITICAL: Check is_interaction flag FIRST before expert type
+            # This ensures interaction experts are never placed in single-particle category
+            is_interaction = expert.get('is_interaction', False) or expert.get('metadata', {}).get('is_interaction', False)
+            
+            # ADDITIONAL CHECK: Look at function signature to detect interaction experts
+            # If function has (p1, p2) parameters, it's definitely an interaction expert
+            code_preview = expert.get('code_preview', '')
+            if ('p1: ti.template(), p2: ti.template()' in code_preview or 
+                'p1:ti.template(),p2:ti.template()' in code_preview or
+                'p1 : ti.template(), p2 : ti.template()' in code_preview):
+                is_interaction = True
+                logger.info(f"Force-detected interaction expert by signature: {expert['name']}")
+            
+            # Get expert type from metadata or expert_type field
+            expert_type = expert.get('metadata', {}).get('type') or expert.get('expert_type', 'force')
+            
+            logger.debug(f"Categorizing {expert['name']}: type={expert_type}, is_interaction={is_interaction}")
+            
+            if expert_type == 'sensor':
+                categories['sensor'].append(expert)
+            elif expert_type == 'state_transition':
+                categories['state_transition'].append(expert)
+            elif expert_type == 'deposit':
+                categories['deposit'].append(expert)
+            elif expert_type == 'force':
+                # Use is_interaction flag to determine category
+                if is_interaction:
+                    categories['force_interaction'].append(expert)
+                    logger.info(f"Categorized {expert['name']} as interaction expert")
+                else:
+                    categories['force_single'].append(expert)
+                    logger.info(f"Categorized {expert['name']} as single-particle expert")
+            else:
+                # Default to force if type is unknown
+                logger.warning(f"Unknown expert type '{expert_type}' for {expert['name']}, defaulting to force")
+                if is_interaction:
+                    categories['force_interaction'].append(expert)
+                else:
+                    categories['force_single'].append(expert)
+        
+        return categories
+    
+    def _prepare_sensor_experts(self, experts: List[Dict]) -> List[Dict]:
+        """Prepare sensor experts for multi-modal template."""
+        prepared = []
+        for expert in experts:
+            prepared_expert = {
+                'name': expert['name'],
+                'description': expert.get('metadata', {}).get('description', ''),
+                'call': f"expert_{expert['name']}(pos, vel, species, i, tv)",
+                'store_result': f"# TODO: Store sensor reading for {expert['name']}"
+            }
+            prepared.append(prepared_expert)
+        return prepared
+    
+    def _prepare_state_transition_experts(self, experts: List[Dict]) -> List[Dict]:
+        """Prepare state transition experts for multi-modal template."""
+        prepared = []
+        for expert in experts:
+            prepared_expert = {
+                'name': expert['name'],
+                'description': expert.get('metadata', {}).get('description', ''),
+                'get_current_state': f"tv.p.field[i].state",  # Placeholder
+                'call': f"expert_{expert['name']}(pos, vel, mass, species, i)",
+                'update_state': f"tv.p.field[i].state = new_state"
+            }
+            prepared.append(prepared_expert)
+        return prepared
+    
+    def _prepare_deposit_experts(self, experts: List[Dict]) -> List[Dict]:
+        """Prepare deposit experts for multi-modal template."""
+        prepared = []
+        for expert in experts:
+            prepared_expert = {
+                'name': expert['name'],
+                'description': expert.get('metadata', {}).get('description', ''),
+                'call': f"expert_{expert['name']}(pos, vel, species, i, tv)"
+            }
+            prepared.append(prepared_expert)
+        return prepared
+    
+    def extract_function_name(self, code: str) -> Optional[str]:
+        """Extract function name from expert code."""
+        match = re.search(r'def\s+expert_(\w+)', code)
+        if match:
+            return match.group(1)
+        # Try fallback for functions without expert_ prefix
+        match = re.search(r'def\s+(\w+)', code)
+        if match:
+            return match.group(1)
+        return None
+    
+    def _generate_expert_name(self, description: str) -> str:
+        """Generate a valid function name from description."""
+        # Remove common words and clean up
+        words = description.lower().split()
+        # Remove articles, prepositions, etc.
+        stop_words = {'the', 'a', 'an', 'to', 'from', 'with', 'by', 'for', 'of', 'in', 'on', 'at', 'and', 'or', 'but'}
+        words = [w for w in words if w not in stop_words]
+        
+        # Take first 3 meaningful words
+        name_parts = []
+        for word in words[:3]:
+            # Remove non-alphanumeric characters
+            clean_word = re.sub(r'[^a-zA-Z0-9]', '', word)
+            if clean_word:
+                name_parts.append(clean_word)
+        
+        # Join with underscores
+        name = '_'.join(name_parts) if name_parts else 'expert'
+        
+        # Ensure it starts with a letter
+        if name and name[0].isdigit():
+            name = 'expert_' + name
+            
+        return name
+    
     def _generate_interaction_expert_calls(self, experts: List[Dict]) -> str:
         """Generate interaction expert calls preserving SpeciesManager logic."""
         if not experts:
@@ -810,9 +1055,16 @@ Return ONLY the corrected @ti.func code, no explanations."""
         
         calls = []
         for expert in experts:
+            # Safety check: log if this doesn't look like an interaction expert
+            if not expert.get('is_interaction') and 'is_interaction' in expert:
+                logger.warning(f"Expert {expert['name']} is not marked as interaction but found in interaction list.")
+            
             species_pairs = expert.get('species_pairs')
             species_info = expert.get('species_info', {})
             weight = expert.get('weight', 1.5)
+            
+            # Add comment about expected signature
+            calls.append(f"# Expert {expert['name']} expects: (p1: Particle, p2: Particle) -> ti.math.vec2")
             
             if species_pairs:
                 # Specific pairs provided
@@ -911,12 +1163,106 @@ Return ONLY the corrected @ti.func code, no explanations."""
         
         return len(errors) == 0, errors
     
+    def _keyword_classify_behavior(self, description: str, loose: bool = False) -> str:
+        """Keyword-based behavior classification as fallback for small models."""
+        desc_lower = description.lower()
+        
+        # Check for Boids/flocking behaviors FIRST (before sensor)
+        boids_keywords = ['align', 'cohesion', 'separation', 'flock', 'swarm', 'boid']
+        if any(keyword in desc_lower for keyword in boids_keywords):
+            if 'neighbor' in desc_lower or 'nearby' in desc_lower or 'together' in desc_lower:
+                return "INTERACTION"
+        
+        # Check for sensor behaviors
+        sensor_keywords = ['sense', 'detect', 'measure', 'count', 'read', 'scan', 'check', 'monitor', 'observe']
+        if any(keyword in desc_lower for keyword in sensor_keywords):
+            # Additional context check
+            if any(word in desc_lower for word in ['pheromone', 'concentration', 'neighbor', 'nearby', 'around', 'environment']):
+                return "SENSOR"
+        
+        # Check for deposit behaviors
+        deposit_keywords = ['deposit', 'leave', 'mark', 'trail', 'drop', 'place', 'emit', 'release', 'secrete']
+        if any(keyword in desc_lower for keyword in deposit_keywords):
+            # Additional context check
+            if any(word in desc_lower for word in ['pheromone', 'trail', 'marker', 'substance', 'chemical']):
+                return "DEPOSIT"
+        
+        # Check for state transition behaviors
+        state_keywords = ['become', 'change state', 'transition', 'switch', 'die', 'birth', 'alive', 'dead', 
+                         'activate', 'deactivate', 'turn on', 'turn off', 'transform']
+        rule_keywords = ['rule', 'if', 'when', 'condition', 'threshold']
+        if any(keyword in desc_lower for keyword in state_keywords):
+            return "STATE_TRANSITION"
+        if any(keyword in desc_lower for keyword in rule_keywords) and 'neighbors' in desc_lower:
+            return "STATE_TRANSITION"
+        
+        # Check for interaction behaviors (force between particles)
+        interaction_keywords = ['chase', 'flee', 'follow', 'avoid', 'repel each other', 'attract each other',
+                               'interact', 'between', 'towards', 'away from',
+                               'align with neighbor', 'flock', 'swarm', 'cohesion', 'separation']
+        if any(keyword in desc_lower for keyword in interaction_keywords):
+            # Check if it mentions multiple particles or species
+            if 'species' in desc_lower and re.search(r'species \d+.*species \d+', desc_lower):
+                return "INTERACTION"
+            if any(word in desc_lower for word in ['each other', 'one another', 'between particles']):
+                return "INTERACTION"
+            # Boids behaviors are interactions
+            if any(word in desc_lower for word in ['align', 'cohesion', 'separation', 'flock', 'swarm']) and 'neighbor' in desc_lower:
+                return "INTERACTION"
+        
+        # Check for single particle forces
+        force_keywords = ['move', 'drift', 'fall', 'gravity', 'push', 'pull', 'attract', 'repel', 
+                         'accelerate', 'velocity', 'force', 'forward', 'backward', 'upward', 'downward']
+        if any(keyword in desc_lower for keyword in force_keywords):
+            # Make sure it's not an interaction
+            if not any(word in desc_lower for word in ['each other', 'species 0', 'species 1']):
+                return "SINGLE"
+        
+        # If loose matching is enabled, make educated guesses
+        if loose:
+            # Default based on common patterns
+            if 'turn' in desc_lower or 'rotate' in desc_lower:
+                return "SINGLE"  # Turning is usually a force behavior
+            if 'highest' in desc_lower or 'lowest' in desc_lower:
+                return "SENSOR"  # Comparing values suggests sensing
+            
+        return "SINGLE" if loose else "UNKNOWN"
+    
     async def classify_behavior(self, description: str) -> str:
-        """Use LLM to classify whether a behavior is single-particle or interaction based."""
+        """Use LLM to classify behavior type including new expert types."""
         logger.info(f"Classifying behavior: '{description}'")
         
-        system_prompt = load_prompt("behavior_router_system")
-        user_prompt = load_prompt("behavior_router_user").format(description=description)
+        # First try keyword-based classification for better reliability
+        keyword_classification = self._keyword_classify_behavior(description)
+        if keyword_classification != "UNKNOWN":
+            logger.info(f"Using keyword classification: {keyword_classification}")
+            return keyword_classification
+        
+        from .state_models import ExpertClassification, ExpertType, BehaviorType
+        
+        # Use structured output for reliable classification
+        system_prompt = """You are an expert at classifying particle behavior descriptions for physics simulations.
+
+Classify behaviors into one of these expert types:
+
+1. FORCE: Continuous forces affecting movement (gravity, attraction, repulsion, chase, flee)
+2. STATE_TRANSITION: Discrete state changes (alive/dead, on/off, mode switching)
+3. SENSOR: Reading environment/neighbors (counting, detecting, measuring)
+4. DEPOSIT: Writing to environment (trails, marks, pheromones)
+
+For FORCE behaviors, also determine if it's:
+- SINGLE: Forces on individual particles (gravity, drift)
+- INTERACTION: Forces between particle pairs (chase, repel each other)
+
+Examples:
+- "particles fall with gravity" → FORCE (SINGLE)
+- "species 0 chases species 1" → FORCE (INTERACTION)
+- "cells become alive or dead based on neighbors" → STATE_TRANSITION
+- "count live neighbors" → SENSOR
+- "deposit pheromone trail" → DEPOSIT
+- "apply birth rule - dead cells with 3 neighbors become alive" → STATE_TRANSITION"""
+        
+        user_prompt = f"Classify this behavior: {description}"
         
         messages = [
             {'role': 'system', 'content': system_prompt},
@@ -924,19 +1270,37 @@ Return ONLY the corrected @ti.func code, no explanations."""
         ]
         
         try:
-            response = await self.client.chat(messages, temperature=0.1, max_tokens=10)
-            classification = response.strip().upper()
+            # Use structured output
+            result = await self.client.chat_structured(
+                messages, 
+                ExpertClassification,
+                temperature=0.1
+            )
             
-            if classification not in ["SINGLE", "INTERACTION"]:
-                logger.warning(f"Invalid classification response: {response}. Defaulting to SINGLE.")
-                classification = "SINGLE"
+            logger.info(f"LLM classification result: {result.expert_type.value}, reasoning: {result.reasoning}")
             
-            logger.info(f"Behavior classified as: {classification}")
-            return classification
+            # Convert to string format expected by rest of code
+            if result.expert_type == ExpertType.STATE_TRANSITION:
+                return "STATE_TRANSITION"
+            elif result.expert_type == ExpertType.SENSOR:
+                return "SENSOR"
+            elif result.expert_type == ExpertType.DEPOSIT:
+                return "DEPOSIT"
+            elif result.expert_type == ExpertType.FORCE:
+                # Return SINGLE or INTERACTION for force behaviors
+                if result.force_subtype == BehaviorType.INTERACTION:
+                    return "INTERACTION"
+                else:
+                    return "SINGLE"
+            else:
+                logger.warning(f"Unexpected expert type: {result.expert_type}. Using keyword fallback.")
+                return self._keyword_classify_behavior(description, loose=True)
             
         except Exception as e:
-            logger.error(f"Classification failed: {e}. Defaulting to SINGLE.")
-            return "SINGLE"
+            logger.error(f"LLM classification failed: {e}. Using keyword fallback.")
+            fallback = self._keyword_classify_behavior(description, loose=True)
+            logger.info(f"Keyword fallback classification: {fallback}")
+            return fallback
     
     async def extract_species_info(self, description: str) -> dict:
         logger.info(f"Extracting species info from: '{description}'")
@@ -972,6 +1336,12 @@ Return ONLY the corrected @ti.func code, no explanations."""
         behavior_type = await self.classify_behavior(description)
         if behavior_type == "INTERACTION":
             return await self.synthesize_interaction_expert(description, state_context=None)
+        elif behavior_type == "STATE_TRANSITION":
+            return await self.synthesize_state_transition_expert(description, state_context=None)
+        elif behavior_type == "SENSOR":
+            return await self.synthesize_sensor_expert(description, state_context=None)
+        elif behavior_type == "DEPOSIT":
+            return await self.synthesize_deposit_expert(description, state_context=None)
         return await self.synthesize_expert(description, state_context=None)
     
     def _add_decomposition_metadata(self, result: Dict[str, Any], 
@@ -1002,7 +1372,11 @@ Return ONLY the corrected @ti.func code, no explanations."""
                 # Use original state context if available, otherwise analyze per sub-behavior
                 if original_state_spec and original_state_context:
                     logger.info(f"Using original state context for sub-behavior: {sub_behavior.description}")
-                    result = await self._synthesize_with_state_context(sub_behavior.description, original_state_spec, original_state_context)
+                    # Enhance state context with explicit warnings about state names
+                    enhanced_context = original_state_context.copy()
+                    if 'state_summary' in enhanced_context:
+                        enhanced_context['state_summary'] += "\n\nIMPORTANT: Only use the exact state names listed above. Do not invent new state names."
+                    result = await self._synthesize_with_state_context(sub_behavior.description, original_state_spec, enhanced_context)
                 else:
                     result = await self._synthesize_single_behavior(sub_behavior.description)
                 
@@ -1030,6 +1404,12 @@ Return ONLY the corrected @ti.func code, no explanations."""
         
         if classification == "INTERACTION":
             return await self.synthesize_interaction_expert(description, state_context)
+        elif classification == "STATE_TRANSITION":
+            return await self.synthesize_state_transition_expert(description, state_context)
+        elif classification == "SENSOR":
+            return await self.synthesize_sensor_expert(description, state_context)
+        elif classification == "DEPOSIT":
+            return await self.synthesize_deposit_expert(description, state_context)
         else:
             return await self.synthesize_expert(description, state_context)
 
@@ -1216,6 +1596,11 @@ Return ONLY the corrected @ti.func code, no explanations."""
                 "name": name,
                 "code": code,
                 "description": description,
+                "metadata": {
+                    "type": "force",
+                    "returns": "ti.math.vec2",
+                    "description": description
+                },
                 "errors": [],
                 "raw_response": response,
                 "is_interaction": True,
@@ -1230,6 +1615,235 @@ Return ONLY the corrected @ti.func code, no explanations."""
                 "success": False,
                 "code": "",
                 "description": description,
+                "errors": [str(e)],
+                "raw_response": ""
+            }
+
+    async def synthesize_state_transition_expert(self, description: str, state_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Synthesize a state transition expert for discrete state changes like cellular automata."""
+        logger.info(f"Synthesizing state transition expert for: '{description}'")
+        
+        try:
+            # Load state transition specific prompts
+            system_prompt = load_prompt("expert_state_transition_system")
+            user_prompt_template = load_prompt("expert_state_transition_user")
+            
+            # Add state context to user prompt if available
+            state_examples = ""
+            if state_context and state_context.get('state_spec'):
+                if self.is_small_model:
+                    typed_context = self.state_synthesizer.generate_simplified_state_context(state_context.get('state_spec', {}))
+                    state_examples = typed_context.get('state_summary', '')
+                else:
+                    state_examples = state_context.get('access_examples', '')
+                    if not state_examples and self.state_manager:
+                        state_examples = self.state_manager.generate_state_access_examples()
+            
+            # Generate a name from the description
+            name = self._generate_expert_name(description)
+            
+            user_prompt = user_prompt_template.format(
+                description=description,
+                state_context=state_examples if state_examples else "No custom states available",
+                name=name,
+                parameters="pos: ti.math.vec2, vel: ti.math.vec2, state: ti.i32, species: ti.i32"
+            )
+            
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ]
+            
+            response = await self.client.chat(messages, temperature=0.3)
+            code = self.extract_code(response)
+            name = self.extract_function_name(code) or "state_transition"
+            
+            # Validate the function returns ti.i32
+            if "-> ti.i32" not in code:
+                logger.warning("State transition expert doesn't return ti.i32, fixing...")
+                code = code.replace("-> ti.math.vec2", "-> ti.i32")
+            
+            logger.info(f"Successfully synthesized state transition expert: {name}")
+            
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "expert_type": "state_transition",
+                "metadata": {
+                    "type": "state_transition",
+                    "returns": "ti.i32",
+                    "description": description,
+                    "state_context": state_context
+                },
+                "errors": [],
+                "prompt": user_prompt,
+                "raw_response": response
+            }
+            
+        except Exception as e:
+            logger.error(f"State transition expert synthesis failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "errors": [str(e)],
+                "raw_response": ""
+            }
+    
+    async def synthesize_sensor_expert(self, description: str, state_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Synthesize a sensor expert for reading environment values."""
+        logger.info(f"Synthesizing sensor expert for: '{description}'")
+        
+        try:
+            # Load sensor specific prompts
+            system_prompt = load_prompt("expert_sensor_system")
+            user_prompt_template = load_prompt("expert_sensor_user")
+            
+            # Add state context
+            state_examples = ""
+            if state_context and state_context.get('state_spec'):
+                if self.is_small_model:
+                    typed_context = self.state_synthesizer.generate_simplified_state_context(state_context.get('state_spec', {}))
+                    state_examples = typed_context.get('state_summary', '')
+                else:
+                    state_examples = state_context.get('access_examples', '')
+            
+            # Add explicit list of available states to prevent hallucination
+            if state_context and state_context.get('state_summary'):
+                state_examples = state_context.get('state_summary', '') + "\n\n" + (state_examples or "")
+                logger.info(f"Sensor synthesis state context: {state_examples}")
+            
+            # Generate a name from the description
+            name = self._generate_expert_name(description)
+            
+            user_prompt = user_prompt_template.format(
+                description=description,
+                state_context=state_examples if state_examples else "No custom states available",
+                name=name,
+                parameters="pos: ti.math.vec2, vel: ti.math.vec2, species: ti.i32, particle_idx: ti.i32, tv: ti.template()"
+            )
+            
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ]
+            
+            response = await self.client.chat(messages, temperature=0.3)
+            code = self.extract_code(response)
+            name = self.extract_function_name(code) or "sensor"
+            
+            # Validate the function returns ti.f32
+            if "-> ti.f32" not in code:
+                logger.warning("Sensor expert doesn't return ti.f32, fixing...")
+                code = code.replace("-> ti.math.vec2", "-> ti.f32")
+            
+            # Ensure sensor has return statement
+            if "return" not in code:
+                logger.warning("Sensor expert missing return statement, adding default return")
+                # Find the end of the function and add return before it
+                lines = code.split('\n')
+                # Find last non-empty line that's still part of function (not starting a new function)
+                insert_index = len(lines) - 1
+                while insert_index > 0 and (not lines[insert_index].strip() or lines[insert_index].startswith('@')):
+                    insert_index -= 1
+                # Add return statement with safe default
+                lines.insert(insert_index + 1, "    return 0.0  # Default return added - no sensor reading")
+                code = '\n'.join(lines)
+            
+            logger.info(f"Successfully synthesized sensor expert: {name}")
+            
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "expert_type": "sensor",
+                "metadata": {
+                    "type": "sensor",
+                    "returns": "ti.f32",
+                    "description": description,
+                    "state_context": state_context
+                },
+                "errors": [],
+                "prompt": user_prompt,
+                "raw_response": response
+            }
+            
+        except Exception as e:
+            logger.error(f"Sensor expert synthesis failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "errors": [str(e)],
+                "raw_response": ""
+            }
+    
+    async def synthesize_deposit_expert(self, description: str, state_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Synthesize a deposit expert for writing to environment."""
+        logger.info(f"Synthesizing deposit expert for: '{description}'")
+        
+        try:
+            # Load deposit specific prompts
+            system_prompt = load_prompt("expert_deposit_system")
+            user_prompt_template = load_prompt("expert_deposit_user")
+            
+            # Add state context
+            state_examples = ""
+            if state_context and state_context.get('state_spec'):
+                if self.is_small_model:
+                    typed_context = self.state_synthesizer.generate_simplified_state_context(state_context.get('state_spec', {}))
+                    state_examples = typed_context.get('state_summary', '')
+                else:
+                    state_examples = state_context.get('access_examples', '')
+            
+            # Generate a name from the description
+            name = self._generate_expert_name(description)
+            
+            user_prompt = user_prompt_template.format(
+                description=description,
+                state_context=state_examples if state_examples else "No custom states available",
+                name=name,
+                parameters="pos: ti.math.vec2, vel: ti.math.vec2, species: ti.i32, particle_idx: ti.i32, tv: ti.template()"
+            )
+            
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ]
+            
+            response = await self.client.chat(messages, temperature=0.3)
+            code = self.extract_code(response)
+            name = self.extract_function_name(code) or "deposit"
+            
+            # Validate the function has no return type (void)
+            if "->" in code and "def expert" in code:
+                logger.warning("Deposit expert has return type, removing...")
+                # Remove return type annotation
+                import re
+                code = re.sub(r'\s*->\s*[^:]+:', ':', code)
+            
+            logger.info(f"Successfully synthesized deposit expert: {name}")
+            
+            return {
+                "success": True,
+                "name": name,
+                "code": code,
+                "description": description,
+                "expert_type": "deposit",
+                "metadata": {
+                    "type": "deposit",
+                    "returns": "void",
+                    "description": description,
+                    "state_context": state_context
+                },
+                "errors": [],
+                "prompt": user_prompt,
+                "raw_response": response
+            }
+            
+        except Exception as e:
+            logger.error(f"Deposit expert synthesis failed: {e}", exc_info=True)
+            return {
+                "success": False,
                 "errors": [str(e)],
                 "raw_response": ""
             }

@@ -19,18 +19,31 @@ TÖLVERA CONTEXT:
 - Forces will be used to update particle velocities
 - Different species can represent different organism types (predators, prey, food, etc.)
 
+CRITICAL TAICHI SYNTAX RULES:
+- NEVER use ti.this.idx - use the particle_idx parameter when available
+- NEVER use .has_value on vectors - use .norm() > 0.0 for existence checks
+- Access particle states: tv.s.llm_particle.field[particle_idx].state_name (if particle_idx available)
+- Access species states: tv.s.llm_species.field[species].state_name
+- All vectors are ti.math.vec2 - no Optional or nullable types
+- Use ti.math.vec2(x, y) to create vectors, not (x, y) tuples
+
 PHYSICS CONVENTIONS:
 - Gravity pulls DOWNWARD: force = ti.math.vec2(0.0, -gravity_strength * mass)
-- Y-axis convention: NEGATIVE Y = downward force, POSITIVE Y = upward force
+- Y-axis convention: NEGATIVE Y = downward force, POSITIVE Y = upward force (standard coordinate system)
 - Common force directions:
-  - Fall/Drop/Gravity: ti.math.vec2(0.0, -300.0 * mass) # Negative Y
-  - Float/Rise/Anti-gravity: ti.math.vec2(0.0, 300.0 * mass) # Positive Y
+  - Fall/Drop/Gravity: ti.math.vec2(0.0, -300.0 * mass) # Negative Y = downward
+  - Float/Rise/Anti-gravity: ti.math.vec2(0.0, 300.0 * mass) # Positive Y = upward
   - Move right: ti.math.vec2(100.0, 0.0)
   - Move left: ti.math.vec2(-100.0, 0.0)
 
 CRITICAL TAICHI GUIDELINES:
 
-1. Math Functions and Constants:
+1. Species Conditionals - ONLY use when explicitly required:
+   - DON'T add "if species == 0:" unless the user specifically mentions different behavior for different species
+   - Simple behaviors like "particles drift randomly" should apply to ALL particles regardless of species
+   - ONLY use species conditionals when the description explicitly mentions species differences
+
+2. Math Functions and Constants:
    - Use Taichi math functions: `ti.sqrt()`, `ti.sin()`, `ti.cos()`, `ti.tan()`, `ti.atan2()`
    - Additional math functions: `ti.acos()`, `ti.asin()`, `ti.exp()`, `ti.log()`, `ti.pow()`
    - Rounding functions: `ti.floor()`, `ti.ceil()`, `ti.round()`

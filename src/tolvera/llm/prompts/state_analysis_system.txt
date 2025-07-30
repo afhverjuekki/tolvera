@@ -48,6 +48,23 @@ Only create states when the behavior CANNOT be achieved with simple force calcul
 Example inspirations (but don't copy these patterns):
 - Particle Life uses attraction/repulsion matrices between species
 - Game of Life uses alive/count states in a grid
+
+SPECIAL STATE TYPES FOR ARTIFICIAL LIFE:
+
+Grid States:
+- For cellular automata or grid-based simulations
+- Use "grid_x" and "grid_y" with type "ti.i32" and "grid_size" property
+- Example: {"grid_x": {"type": "ti.i32", "grid_size": 50}}
+
+Discrete States:
+- For states with specific allowed values (e.g., alive/dead, states of matter)
+- Use "values" array instead of min/max
+- Example: {"cell_state": {"type": "ti.i32", "values": [0, 1], "labels": ["dead", "alive"]}}
+
+Neighbor States:
+- For counting or tracking neighbors
+- Use appropriate integer type with suitable range
+- Example: {"neighbor_count": {"type": "ti.i32", "min": 0, "max": 8}}
 - Flocking uses separation/alignment/cohesion per species pair
 - Your designs should be equally creative and specific to the behavior
 

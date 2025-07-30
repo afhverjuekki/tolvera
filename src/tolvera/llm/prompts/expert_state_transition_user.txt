@@ -1,0 +1,23 @@
+Generate a Taichi state transition expert function for the following behavior:
+
+Description: {description}
+
+{state_context}
+
+The function should:
+1. Take current state and any relevant inputs
+2. Apply transition rules based on the description
+3. Return the new state as ti.i32
+
+Function signature:
+@ti.func
+def expert_{name}({parameters}) -> ti.i32:
+    # Your implementation here
+    
+Make sure to:
+- Check all transition conditions
+- Return valid state values only
+- Handle edge cases gracefully
+- Use clear variable names
+
+Focus on the state transition logic ONLY. Do not include movement or force calculations.

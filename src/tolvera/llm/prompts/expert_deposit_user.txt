@@ -1,0 +1,31 @@
+Generate a Taichi deposit expert function for the following behavior:
+
+Description: {description}
+
+{state_context}
+
+The function should:
+1. Calculate what and where to deposit
+2. Write to environmental structures
+3. Have NO return statement (void function)
+
+Function signature:
+@ti.func
+def expert_{name}({parameters}):
+    # Your implementation here
+    # NO RETURN STATEMENT
+    
+Make sure to:
+- Check boundaries before writing to grids
+- Use atomic operations if multiple particles might write to same location
+- Consider the scale/amount of deposits
+- Handle edge cases gracefully
+
+Common deposit patterns:
+- Point deposits at particle position
+- Area deposits in a radius
+- Trail deposits along movement path
+- Gradient deposits with falloff
+- Conditional deposits based on state
+
+Focus on modifying the environment ONLY. Do not include sensing or movement.

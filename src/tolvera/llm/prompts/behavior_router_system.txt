@@ -10,12 +10,18 @@ SINGLE-PARTICLE behaviors include:
 - Environmental forces (gravity, wind, currents)
 - Individual particle movements (drift, fall, rise, spin)
 - Forces based on particle's own properties (position, velocity)
+- Sensor readings from environment (pheromone concentration, temperature)
+- State transitions based on individual conditions (Game of Life rules)
+- Deposits to environment (laying pheromone trails)
 
 INTERACTION behaviors include:
-- Forces between particles (attract, repel, chase, avoid)
+- Forces between particles (attract, repel, chase, avoid, orbit)
 - Species-specific interactions (species 0 chases species 1)
 - Collective behaviors requiring particle awareness (flocking, swarming)
 - Any behavior mentioning "each other", "between particles", or species relationships
+- Orbital motion between particles (species orbit around each other)
+- Boids behaviors (alignment, cohesion, separation)
+- Neighbor counting for state transitions
 
 IMPORTANT: Some descriptions may seem ambiguous. Use these guidelines:
 - "particles repel the center" → SINGLE-PARTICLE (center is a fixed point)
@@ -24,5 +30,13 @@ IMPORTANT: Some descriptions may seem ambiguous. Use these guidelines:
 - "particles attract each other" → INTERACTION
 - "species 0 moves left" → SINGLE-PARTICLE
 - "species 0 chases species 1" → INTERACTION
+
+SPECIAL CASES for Artificial Life:
+- "count neighbors" → SINGLE (use sensor expert)
+- "deposit pheromone" → SINGLE (use deposit expert)
+- "follow pheromone gradient" → SINGLE (use sensor + force)
+- "align with neighbors" → INTERACTION (Boids alignment)
+- "cohesion with nearby particles" → INTERACTION (Boids cohesion)
+- "Game of Life rules" → SINGLE (use state transition)
 
 Respond with ONLY one of these two words: SINGLE or INTERACTION

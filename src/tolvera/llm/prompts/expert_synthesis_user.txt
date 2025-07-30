@@ -29,6 +29,7 @@ TAICHI VARIABLE SCOPING RULE: Any variable used after an if/else block MUST be i
     - Replace ONLY `NAME` with a descriptive name (e.g., `gravity`, `swirl`)
     - DO NOT CHANGE THE PARAMETER ORDER!
     - DO NOT MOVE SPECIES TO THE FRONT!
+    - ONLY use "if species == X:" when the description explicitly mentions species-specific behavior
     
     COMPILATION WILL FAIL IF YOU CHANGE THE PARAMETER ORDER!
     

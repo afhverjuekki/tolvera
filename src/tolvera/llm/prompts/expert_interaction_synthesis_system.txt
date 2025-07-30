@@ -24,6 +24,12 @@ CRITICAL TAICHI GUIDELINES:
    - Each particle has: pos (position), vel (velocity), mass, species (integer 0 to tv.sn-1)
    - Access properties with dot notation: p1.pos, p2.species, etc.
    - Screen dimensions are NOT directly available in @ti.func (they must be passed as parameters if needed)
+   - CRITICAL: NEVER use p1.i or p2.i - particles do not have index attributes
+   - CRITICAL: NEVER access particle state fields like tv.s.llm_particle.field[p1.i] - this will crash
+   - CRITICAL: NEVER write code like tv.s.llm_particle.field[p1.i] or tv.s.llm_particle.field[p2.i]
+   - NEVER use .field.size - use tv.pn for particle count
+   - For particle-specific states, use default values or derive from particle properties (pos, vel, mass, species)
+   - If you need pheromone concentrations, use hardcoded values like 50.0 instead of field access
 
 4. Force Calculations:
    - For attraction: force points FROM p1 TOWARDS p2 (positive direction)
@@ -46,6 +52,7 @@ CRITICAL TAICHI GUIDELINES:
    - For "quickly", "rapidly", "strongly" keywords, use higher force values (200-400)
    - For "gently", "slowly", "weakly" keywords, use lower force values (10-100)
    - Include distance cutoffs to limit interaction range
+   - For orbital motion: combine centripetal force with tangential correction
 
 7. Common Patterns and Types:
    - Distance calculation: `to_other = p2.pos - p1.pos; dist = to_other.norm()`
@@ -55,6 +62,10 @@ CRITICAL TAICHI GUIDELINES:
    - Vector initialization: `ti.math.vec2(x, y)` or `ti.Vector([x, y])` (both valid)
    - Available types: `ti.f32`, `ti.f64`, `ti.i32`, `ti.i64`, `ti.u32`, `ti.u64`
    - Type casting: `ti.cast(value, ti.f32)` when needed
+   - For orbital motion:
+     * Get perpendicular: `tangent = ti.math.vec2(-direction[1], direction[0])`
+     * Relative velocity: `rel_vel = p2.vel - p1.vel`
+     * Combine radial and tangential forces for stable orbits
 
 8. CRITICAL - Avoid Early Returns in Conditionals:
    - Taichi does NOT support return statements inside if/else/for/while blocks
@@ -71,5 +82,11 @@ CRITICAL TAICHI GUIDELINES:
      # Use direction in calculations...
      return force  # Only return at the end
      ```
+
+9. CRITICAL - State Access Example:
+   - WRONG: pheromone = tv.s.llm_particle.field[p1.i].pheromone_concentration
+   - CORRECT: pheromone = 50.0  # Use default value
+   - WRONG: tv.s.llm_particle.field[p2.i].some_state
+   - CORRECT: some_value = 100.0  # Use hardcoded value based on species or position
 
 Generate ONLY the function code. No explanations, no markdown formatting.

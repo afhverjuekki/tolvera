@@ -38,6 +38,23 @@ class BehaviorDecomposer:
             r'species \d+.*species \d+.*species \d+',  # 3+ species mentioned
         ]
         
+        # Artificial life patterns that often need special decomposition
+        self.al_patterns = {
+            'cellular_automaton': [
+                r'cellular automaton', r'game of life', r'conway',
+                r'cells? (live|die|birth|death)', r'neighbor count',
+                r'grid pattern', r'cell state'
+            ],
+            'multi_phase': [
+                r'sense.*then', r'detect.*move', r'follow.*trail',
+                r'deposit.*pheromone', r'mark.*territory'
+            ],
+            'state_machine': [
+                r'switch between', r'change state', r'mode.*mode',
+                r'when.*become', r'transition'
+            ]
+        }
+        
     def check_complexity(self, description: str) -> Dict[str, bool]:
         desc_lower = description.lower()
         
@@ -50,6 +67,10 @@ class BehaviorDecomposer:
             'compound_sentence': ',' in description or ';' in description,
             'balanced_forces': any(phrase in desc_lower for phrase in ['stronger than', 'weaker than', 'more than', 'less than'])
         }
+        
+        # Check for AL patterns
+        for pattern_type, patterns in self.al_patterns.items():
+            indicators[f'al_{pattern_type}'] = any(re.search(pattern, desc_lower) for pattern in patterns)
         
         indicators['complexity_score'] = sum(1 for v in indicators.values() if v and isinstance(v, bool))
         
@@ -125,6 +146,17 @@ Format: YES/NO: reason"""
             return [SubBehavior(description=description, weight=1.0, relationship='independent')]
     
     def _build_decomposition_prompt(self, description: str) -> str:
+        # Check if this is an AL pattern
+        indicators = self.check_complexity(description)
+        
+        if indicators.get('al_cellular_automaton'):
+            return self._build_cellular_automaton_prompt(description)
+        elif indicators.get('al_multi_phase'):
+            return self._build_multi_phase_prompt(description)
+        elif indicators.get('al_state_machine'):
+            return self._build_state_machine_prompt(description)
+        
+        # Default decomposition prompt
         return f"""Decompose this complex particle behavior into simpler, atomic behaviors:
 
 Original: "{description}"
@@ -233,3 +265,72 @@ Now decompose the original behavior:"""
                     sub_behaviors[i].weight *= 1.5
         
         return sub_behaviors
+    
+    def _build_cellular_automaton_prompt(self, description: str) -> str:
+        return f"""Decompose this cellular automaton behavior into its core components:
+
+Original: "{description}"
+
+Cellular automata need:
+1. Cell state reading (current state)
+2. Neighbor counting/sensing
+3. State transition rules
+4. State updating
+
+Output format (one per line):
+BEHAVIOR: description | WEIGHT: 1.0 | RELATIONSHIP: sequential/simultaneous
+
+Example for Conway's Game of Life:
+BEHAVIOR: read current cell state (alive or dead) | WEIGHT: 1.0 | RELATIONSHIP: sequential
+BEHAVIOR: count live neighbors in 8-cell neighborhood | WEIGHT: 1.0 | RELATIONSHIP: sequential
+BEHAVIOR: apply birth rule - dead cells with 3 neighbors become alive | WEIGHT: 1.0 | RELATIONSHIP: conditional
+BEHAVIOR: apply survival rule - live cells with 2-3 neighbors stay alive | WEIGHT: 1.0 | RELATIONSHIP: conditional
+BEHAVIOR: apply death rule - other cells die | WEIGHT: 1.0 | RELATIONSHIP: conditional
+
+Now decompose the original behavior:"""
+    
+    def _build_multi_phase_prompt(self, description: str) -> str:
+        return f"""Decompose this multi-phase behavior into its sequential components:
+
+Original: "{description}"
+
+Multi-phase behaviors typically have:
+1. Sensing/detection phase
+2. Decision/processing phase
+3. Action/movement phase
+4. Environment modification phase (deposits, marks)
+
+Output format (one per line):
+BEHAVIOR: description | WEIGHT: 1.0 | RELATIONSHIP: sequential
+
+Example for slime mold:
+BEHAVIOR: sense pheromone concentration ahead | WEIGHT: 1.0 | RELATIONSHIP: sequential
+BEHAVIOR: turn towards highest pheromone concentration | WEIGHT: 1.0 | RELATIONSHIP: sequential
+BEHAVIOR: move forward | WEIGHT: 1.0 | RELATIONSHIP: sequential
+BEHAVIOR: deposit pheromone trail | WEIGHT: 1.0 | RELATIONSHIP: sequential
+
+Now decompose the original behavior:"""
+    
+    def _build_state_machine_prompt(self, description: str) -> str:
+        return f"""Decompose this state machine behavior into states and transitions:
+
+Original: "{description}"
+
+State machines need:
+1. Current state identification
+2. Transition conditions
+3. State-specific behaviors
+4. State updates
+
+Output format (one per line):
+BEHAVIOR: description | WEIGHT: 1.0 | RELATIONSHIP: conditional
+
+Example for hunting/fleeing:
+BEHAVIOR: check if in hunting state | WEIGHT: 1.0 | RELATIONSHIP: conditional
+BEHAVIOR: if hunting and prey nearby, chase prey | WEIGHT: 1.5 | RELATIONSHIP: conditional
+BEHAVIOR: if hunting and no prey, search randomly | WEIGHT: 1.0 | RELATIONSHIP: conditional
+BEHAVIOR: if fleeing and predator nearby, flee from predator | WEIGHT: 2.0 | RELATIONSHIP: conditional
+BEHAVIOR: switch to fleeing if predator detected | WEIGHT: 1.0 | RELATIONSHIP: conditional
+BEHAVIOR: switch to hunting if safe | WEIGHT: 1.0 | RELATIONSHIP: conditional
+
+Now decompose the original behavior:"""

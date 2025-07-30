@@ -143,6 +143,43 @@ def expert_state_based_interaction(p1: ti.template(), p2: ti.template()) -> ti.m
 
 Remember: The state names in this example are just placeholders. Use the EXACT names from the state_context section above!
 
+EXAMPLE 6: Orbital Motion Between Particles
+*User Request:* "Species orbit around each other."
+
+*Generated Code:*
+```python
+@ti.func
+def expert_orbit_mutual(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    # Apply orbital mechanics between specific species
+    if (p1.species == 0 and p2.species == 1) or (p1.species == 1 and p2.species == 0):
+        to_other = p2.pos - p1.pos
+        dist = to_other.norm()
+        
+        if dist > 5.0 and dist < 200.0:  # Valid range
+            # Gravitational attraction
+            direction = to_other / dist
+            gravity = direction * (1000.0 / (dist * dist))  # Inverse square law
+            
+            # Add tangential component for circular motion
+            # Perpendicular direction (rotate 90 degrees)
+            tangent = ti.math.vec2(-direction[1], direction[0])
+            
+            # Calculate relative velocity for orbit correction
+            rel_vel = p2.vel - p1.vel
+            # Project relative velocity onto tangent
+            tangent_speed = rel_vel[0] * tangent[0] + rel_vel[1] * tangent[1]
+            
+            # Target orbital speed based on distance
+            target_speed = ti.sqrt(1000.0 / dist) * 0.7
+            speed_error = target_speed - tangent_speed
+            
+            # Combine gravitational and tangential forces
+            force = gravity + tangent * (speed_error * 5.0)
+    
+    return force
+```
+
 User Request: {description}
 
 Generate the expert function code:

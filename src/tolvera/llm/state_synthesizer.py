@@ -264,6 +264,31 @@ class StateSynthesizer:
     
     def _validate_state_info(self, state_info: Dict) -> bool:
         """Validate that state info has required fields."""
+        # Check for discrete state with values instead of min/max
+        if 'values' in state_info:
+            # Discrete state with enumerated values
+            required_fields = ['type', 'values']
+            if not all(field in state_info for field in required_fields):
+                return False
+            
+            # Convert values to min/max for compatibility
+            values = state_info['values']
+            if isinstance(values, list) and values:
+                state_info['min'] = min(values)
+                state_info['max'] = max(values)
+                state_info['is_discrete'] = True
+                state_info['allowed_values'] = values
+            return True
+        
+        # Grid coordinate states
+        if 'grid_size' in state_info:
+            # Grid coordinate state
+            state_info['min'] = 0
+            state_info['max'] = state_info.get('grid_size', 50) - 1
+            state_info['is_grid_coordinate'] = True
+            return True
+        
+        # Standard continuous states
         required_fields = ['type', 'min', 'max']
         if not all(field in state_info for field in required_fields):
             return False
@@ -298,6 +323,9 @@ class StateSynthesizer:
     
     async def generate_state_update_code(self, state_spec: Dict, temporal_config: Optional[TemporalConfig] = None, behavior_description: Optional[str] = None) -> str:
         """Generate Taichi code for updating temporal states using LLM."""
+        logger.debug(f"generate_state_update_code called with state_spec: {state_spec}")
+        logger.debug(f"Behavior description: {behavior_description}")
+        
         # Check if we need temporal updates
         has_temporal_states = False
         if temporal_config:
@@ -311,6 +339,13 @@ class StateSynthesizer:
                         break
         
         if not has_temporal_states:
+            return ""
+        
+        # Check if there are any actual states to update
+        total_states = sum(len(state_spec.get(cat, {})) for cat in ['global_states', 'particle_states', 'species_states'])
+        if total_states == 0:
+            logger.info("No custom states found - skipping temporal update generation")
+            logger.debug(f"Empty state_spec passed: {state_spec}")
             return ""
         
         # Use LLM to generate appropriate update logic
@@ -504,6 +539,32 @@ time_scale: {temporal_config.time_scale if hasattr(temporal_config, 'time_scale'
         if re.search(r'tv\\.s\\.llm_particle\\.field\\[\\w+\\]\\.direction', code):
             mistakes_found.append("Found '.direction' - this is not a valid particle property")
             # Can't auto-fix this as we don't know the intent
+        
+        # Fix empty for loops by adding pass statements
+        lines = code.split('\n')
+        fixed_lines = []
+        for i, line in enumerate(lines):
+            fixed_lines.append(line)
+            # Check if this line starts a for loop
+            if re.match(r'\s*for\s+.*:\s*$', line):
+                # Check if the next line exists and has proper indentation
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    current_indent = len(line) - len(line.lstrip())
+                    next_indent = len(next_line) - len(next_line.lstrip())
+                    # If next line has same or less indentation, the for loop is empty
+                    if next_line.strip() and next_indent <= current_indent:
+                        indent = ' ' * (current_indent + 4)
+                        fixed_lines.append(f"{indent}pass  # Empty loop body")
+                        mistakes_found.append("Added 'pass' to empty for loop")
+                elif i + 1 == len(lines):
+                    # Last line is a for loop with no body
+                    indent = ' ' * (len(line) - len(line.lstrip()) + 4)
+                    fixed_lines.append(f"{indent}pass  # Empty loop body")
+                    mistakes_found.append("Added 'pass' to empty for loop at end of code")
+        
+        if len(fixed_lines) != len(lines):
+            code = '\n'.join(fixed_lines)
         
         if mistakes_found:
             logger.warning(f"Fixed common mistakes in temporal update code: {mistakes_found}")

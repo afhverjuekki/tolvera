@@ -34,6 +34,24 @@ class TaichiErrorCorrector:
             # Fix wrong parameter order in expert functions
             (r'def\s+(expert_\w+)\s*\(\s*species\s*:\s*ti\.i32\s*,\s*pos\s*:\s*ti\.math\.vec2\s*,\s*vel\s*:\s*ti\.math\.vec2\s*,\s*mass\s*:\s*ti\.f32\s*,\s*particle_idx\s*:\s*ti\.i32\s*\)',
              r'def \1(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32)'),
+            # Fix invalid Taichi syntax
+            (r'ti\.this\.idx', 'particle_idx'),  # ti.this.idx -> particle_idx
+            (r'(\w+)\.has_value\b', r'(\1.norm() > 0.0)'),  # vec.has_value -> (vec.norm() > 0.0)
+            (r'if\s+(\w+)\.has_value\s*:', r'if \1.norm() > 0.0:'),  # Special case for if statements
+            # Fix field size access
+            (r'tv\.s\.llm_particle\.field\.size', 'tv.pn'),  # particle field size -> tv.pn
+            (r'tv\.s\.llm_species\.field\.size', 'tv.sn'),  # species field size -> tv.sn
+            (r'(\w+)\.field\.size', 'tv.pn'),  # generic field.size -> tv.pn (assume particles)
+            # Fix particle struct .i attribute - more aggressive patterns
+            (r'p([12])\.i\b', r'i'),  # p1.i -> i (assume we're in a loop with index i)  
+            (r'(\w+)\.i\b(?=.*field\[)', r'i'),  # struct.i -> i
+            (r'tv\.s\.llm_particle\.field\[p([12])\.i\]', r'tv.s.llm_particle.field[i]'),  # field[p1.i] -> field[i]
+            (r'field\[p([12])\.i\]', r'field[i]'),  # generic field[p1.i] -> field[i]
+            # Fix interaction expert state access - these need special handling
+            (r'tv\.s\.llm_particle\.field\[p1\.i\]', r'tv.s.llm_particle.field[i]'),  # p1.i in interaction -> first particle index
+            (r'tv\.s\.llm_particle\.field\[p2\.i\]', r'tv.s.llm_particle.field[j]'),  # p2.i in interaction -> second particle index
+            # Fix undefined variables in sensor functions
+            (r'return sensed_value(?:\s*#.*)?$', r'return 0.0  # Default sensor return'),  # undefined sensed_value -> 0.0
         ]
 
     def fix_parameter_order(self, code: str) -> Tuple[str, bool]:
@@ -100,6 +118,10 @@ class TaichiErrorCorrector:
         # Apply special parameter reordering correction
         corrected, param_fixes = self._fix_parameter_order(corrected)
         applied.extend(param_fixes)
+        
+        # Apply Python list iteration fix
+        corrected, list_fixes = self._fix_list_iteration(corrected)
+        applied.extend(list_fixes)
 
         return corrected, applied
     
@@ -131,6 +153,66 @@ class TaichiErrorCorrector:
         corrected = re.sub(pattern, reorder_params, code, flags=re.DOTALL | re.MULTILINE)
         
         return corrected, applied
+    
+    def _fix_list_iteration(self, code: str) -> Tuple[str, List[str]]:
+        """Fix Python list iteration in Taichi functions."""
+        applied = []
+        
+        # Pattern to match list iteration like: for neighbor in [ti.Vector(...), ...]
+        pattern = r'for\s+(\w+)\s+in\s+\[(.*?)\]:'
+        
+        def replace_list_iteration(match):
+            loop_var = match.group(1)
+            list_contents = match.group(2)
+            
+            # Parse the list elements (handle ti.Vector(...) patterns)
+            elements = []
+            current = ""
+            paren_count = 0
+            
+            for char in list_contents:
+                if char == '(':
+                    paren_count += 1
+                elif char == ')':
+                    paren_count -= 1
+                elif char == ',' and paren_count == 0:
+                    elements.append(current.strip())
+                    current = ""
+                    continue
+                current += char
+            
+            if current.strip():
+                elements.append(current.strip())
+            
+            # Generate explicit assignments
+            replacement_lines = []
+            for i, element in enumerate(elements):
+                replacement_lines.append(f"            {loop_var}_{i} = {element}")
+            
+            # Add loop over indices
+            replacement_lines.append(f"            for _idx in range({len(elements)}):")
+            replacement_lines.append(f"                {loop_var} = {loop_var}_0")
+            for i in range(1, len(elements)):
+                replacement_lines.append(f"                if _idx == {i}:")
+                replacement_lines.append(f"                    {loop_var} = {loop_var}_{i}")
+            
+            applied.append(f"Fixed list iteration for '{loop_var}'")
+            
+            # Return the replacement (note: this is a simplified fix, might need refinement)
+            return "\n".join(replacement_lines) + ":"
+        
+        # For a more robust fix, let's use a simpler approach for neighbor patterns
+        if 'neighbors = [ti.Vector' in code:
+            # This is likely the Game of Life neighbor pattern
+            fixed_code = code.replace(
+                'for neighbor in neighbors:',
+                'for dx in range(-1, 2):\n            for dy in range(-1, 2):\n                if dx == 0 and dy == 0:\n                    continue\n                neighbor = ti.Vector([dx, dy])'
+            )
+            if fixed_code != code:
+                applied.append("Fixed Game of Life neighbor iteration pattern")
+                return fixed_code, applied
+        
+        return code, applied
 
     async def correct_with_llm(self, code: str, errors: List[Dict]) -> str:
         # Build error summary for the prompt

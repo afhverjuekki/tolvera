@@ -15,10 +15,10 @@ AVAILABLE OPERATIONS:
 
 PHYSICS CONVENTIONS:
 - Gravity pulls DOWNWARD: force = ti.math.vec2(0.0, -gravity_strength * mass)
-- Y-axis convention: NEGATIVE Y = downward force, POSITIVE Y = upward force
+- Y-axis convention: NEGATIVE Y = downward force, POSITIVE Y = upward force (standard coordinate system)
 - Common force directions:
-  - Fall/Drop/Gravity: ti.math.vec2(0.0, -300.0 * mass) # Negative Y
-  - Float/Rise/Anti-gravity: ti.math.vec2(0.0, 300.0 * mass) # Positive Y
+  - Fall/Drop/Gravity: ti.math.vec2(0.0, -300.0 * mass) # Negative Y = downward
+  - Float/Rise/Anti-gravity: ti.math.vec2(0.0, 300.0 * mass) # Positive Y = upward
   - Move right: ti.math.vec2(100.0, 0.0)
   - Move left: ti.math.vec2(-100.0, 0.0)
 

@@ -74,12 +74,36 @@ class TaichiErrorDetector:
              'Missing return statement in Taichi function',
              'error',
              'Taichi functions decorated with @ti.func must return a value'),
+            
+            # AL-specific: Accessing undefined neighbor_count_species
+            (r'neighbor_count_species\[',
+             'Undefined variable: neighbor_count_species',
+             'error',
+             'neighbor_count_species is not defined. Store neighbor counts in a state field instead'),
+            
+            # AL-specific: Using cell state without proper field access
+            (r'cell_state\s*=\s*tv\[\d+\]',
+             'Invalid cell state access pattern',
+             'error',
+             'Access cell states through proper field: tv.s.llm_particle.field[i].cell_state'),
+            
+            # AL-specific: Trying to access grid coordinates as floats
+            (r'grid_[xy]\s*=\s*pos\[[01]\]\s*/\s*grid_size',
+             'Grid coordinates should be integers',
+             'warning',
+             'Use ti.cast(pos[0] / cell_size, ti.i32) for integer grid coordinates'),
 
             # Using Python math functions instead of Taichi
             (r'math\.(sin|cos|tan|sqrt|atan2)\s*\(',
              'Using Python math functions in Taichi scope',
              'error',
              'Use Taichi math functions: ti.sin(), ti.cos(), etc.'),
+            
+            # Python list iteration in Taichi scope
+            (r'for\s+\w+\s+in\s+\[',
+             'Cannot iterate over Python lists in Taichi scope',
+             'error',
+             'Use explicit index-based loops or Taichi fields instead of Python lists'),
 
             # Incorrect field access patterns
             (r'tv\.p\.p\.field',
@@ -166,6 +190,90 @@ class TaichiErrorDetector:
              "AttributeError: 'velocity' not found",
              'error',
              "Particle velocity is accessed via tv.p.field[i].vel, not custom states"),
+            
+            # AL-specific: Physarum sensor angle calculations
+            (r'sensor_angle\s*=\s*angle\s*[+-]\s*[\d.]+(?!\s*\*\s*ti\.math\.pi)',
+             'Sensor angle calculation missing ti.math.pi conversion',
+             'warning',
+             'Use angle + offset * ti.math.pi / 180.0 for degree to radian conversion'),
+            
+            # AL-specific: Missing boundary wrapping for grid-based simulations
+            (r'grid_[xy]\s*=\s*.*\n(?!.*%)',
+             'Grid coordinates may need wrapping for toroidal topology',
+             'info',
+             'Consider using (grid_x % grid_width) for wrapping behavior'),
+            
+            # AL-specific: Direct state modification in sensor/force experts
+            (r'@ti\.func.*expert_(?!deposit|state_transition).*\n(?:.*\n)*?.*tv\.s\.llm_\w+\.field\[\w+\]\.\w+\s*=',
+             'State modification in non-deposit/transition expert',
+             'error',
+             'Only deposit and state_transition experts should modify states'),
+            
+            # AL-specific: Missing atomic operations for shared resources
+            (r'pheromone_grid\[.*\]\s*\+=(?!.*ti\.atomic)',
+             'Non-atomic write to shared pheromone grid',
+             'warning',
+             'Use ti.atomic_add() for thread-safe pheromone deposits'),
+            
+            # State access validation patterns
+            (r'tv\.s\.llm_\w+\.field\[\w+\]\.(?!pos|vel|mass|species|active|size|speed)\w+\s*(?:=|\+=|-=)',
+             'State modification detected - verify state exists',
+             'info',
+             'Make sure this state was created in the state initialization phase'),
+            
+            # Common state name mismatches
+            (r'pheromone_sensing_range',
+             'Possible state name mismatch',
+             'warning',
+             'Common pattern: use pheromone_sensitivity for species-level sensing parameters'),
+            
+            # Invalid Taichi syntax patterns
+            (r'ti\.this\.idx',
+             'Invalid Taichi syntax: ti.this.idx does not exist',
+             'error',
+             'Use the particle_idx parameter instead: tv.s.llm_particle.field[particle_idx]'),
+            
+            (r'\.has_value\b',
+             'Invalid method: .has_value does not exist in Taichi',
+             'error',
+             'Use conditional checks instead: if vec.norm() > 0.0: or check components directly'),
+            
+            (r'\boptional\[',
+             'Optional types not supported in Taichi',
+             'error',
+             'Use explicit conditionals or default values instead of Optional types'),
+            
+            (r'ti\.optional\(',
+             'ti.optional does not exist',
+             'error',
+             'Use regular types with explicit null checks'),
+            
+            # Field size access errors
+            (r'tv\.s\.llm_\w+\.field\.size',
+             'StructField does not have .size attribute',
+             'error',
+             'Use tv.pn for particle count or tv.sn for species count'),
+            
+            (r'\.field\.size\b',
+             'StructField .size attribute does not exist',
+             'error',
+             'Use the appropriate count: tv.pn (particles) or tv.sn (species)'),
+            
+            # Particle struct attribute errors
+            (r'p[12]\.i\b',
+             'Particle struct has no .i attribute',
+             'error',
+             'Particle structs do not have index attributes. Use loop index instead'),
+            
+            (r'tv\.s\.llm_particle\.field\[p[12]\.i\]',
+             'Invalid particle state access using p1.i/p2.i',
+             'error',
+             'Use default values or derive from particle properties in interaction experts'),
+            
+            (r'\w+\.i\b(?=.*field\[)',
+             'Struct has no .i attribute',
+             'error',
+             'Use explicit indexing instead of .i attribute'),
         ]
 
     def _create_error_dict(self,

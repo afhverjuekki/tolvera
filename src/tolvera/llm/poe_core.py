@@ -54,7 +54,9 @@ class PoEBehaviorSystem:
 
         expert_info = [{'name': expert.name, 'weight': expert.weight,
                         'is_interaction': expert.metadata.get('is_interaction', False),
-                        'species_info': expert.metadata.get('species_info', {})}
+                        'species_info': expert.metadata.get('species_info', {}),
+                        'metadata': expert.metadata,  # Pass full metadata
+                        'expert_type': expert.metadata.get('expert_type')}  # Include expert type
                        for expert in self.experts]
 
         # Collect natural language descriptions of experts for logging
@@ -203,7 +205,10 @@ class PoEBehaviorSystem:
             "name": expert.name,
             "weight": expert.weight,
             "code_preview": expert.code[:200] + "..." if len(expert.code) > 200 else expert.code,
-            "is_interaction": expert.metadata.get("is_interaction", False)
+            "is_interaction": expert.metadata.get("is_interaction", False),
+            "metadata": expert.metadata,  # Include full metadata
+            "expert_type": expert.metadata.get("expert_type"),  # Include expert type if available
+            "species_info": expert.metadata.get("species_info", {})  # Include species info
         } for expert in self.experts]
 
     def clear_experts(self):

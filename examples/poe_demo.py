@@ -112,6 +112,15 @@ init_particles()
     expert_code = "\n\n".join(agent.poe_system.generated_expert_code.values())
     kernel_code = agent.poe_system.generated_kernel_code or ""
     
+    # Check if we have multi-modal experts that need special kernel
+    has_non_force_experts = False
+    if hasattr(agent.poe_system, 'experts'):
+        for expert in agent.poe_system.experts:
+            expert_type = expert.metadata.get('type', 'force')
+            if expert_type != 'force':
+                has_non_force_experts = True
+                break
+    
     # Generate state initialization code using the template
     state_init_code = ""
     if hasattr(agent, 'poe_system') and hasattr(agent.poe_system, 'experts'):
@@ -168,8 +177,10 @@ if __name__ == "__main__":
         
         # Add temporal update code if provided
         if state_update_code:
-            indented_update = "\n".join(["    " + line for line in state_update_code.splitlines()])
-            f.write(f"    # ***** Temporal State Update *****\n{indented_update}\n\n")
+            # Temporal update kernels should be inside main(), properly indented
+            f.write("    # ***** Temporal State Update *****\n")
+            indented_temporal = "\n".join(["    " + line for line in state_update_code.splitlines()])
+            f.write(f"{indented_temporal}\n\n")
 
         indented_experts = "\n".join(["    " + line for line in expert_code.splitlines()])
         f.write(f"    # ***** Generated Expert Functions *****\n{indented_experts}\n\n")
@@ -284,7 +295,7 @@ async def demo_simple_behaviors():
             state_spec = expert.metadata.get('state_spec', {})
             
             # Only process if there are actual states defined
-            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+            if any(len(state_spec.get(cat, {})) > 0 for cat in ['global_states', 'particle_states', 'species_states']):
                 # Get temporal config from the state manager if available
                 temporal_config = None
                 if synthesizer.synthesizer.state_manager and hasattr(synthesizer.synthesizer.state_manager, 'temporal_config'):
@@ -371,7 +382,7 @@ async def demo_species_interactions():
         ("species 0 and species 1 repel each other strongly", 20),
         ("both species flock together within their own groups", 20),
         ("species 2 forms a protective barrier around species 0", 20),
-        ("species 0 chases species 1, species 1 chases species 2, species 2 runs from species 0", 30),
+        ("species 0 chases species 1, species 1 chases species 2, and species 2 chases species 0", 30),
         ("species 3 and species 4 orbit around each other", 40),
     ]
     
@@ -502,7 +513,7 @@ async def demo_species_interactions():
             state_spec = expert.metadata.get('state_spec', {})
             
             # Only process if there are actual states defined
-            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+            if any(len(state_spec.get(cat, {})) > 0 for cat in ['global_states', 'particle_states', 'species_states']):
                 # Get temporal config from the state manager if available
                 temporal_config = None
                 if synthesizer_engine.state_manager and hasattr(synthesizer_engine.state_manager, 'temporal_config'):
@@ -552,7 +563,7 @@ async def demo_custom_behavior():
     """Allow user to input custom behavior descriptions."""
     
     print("\n" + "="*80)
-    print("CUSTOM BEHAVIOR DEMO - Your Ideas, LLM Generation")
+    print("CUSTOM BEHAVIOR DEMO")
     print("="*80)
     
     tv_config = {
@@ -692,7 +703,7 @@ async def demo_custom_behavior():
             state_spec = expert.metadata.get('state_spec', {})
             
             # Only process if there are actual states defined
-            if any(state_spec.get(cat, {}) for cat in ['global_states', 'particle_states', 'species_states']):
+            if any(len(state_spec.get(cat, {})) > 0 for cat in ['global_states', 'particle_states', 'species_states']):
                 # Get temporal config from the state manager if available
                 temporal_config = None
                 if synthesizer_engine.state_manager and hasattr(synthesizer_engine.state_manager, 'temporal_config'):
@@ -736,6 +747,157 @@ async def demo_custom_behavior():
         print("No experts were successfully generated.")
 
 
+async def demo_artificial_life():
+    """Demonstrate artificial life patterns like Game of Life, Physarum, Boids."""
+    
+    print("\n" + "="*80)
+    print("ARTIFICIAL LIFE DEMO - Classic AL Patterns")
+    print("="*80)
+    
+    tv_config = {
+        "width": 800,
+        "height": 800,
+        "particles": 2500,  # 50x50 grid
+        "px": "pixels",
+        "species": 5,
+        "gpu": "metal" if sys.platform == "darwin" else "cuda"
+    }
+    
+    print("Initializing Tölvera...")
+    tv = Tolvera(**tv_config)
+    
+    agent = TolveraBehaviorAgent(tv)
+    
+    print("Initializing LLM synthesizer with AL support...")
+    synthesizer = PoEExpertSynthesizer(model_name="qwen3:4b", enable_decomposition=True, tolvera_instance=tv)
+    
+    # Initialize with default random positions first
+    @ti.kernel
+    def init_particles_default():
+        for i in range(tv.pn):
+            tv.p.field[i].active = 1.0
+            tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+            tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+            tv.p.field[i].species = 0
+            tv.p.field[i].size = 5.0
+            tv.p.field[i].mass = 1.0
+    
+    init_particles_default()
+    tv.s.species.field[0].rgba = [0.2, 0.8, 0.3, 1.0]
+    
+    al_patterns = [
+        ("Conway's Game of Life - cells live or die based on neighbor count", 1.0),
+        ("Physarum slime mold - particles sense pheromones ahead, turn towards highest concentration, move forward, and deposit pheromone trails", 1.0),
+        ("Boids flocking - particles align with neighbors, avoid collisions, and flock together", 1.0),
+        ("Particle Life - different colored species attract or repel each other with varying forces", 1.0),
+        ("Cellular automaton where cells switch between three states based on neighbor states", 1.0),
+        ("Ant colony simulation - ants follow pheromone trails to food and return home", 1.0),
+        ("Forest fire simulation - trees grow, catch fire from neighbors, and turn to ash", 1.0),
+        ("Predator-prey ecosystem - predators hunt prey, prey reproduces when safe", 1.0),
+    ]
+    
+    print("\nAvailable Artificial Life patterns:")
+    for i, (desc, weight) in enumerate(al_patterns, 1):
+        print(f"{i}. {desc}")
+    
+    choice = input(f"\nWhich AL pattern would you like to generate? (1-{len(al_patterns)}): ").strip()
+    
+    try:
+        choice_idx = int(choice) - 1
+        if 0 <= choice_idx < len(al_patterns):
+            selected_pattern = al_patterns[choice_idx]
+        else:
+            print("Invalid choice, using Game of Life")
+            selected_pattern = al_patterns[0]
+    except ValueError:
+        print("Invalid input, using Game of Life")
+        selected_pattern = al_patterns[0]
+    
+    description, weight = selected_pattern
+    
+    try:
+        print(f"\n{'='*60}")
+        print(f"Generating: '{description}'")
+        print(f"{'='*60}")
+        
+        # The system will automatically decompose complex AL patterns
+        expert = await agent.add_expert_from_description(
+            description,
+            synthesizer,
+            weight=weight,
+            use_decomposition=True,
+            use_states=True
+        )
+        
+        print(f"Successfully generated AL pattern: {expert.name}")
+        
+        # Check if we need grid initialization
+        species_ids, species_analysis = agent.get_species_requirements()
+        
+        # Get state spec to check for grid requirements
+        state_spec = expert.metadata.get('state_spec', {})
+        grid_size = agent.species_manager.detect_grid_requirements(
+            [{'description': description}], 
+            state_spec
+        )
+        
+        if grid_size:
+            print(f"\nGrid initialization detected! Setting up {grid_size}x{grid_size} grid...")
+            
+            # Use the new grid initialization method
+            agent.species_manager.initialize_particles_grid(species_ids, grid_size)
+        else:
+            # Regular species initialization
+            if len(species_ids) > 1:
+                print(f"Initializing {len(species_ids)} species...")
+                agent.species_manager.initialize_particles_random(species_ids)
+        
+        # Generate temporal update code if needed
+        state_update_code = None
+        if any(len(state_spec.get(cat, {})) > 0 for cat in ['global_states', 'particle_states', 'species_states']):
+            temporal_config = getattr(synthesizer.state_manager, 'temporal_config', None)
+            update_code = await synthesizer.state_synthesizer.generate_state_update_code(
+                state_spec, temporal_config, description
+            )
+            if update_code and update_code.strip() != "@ti.kernel\ndef update_temporal_states():\n    pass":
+                state_update_code = update_code
+        
+        # Save the generated AL sketch (use timestamp format)
+        filename = save_generated_sketch_to_file(agent, tv_config, 
+                                               filename=None,  # Use default timestamp format
+                                               state_update_code=state_update_code)
+        
+        print("\n" + "="*60)
+        print("Artificial Life pattern generated successfully!")
+        print("="*60)
+        print(f"\nGenerated experts:")
+        for info in agent.get_expert_info():
+            expert_type = info.get('metadata', {}).get('type', info.get('expert_type', 'force'))
+            print(f"   - {info['name']}: {expert_type} expert")
+        
+        print("\nWhat would you like to do?")
+        print("1. Run the generated AL pattern")
+        print("2. Exit")
+        
+        choice = input("\nEnter choice (1-2): ").strip()
+        
+        if choice == "1":
+            print(f"\nRunning AL pattern: {filename}")
+            try:
+                subprocess.run([sys.executable, filename], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error running sketch: {e}")
+            except KeyboardInterrupt:
+                print("Sketch execution stopped by user")
+        else:
+            print("Exiting without running the sketch")
+            
+    except Exception as e:
+        print(f"Failed to generate AL pattern: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 async def main():
     """Main menu for demos."""
     
@@ -749,9 +911,10 @@ async def main():
     print("1. Basic behaviors (gravity, attraction, repulsion)")
     print("2. Species interactions (chase, flock, repel between species)")
     print("3. Custom behavior (enter your own descriptions)")
+    print("4. Artificial Life patterns (Game of Life, Physarum, Boids, etc.)")
     print("0. Exit")
     
-    choice = input("\nEnter choice (0-3): ").strip()
+    choice = input("\nEnter choice (0-4): ").strip()
     
     if choice == "1":
         await demo_simple_behaviors()
@@ -759,6 +922,8 @@ async def main():
         await demo_species_interactions()
     elif choice == "3":
         await demo_custom_behavior()
+    elif choice == "4":
+        await demo_artificial_life()
     elif choice == "0":
         print("Goodbye!")
     else:

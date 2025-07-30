@@ -1,6 +1,7 @@
 import logging
 import random
 from typing import List, Dict, Tuple, Optional
+import taichi as ti
 from .boundary_manager import BoundaryMode, BoundaryManager
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class SpeciesManager:
         logger.info(f"Species analysis complete: {analysis}")
         return species_ids, analysis
     
-    def get_species_initialization_code(self, species_ids: List[int], species_config: Optional[Dict] = None) -> str:
+    def get_species_initialization_code(self, species_ids: List[int], species_config: Optional[Dict] = None, grid_size: Optional[int] = None) -> str:
         default_colors = [
             [1.0, 0.3, 0.3, 1.0],  # Red
             [0.3, 0.3, 1.0, 1.0],  # Blue
@@ -83,18 +84,75 @@ class SpeciesManager:
         num_species = len(species_ids)
         
         if num_species == 1:
-            species_assignment = f"tv.p.field[i].species = {species_ids[0]}"
+            species_assignment = f"                tv.p.field[particle_idx].species = {species_ids[0]}"
+            species_assignment_regular = f"        tv.p.field[i].species = {species_ids[0]}"
         else:
+            # Grid assignment (for particle_idx)
             species_assignment_parts = []
             for idx, species_id in enumerate(species_ids):
                 if idx == 0:
-                    species_assignment_parts.append(f"        if i % {num_species} == {idx}:")
+                    species_assignment_parts.append(f"                if particle_idx % {num_species} == {idx}:")
                 else:
-                    species_assignment_parts.append(f"        elif i % {num_species} == {idx}:")
-                species_assignment_parts.append(f"            tv.p.field[i].species = {species_id}")
+                    species_assignment_parts.append(f"                elif particle_idx % {num_species} == {idx}:")
+                species_assignment_parts.append(f"                    tv.p.field[particle_idx].species = {species_id}")
             species_assignment = "\n".join(species_assignment_parts)
+            
+            # Regular assignment (for i)
+            species_assignment_regular_parts = []
+            for idx, species_id in enumerate(species_ids):
+                if idx == 0:
+                    species_assignment_regular_parts.append(f"        if i % {num_species} == {idx}:")
+                else:
+                    species_assignment_regular_parts.append(f"        elif i % {num_species} == {idx}:")
+                species_assignment_regular_parts.append(f"            tv.p.field[i].species = {species_id}")
+            species_assignment_regular = "\n".join(species_assignment_regular_parts)
         
-        init_code = f'''
+        if grid_size:
+            # Grid initialization for cellular automata and similar patterns
+            init_code = f'''
+@ti.kernel
+def init_particles_grid():
+    # Initialize particles in a {grid_size}x{grid_size} grid
+    # Using only species IDs: {species_ids}
+    grid_spacing_x = tv.x / {grid_size}
+    grid_spacing_y = tv.y / {grid_size}
+    
+    particle_idx = 0
+    for row in range({grid_size}):
+        for col in range({grid_size}):
+            if particle_idx < tv.pn:
+                # Position at grid center
+                x = (col + 0.5) * grid_spacing_x
+                y = (row + 0.5) * grid_spacing_y
+                
+                tv.p.field[particle_idx].active = 1.0
+                tv.p.field[particle_idx].pos = ti.Vector([x, y])
+                tv.p.field[particle_idx].vel = ti.Vector([0.0, 0.0])
+                tv.p.field[particle_idx].size = min(grid_spacing_x, grid_spacing_y) * 0.8
+                tv.p.field[particle_idx].mass = 1.0
+                
+                # Assign species
+{species_assignment}
+                
+                # Store grid coordinates in custom states if available
+                if hasattr(tv.s, 'llm_particle'):
+                    if hasattr(tv.s.llm_particle.field[particle_idx], 'grid_x'):
+                        tv.s.llm_particle.field[particle_idx].grid_x = col
+                    if hasattr(tv.s.llm_particle.field[particle_idx], 'grid_y'):
+                        tv.s.llm_particle.field[particle_idx].grid_y = row
+                
+                particle_idx += 1
+    
+    # Deactivate remaining particles if grid doesn't use all
+    for i in range(particle_idx, tv.pn):
+        tv.p.field[i].active = 0.0
+
+init_particles_grid()
+
+'''
+        else:
+            # Random initialization for non-grid patterns
+            init_code = f'''
 @ti.kernel
 def init_particles():
     # Initialize particles with species IDs: {species_ids}
@@ -105,7 +163,7 @@ def init_particles():
         tv.p.field[i].size = 5.0
         tv.p.field[i].mass = 1.0
         # Assign particles to only the specified species IDs
-{species_assignment if num_species == 1 else species_assignment}
+{species_assignment_regular}
 
 init_particles()
 
@@ -115,6 +173,34 @@ init_particles()
             init_code += f'tv.s.species.field[{species_id}].rgba = {color}\n'
         
         return init_code
+    
+    def detect_grid_requirements(self, behaviors: List[Dict], state_spec: Dict) -> Optional[int]:
+        """Detect if behaviors require grid initialization and return suggested grid size."""
+        # Check behaviors for grid patterns
+        grid_indicators = [
+            'cellular automaton', 'game of life', 'conway',
+            'grid', 'cells live or die', 'cell state'
+        ]
+        
+        for behavior in behaviors:
+            desc = behavior.get('description', '').lower()
+            if any(indicator in desc for indicator in grid_indicators):
+                # Check state spec for grid size hints
+                for category in ['particle_states', 'global_states']:
+                    for state_name, state_info in state_spec.get(category, {}).items():
+                        if state_info.get('is_grid_coordinate') or 'grid_size' in state_info:
+                            return state_info.get('grid_size', 50)
+                
+                # Default grid size for cellular automata
+                return 50
+        
+        # Check if state spec has grid coordinates
+        for category in ['particle_states', 'global_states']:
+            for state_name, state_info in state_spec.get(category, {}).items():
+                if state_name in ['grid_x', 'grid_y'] or state_info.get('is_grid_coordinate'):
+                    return state_info.get('grid_size', 50)
+        
+        return None
     
     def generate_species_aware_kernel(self, expert_info: List[Dict], species_ids: List[int], boundary_mode: BoundaryMode = BoundaryMode.NONE) -> str:
         single_experts = [e for e in expert_info if not e.get('is_interaction', False)]
@@ -222,3 +308,110 @@ def apply_all_experts():
             kernel_code += '            tv.p.field[i].pos = new_pos\n'
         
         return kernel_code
+    
+    def initialize_particles_grid(self, species_ids: List[int], grid_size: int = 50):
+        """Initialize particles in a grid pattern for cellular automata."""
+        default_colors = [
+            [1.0, 0.3, 0.3, 1.0],  # Red
+            [0.3, 0.3, 1.0, 1.0],  # Blue
+            [0.3, 1.0, 0.3, 1.0],  # Green
+            [1.0, 1.0, 0.3, 1.0],  # Yellow
+            [1.0, 0.3, 1.0, 1.0],  # Magenta
+        ]
+        
+        # Set species colors
+        for idx, species_id in enumerate(species_ids):
+            if idx < len(default_colors):
+                color = default_colors[idx]
+            else:
+                color = [
+                    0.5 + 0.5 * random.random(),
+                    0.5 + 0.5 * random.random(),
+                    0.5 + 0.5 * random.random(),
+                    1.0
+                ]
+            self.tv.s.species.field[species_id].rgba = color
+        
+        # Define kernel inline to avoid exec issues
+        @ti.kernel
+        def init_grid_kernel(tv: ti.template(), grid_size: ti.i32, species_ids: ti.types.ndarray()):
+            num_species = species_ids.shape[0]
+            grid_spacing_x = tv.x / grid_size
+            grid_spacing_y = tv.y / grid_size
+            
+            particle_idx = 0
+            for row in range(grid_size):
+                for col in range(grid_size):
+                    if particle_idx < tv.pn:
+                        # Position at grid center
+                        x = (col + 0.5) * grid_spacing_x
+                        y = (row + 0.5) * grid_spacing_y
+                        
+                        tv.p.field[particle_idx].active = 1.0
+                        tv.p.field[particle_idx].pos = ti.Vector([x, y])
+                        tv.p.field[particle_idx].vel = ti.Vector([0.0, 0.0])
+                        tv.p.field[particle_idx].size = min(grid_spacing_x, grid_spacing_y) * 0.8
+                        tv.p.field[particle_idx].mass = 1.0
+                        
+                        # Assign species cyclically
+                        species_idx = particle_idx % num_species
+                        tv.p.field[particle_idx].species = species_ids[species_idx]
+                        
+                        particle_idx += 1
+            
+            # Deactivate remaining particles
+            for i in range(particle_idx, tv.pn):
+                tv.p.field[i].active = 0.0
+        
+        # Convert species_ids to numpy array for Taichi
+        import numpy as np
+        species_array = np.array(species_ids, dtype=np.int32)
+        
+        # Call the kernel
+        init_grid_kernel(self.tv, grid_size, species_array)
+        logger.info(f"Initialized {grid_size}x{grid_size} grid with species {species_ids}")
+    
+    def initialize_particles_random(self, species_ids: List[int]):
+        """Initialize particles randomly for non-grid patterns."""
+        default_colors = [
+            [1.0, 0.3, 0.3, 1.0],  # Red
+            [0.3, 0.3, 1.0, 1.0],  # Blue
+            [0.3, 1.0, 0.3, 1.0],  # Green
+            [1.0, 1.0, 0.3, 1.0],  # Yellow
+            [1.0, 0.3, 1.0, 1.0],  # Magenta
+        ]
+        
+        # Set species colors
+        for idx, species_id in enumerate(species_ids):
+            if idx < len(default_colors):
+                color = default_colors[idx]
+            else:
+                color = [
+                    0.5 + 0.5 * random.random(),
+                    0.5 + 0.5 * random.random(),
+                    0.5 + 0.5 * random.random(),
+                    1.0
+                ]
+            self.tv.s.species.field[species_id].rgba = color
+        
+        @ti.kernel
+        def init_random_kernel(tv: ti.template(), species_ids: ti.types.ndarray()):
+            num_species = species_ids.shape[0]
+            for i in range(tv.pn):
+                tv.p.field[i].active = 1.0
+                tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+                tv.p.field[i].vel = ti.Vector([0.0, 0.0])
+                tv.p.field[i].size = 5.0
+                tv.p.field[i].mass = 1.0
+                
+                # Assign species cyclically
+                species_idx = i % num_species
+                tv.p.field[i].species = species_ids[species_idx]
+        
+        # Convert species_ids to numpy array for Taichi
+        import numpy as np
+        species_array = np.array(species_ids, dtype=np.int32)
+        
+        # Call the kernel
+        init_random_kernel(self.tv, species_array)
+        logger.info(f"Initialized particles randomly with species {species_ids}")

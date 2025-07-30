@@ -139,6 +139,14 @@ class TolveraBehaviorAgent:
         expert.metadata['state_spec'] = result.get('state_spec', {})
         expert.metadata['state_context'] = result.get('state_context', {})
         
+        # CRITICAL: Preserve expert type from synthesis
+        if 'metadata' in result and 'type' in result['metadata']:
+            expert.metadata['type'] = result['metadata']['type']
+            expert.metadata['expert_type'] = result['metadata']['type']
+        elif 'expert_type' in result:
+            expert.metadata['type'] = result['expert_type']
+            expert.metadata['expert_type'] = result['expert_type']
+        
         if result.get("is_decomposed", False):
             expert.metadata["is_decomposed"] = True
             expert.metadata["decomposed_from"] = result.get("original_description", description)

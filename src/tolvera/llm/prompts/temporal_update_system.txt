@@ -9,6 +9,7 @@ Key principles:
 - Only update states that need temporal progression
 - CRITICAL: Initialize ALL variables BEFORE any conditional statements, including inside loops!
 - Variables defined inside if/else blocks are NOT accessible outside those blocks in Taichi
+- NEVER leave empty for loops - always include at least 'pass' if there's nothing to do
 
 Available context:
 - tv: The Tölvera instance

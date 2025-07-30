@@ -15,6 +15,14 @@ The state specification above shows EXACTLY which states belong to which categor
 - particle_states: Access with tv.s.llm_particle.field[i].state_name (requires loop over particles)
 - species_states: Access with tv.s.llm_species.field[s].state_name (requires loop over species)
 
+⚠️ IMPORTANT: You can ONLY update the states that are EXPLICITLY LISTED above!
+For example, if the Available States shows:
+  === PARTICLE STATES ===
+  - speed_multiplier: ti.f32 [0.0, 30.0]
+  - is_active: ti.f32 [0.0, 1.0]
+  
+Then you can ONLY update 'speed_multiplier' and 'is_active'. You CANNOT update 'speed', 'energy', or any other state that is not listed!
+
 NEVER access a state from the wrong category!
 For example:
 - If 'activity_level' is in particle_states, NEVER access it as tv.s.llm_species.field[s].activity_level
@@ -72,9 +80,18 @@ Based on the behavior description, update states appropriately:
 - If it mentions "remember home position": Don't update home position after initialization
 - Think about what the behavior IMPLIES about how states should change
 
+⚠️ CRITICAL: If the available states don't match what the behavior needs:
+- DO NOT invent states that don't exist!
+- Work with the states you have, even if they don't perfectly match the behavior
+- For example, if the behavior mentions "speed" but you only have "target_pos", DO NOT create a speed_multiplier state
+- Instead, find creative ways to use the existing states or simply skip updates that can't be done
+
 Instructions:
 1. Generate a @ti.kernel function named `update_temporal_states()`
 2. Use the EXACT state names provided above - no substitutions!
+   - ONLY update states that appear in the "Available States" section
+   - If a state is not listed above, it doesn't exist and CANNOT be updated
+   - Check the exact spelling and category of each state before using it
 3. CRITICAL: Initialize ALL variables BEFORE any conditional statements (INCLUDING inside loops!)
 4. Define temporal constants at the beginning of the kernel
 5. Use tv.ctx.i[None] to get the current frame
@@ -113,6 +130,7 @@ def update_temporal_states():
     #     # Check the state specification to see which states belong to species
     #     # Example: If 'species_property' is in species_states:
     #     tv.s.llm_species.field[s].species_property = some_value
+    #     # ⚠️ IMPORTANT: If you have nothing to update, use 'pass' instead of leaving empty!
     
     # Example particle state update (MUST iterate over ALL particles):
     # for i in range(tv.pn):
@@ -132,7 +150,12 @@ def update_temporal_states():
     #     # cycle_radians = day_phase * 2.0 * 3.14159
     #     # smooth_multiplier = (ti.cos(cycle_radians) + 1.0) * 0.5  # 0 to 1 smooth
     #     # speed_multiplier = smooth_multiplier * 20.0  # Scale up to 0-20 for dramatic effect
-    #     # tv.s.llm_particle.field[i].speed_multiplier = speed_multiplier
+    #     
+    #     # ⚠️ CRITICAL: Only update states that are LISTED in "Available States" above!
+    #     # ✅ CORRECT: Update the actual state name from the Available States list
+    #     # tv.s.llm_particle.field[i].speed_multiplier = speed_multiplier  # If 'speed_multiplier' is listed
+    #     # ❌ WRONG: Never update states that aren't in the Available States list  
+    #     # tv.s.llm_particle.field[i].speed = speed_multiplier  # 'speed' is NOT a custom state!
     #     
     #     # Example: Different species with opposite patterns
     #     # species = tv.p.field[i].species
@@ -147,5 +170,10 @@ def update_temporal_states():
     #     # distance = (target - pos).norm()  # Use tv.p.field[i].pos!
     #     # tv.s.llm_particle.field[i].distance_to_target = distance
 ```
+
+FINAL CHECK before generating code:
+- Review the "Available States" section at the top
+- Make sure EVERY state you're trying to update is EXPLICITLY LISTED there
+- If you're trying to update a state that's not listed (like speed_multiplier when only target_pos exists), STOP and remove that update
 
 Generate ONLY the kernel code, no explanations.
