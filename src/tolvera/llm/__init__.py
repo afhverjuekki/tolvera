@@ -1,9 +1,14 @@
-"""Tölvera LLM - Products of Programmatic Experts (PoE) behavior system."""
 
-from .poe_integration import TolveraBehaviorAgent
-from .poe_synthesis import PureLLMSynthesizer
+from .core.behavior_agent import BehaviorAgent
+from .core.synthesizer import Synthesizer as BehaviorSynthesizer
+from .core.state_manager import StateManager
+from .core.decomposer import BehaviorDecomposer
+from .generation.sketch import SketchGenerator
 
 __all__ = [
-    "TolveraBehaviorAgent",
-    "PureLLMSynthesizer",
+    "BehaviorAgent",
+    "BehaviorSynthesizer",
+    "StateManager",
+    "BehaviorDecomposer",
+    "SketchGenerator",
 ]
