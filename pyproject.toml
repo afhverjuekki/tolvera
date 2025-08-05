@@ -22,8 +22,13 @@ torch = "^2.2.2"
 tqdm = "^4.66.4"
 dualsense-controller = "^0.2.0"
 pydantic = "^2.11.2"
+pydantic-ai = "^0.4.10"
 ollama = "^0.5.1"
 jinja2 = "^3.1.6"
+openai = "^1.62.0"
+anthropic = "^0.52.0"
+google-generativeai = {version = "^0.8.3", optional = true}
+python-dotenv = "^1.1.1"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
