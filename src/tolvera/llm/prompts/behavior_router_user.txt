@@ -1,5 +1,0 @@
-Classify the following particle behavior description:
-
-"{description}"
-
-Is this a SINGLE-PARTICLE behavior or an INTERACTION behavior?
