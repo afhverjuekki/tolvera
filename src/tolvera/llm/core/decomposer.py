@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 class BehaviorComponent(BaseModel):
     expert_name: str = Field(description="Name for the expert function (e.g., 'gravity_force', 'prey_flee')")
     expert_type: str = Field(
-        description="Expert type: force, interaction, state_update, visual"
+        description="Expert type: force, interaction, state_update, visual, initialization, temporal_update, configuration"
     )
     description: str = Field(description="What this expert does")
     implementation: str = Field(
-        description="Concrete implementation guidance with specific force calculations or logic"
+        description="High-level behavioral guidance (e.g., 'apply downward force proportional to mass', 'chase nearest prey', 'flee from nearest predator')"
     )
     priority: float = Field(description="Weight/importance of this component (0.1-1.0)")
     required_states: Optional[List[Tuple[str, str]]] = Field(
@@ -35,6 +35,10 @@ class BehaviorComponent(BaseModel):
     dependencies: List[str] = Field(
         default_factory=list,
         description="Names of other experts this depends on"
+    )
+    applies_to_species: Optional[List[int]] = Field(
+        default=None,
+        description="Species IDs this expert applies to (e.g., [0] for predator, [1] for prey, None for all)"
     )
 
 
@@ -57,14 +61,63 @@ class DecompositionContext(BaseModel):
     )
 
 
+class SpeciesColor(BaseModel):
+    """Color mapping for a species."""
+    species_id: int = Field(description="Species ID (0-based)")
+    color_description: str = Field(description="Color description (e.g., 'crimson', 'lime green', 'teal')")
+
+
+class SpeciesName(BaseModel):
+    """Name for a species."""
+    species_id: int = Field(description="Species ID (0-based)")
+    name: str = Field(description="Name of the species (e.g., 'predator', 'prey')")
+
+
+class SpeedSpecification(BaseModel):
+    """Speed specification for particle movement."""
+    uniform: bool = Field(
+        default=False,
+        description="Whether all particles should have same speed magnitude"
+    )
+    magnitude: str = Field(
+        default="medium",
+        description="Speed level: 'slow', 'medium', 'fast', 'very_fast'"
+    )
+    value: Optional[float] = Field(
+        default=None,
+        description="Specific speed value if mentioned (e.g., 100.0)"
+    )
+
+class SpeciesInfo(BaseModel):
+    """Species configuration extracted from behavior description."""
+    total_count: int = Field(description="Total number of species (1-10)")
+    species_names: Optional[List[SpeciesName]] = Field(
+        default=None,
+        description="List of species names and their IDs (e.g., [{'species_id': 0, 'name': 'predator'}])"
+    )
+    species_colors: Optional[Dict[int, List[float]]] = Field(
+        default=None,
+        description="RGBA colors for each species (e.g., {0: [1.0, 0.2, 0.2, 1.0]})"
+    )
+    species_color_descriptions: Optional[List[SpeciesColor]] = Field(
+        default=None,
+        description="List of color descriptions for each species"
+    )
+    interaction_pairs: Optional[List[Tuple[int, int]]] = Field(
+        default=None,
+        description="Species pairs that interact (e.g., [(0, 1)] for predator-prey)"
+    )
+
 class DecomposedBehavior(BaseModel):
     original_description: str = Field(description="The original user description")
     interpretation: str = Field(description="Our interpretation of what the user wants")
-    is_simple: bool = Field(
-        description="True if behavior can be implemented with a single expert"
+    behavior_category: str = Field(
+        default="particle_system",
+        description="Category: 'particle_system', 'pure_drawing', or 'hybrid'"
     )
     components: List[BehaviorComponent] = Field(
-        description="Concrete expert specifications to implement"
+        description="Concrete expert specifications to implement. MUST contain at least 1 component. NEVER empty!",
+        min_length=1  # Enforce at least one component
     )
     context: Optional[DecompositionContext] = Field(
         default=None,
@@ -74,9 +127,20 @@ class DecomposedBehavior(BaseModel):
         default_factory=list,
         description="All states needed across all components as (name, category) tuples"
     )
+    species_info: SpeciesInfo = Field(
+        description="Species configuration detected from the description"
+    )
+    speed_specification: Optional[SpeedSpecification] = Field(
+        default=None,
+        description="Speed specification for particle movement"
+    )
     implementation_notes: str = Field(
         default="",
         description="Notes on how to implement this effectively"
+    )
+    particle_count: Optional[int] = Field(
+        default=None,
+        description="Desired particle count extracted from description (e.g., 4000 for 'create 4000 particles')"
     )
 
 
@@ -222,8 +286,8 @@ class BehaviorDecomposer:
             self.model,
             deps_type=DecompositionDependencies,
             output_type=DecomposedBehavior,
-            system_prompt="""You are an expert at analyzing behavior descriptions and determining 
-            whether they need decomposition into multiple experts or can be handled by a single expert.
+            system_prompt="""You are an expert at analyzing behavior descriptions and ALWAYS generating 
+            the required expert components. You MUST create components for every behavior.
             
             TÖLVERA CONTEXT:
             - Particles have built-in properties: pos (vec2), vel (vec2), mass (f32), size (f32), species (i32), active (f32)
@@ -231,22 +295,86 @@ class BehaviorDecomposer:
             - Species system: Multiple species (0 to sn-1) can have different behaviors and colors
             - Forces should return ti.math.vec2(x, y) values
             - CRITICAL: Never use 'return' inside if/for/while blocks - causes crashes
+            - TEMPORAL STATES: Energy, age, phase, temperature can change over time
             
             Your role is to:
-            1. First assess if the behavior is SIMPLE (one expert) or COMPLEX (multiple experts)
-            2. For each required expert, provide CONCRETE specifications with:
-               - expert_name: A clear function name (e.g., 'gravity_force', 'prey_flee')
-               - implementation: Specific force calculations or logic
-               - expert_type: 'force', 'interaction', 'state_update', or 'visual'
-            3. For complex behaviors, establish shared context to ensure coherent behavior
+            1. DETERMINE BEHAVIOR CATEGORY:
+               - "particle_system": Particles with movement, forces, or interactions
+               - "pure_drawing": ONLY drawing shapes/patterns, NO particle movement
+                 * Keywords: "draw a rectangle", "draw a circle", "draw lines"
+                 * NO motion verbs like "move", "fall", "drift"
+               - "hybrid": Both particles AND drawing behaviors
+               
+            2. ANALYZE SPEED SPECIFICATION:
+               - "all at the same speed" → uniform: true
+               - "all particles go at the same speed" → uniform: true
+               - "quickly", "fast" → magnitude: "fast"
+               - "slowly", "slow" → magnitude: "slow"
+               - "very quickly" → magnitude: "very_fast"
+               - Specific numbers (e.g., "speed of 100") → value: 100.0
+               - Default: uniform: false, magnitude: "medium"
+               
+            3. ANALYZE SPECIES: Determine how many species are mentioned or implied
+               - "two species" → 2 species
+               - "red predators and blue prey" → 2 species (predator=0, prey=1)
+               - "blue and teal compete for green food" → 3 species (blue=0, teal=1, food=2)
+               - "particles" with no specific mention → 1 species
+               - SPECIES ORDERING RULES:
+                 * Active hunters/predators → Species 0
+                 * Prey/consumers → Species 1
+                 * Food/resources (passive) → Species 2 (or last)
+                 * Food should be stationary (vel=0, high mass)
+               - Extract color descriptions exactly as mentioned (e.g., "lime green", "crimson", "aqua")
+               - Assign semantic names and color descriptions
+               
+            4. EXTRACT PARTICLE COUNT: Detect if a specific particle count is mentioned
+               - "4000 particles" → particle_count: 4000
+               - "thousands of particles" → particle_count: 3000 (estimate)
+               - "hundreds of particles" → particle_count: 500 (estimate)
+               - "millions of particles" → particle_count: 10000 (cap at reasonable limit)
+               - "50 particles" → particle_count: 50
+               - If no count mentioned → particle_count: null
+               
+            5. DECOMPOSE INTO COMPONENTS: Generate 1 or more expert components as needed
+               - Simple behaviors may need just 1 component (e.g., gravity)
+               - Complex behaviors need multiple components (e.g., predator-prey needs both chase AND flee)
             
-            SIMPLE behaviors (is_simple=true, single expert):
+            6. For each required expert, provide high-level specifications with:
+               - expert_name: A clear function name (e.g., 'gravity_force', 'prey_flee')
+               - implementation: High-level behavioral guidance (NOT code)
+               - expert_type: Choose from:
+                 * 'force' - continuous forces applied each frame
+                 * 'interaction' - particle-particle interactions
+                 * 'state_update' - discrete state changes
+                 * 'visual' - drawing/rendering effects
+                 * 'initialization' - particle setup and positioning
+                 * 'temporal_update' - time-based state evolution
+                 * 'configuration' - system parameters
+               - applies_to_species: CRITICAL - Set species IDs for species-specific behaviors:
+                 * "Species 0", "Species one", "first species" → [0]
+                 * "Species 1", "Species two", "second species" → [1]
+                 * "Species 2", "Species three", "third species" → [2]
+                 * "green species" (if first color mentioned) → [0]
+                 * "orange species" (if second color mentioned) → [1]
+                 * If behavior mentions specific species, MUST set applies_to_species!
+            7. For multi-component behaviors, establish shared context to ensure coherent behavior
+            8. CAREFULLY generate appropriate initialization and temporal components:
+               - If species detected → add initialization component (handled elsewhere, not in experts)
+               - ONLY add temporal_update if explicitly mentioned in description:
+                 * "loses energy", "gets tired", "exhausted" → add energy temporal update
+                 * "ages", "grows old", "life cycle" → add age temporal update
+                 * "phases", "cycles", "oscillates" → add phase temporal update
+               - DO NOT add automatic energy decay unless description says so
+               - TEMPORAL INDICATORS: "over time", "gradually", "depletes", "regenerates", "ages", "grows", "tired", "exhausted"
+               - For temporal behaviors, set is_temporal=true and specify required_states with temporal updates
+            
+            SINGLE-COMPONENT behaviors:
             - "particles fall with gravity" → gravity_force expert
             - "particles drift randomly" → random_walk expert
             - "particles attracted to center" → center_attraction expert
-            - Basic forces or movements without complex interactions
+            - Basic forces or movements without interactions
             
-            COMPLEX behaviors (is_simple=false, multiple experts):
+            MULTI-COMPONENT behaviors:
             - "predator chases prey" → predator_chase + prey_flee experts
             - "particles live/die based on neighbors" → grid_update + neighbor_count + life_rules
             - "fireflies synchronize" → oscillator_update + phase_coupling
@@ -258,15 +386,64 @@ class BehaviorDecomposer:
             - "die" in ecological context (e.g., "scavengers clean up after predators") is NOT cellular automaton
             - Species interactions use particle positions, not grid positions
             
-            For COMPLEX behaviors, create a context with:
+            For MULTI-COMPONENT behaviors, create a context with:
             - constraints: Numerical relationships (e.g., prey_speed > predator_speed)
             - shared_parameters: Common values across experts
             - implementation_notes: How to ensure coherent behavior
             
-            Expert implementation should be CONCRETE:
-            - Force experts: "force = ti.math.vec2(0.0, -gravity_strength * mass); return force"
-            - Interaction experts: "force = ti.math.vec2(0.0, 0.0); if distance < 100.0: force = normalize(target - pos) * strength; return force"
-            - State updates: "tv.s.llm_particle.field[i].energy = max(0.0, energy - 0.01)"
+            Expert implementation should be HIGH-LEVEL behavioral guidance:
+            - Force experts: "Apply downward force proportional to mass"
+            - Interaction experts: "Chase nearest target of different species"
+            - State updates: "Decrease energy over time until depleted"
+            
+            BEHAVIOR CATEGORY EXAMPLES:
+            - "draw a red rectangle in the middle of the screen" → behavior_category: "pure_drawing"
+              * Generate a 'visual' expert that draws the shape and returns zero force
+              * Example component: expert_name: "draw_rectangle", expert_type: "visual"
+            - "particles fall with gravity" → behavior_category: "particle_system"
+            - "particles drift and leave trails" → behavior_category: "hybrid"
+            
+            CRITICAL RULES FOR COMPONENT GENERATION:
+            1. For "pure_drawing" category: Generate 'visual' type experts that draw and return ti.math.vec2(0.0, 0.0)
+            2. NEVER return empty components list - ALWAYS generate at least one component
+            3. For ecosystem behaviors ALWAYS create multiple experts:
+               - "predator hunts prey" → MUST create predator_hunt AND prey_escape experts
+               - "fish school together" → MUST create schooling_cohesion, schooling_alignment, schooling_separation
+               - "species interact" → MUST create interaction experts for EACH species
+            3. If description mentions multiple behaviors, create an expert for EACH
+            4. Each expert must be self-contained with clear behavioral guidance
+            5. SPECIES-SPECIFIC BEHAVIORS - ALWAYS SET applies_to_species:
+               - "Species one moves left" → expert with applies_to_species: [0]
+               - "Species two moves down" → expert with applies_to_species: [1]
+               - "Green particles drift" (if green is first color) → applies_to_species: [0]
+               - "Orange particles fall" (if orange is second color) → applies_to_species: [1]
+               - Any behavior mentioning specific species MUST have applies_to_species set!
+            
+            IMPORTANT EXPERT SYNTHESIS RULES (AVOID OVERLAPS):
+            1. DO NOT generate experts for species initialization or configuration - this is handled elsewhere
+            2. DO NOT generate experts that just set particle properties without returning forces
+            3. FOCUS on behavior experts that return actual force vectors
+            4. Each expert should have ONE clear behavioral purpose
+            5. Avoid creating multiple experts that do the same thing
+            6. DO NOT create generic "species_initialization" or "competition_configuration" experts
+            7. Make expert names specific to their behavior (e.g., "predator_hunt" not "orange_chase")
+            
+            SPECIES COLOR EXTRACTION (CRITICAL):
+            - ALWAYS populate species_color_descriptions for EVERY species detected!
+            - Extract colors EXACTLY as described using List[SpeciesColor]: 
+              * "lime green fish" → [{{"species_id": 1, "color_description": "lime green"}}]
+              * "crimson predators" → [{{"species_id": 0, "color_description": "crimson"}}]
+              * "blue and teal species" → [
+                  {{"species_id": 0, "color_description": "blue"}},
+                  {{"species_id": 1, "color_description": "teal"}}
+              ]
+            - Keep complex color names intact (aqua, turquoise, coral, etc.)
+            - For semantic roles without explicit color, use defaults:
+              * Predators/hunters: "red"
+              * Prey/food: "green"
+              * Neutral: "blue"
+            - NEVER leave species_color_descriptions empty - always provide colors
+            - Each item must have species_id (int) and color_description (str)
             
             States needed should be specific:
             - Grid patterns ONLY for cellular automata: grid_x, grid_y, is_alive, neighbor_count
@@ -281,54 +458,178 @@ class BehaviorDecomposer:
             return """
             Examples of expert decomposition for common patterns:
             
-            ECOSYSTEM ("fish school together, predators hunt"):
-            Components:
-            1. fish_schooling: "if same species and nearby: align velocities and stay close"
-            2. predator_hunt: "if species == predator and prey nearby: return chase_force"
-            3. prey_escape: "if species == prey and predator nearby: return flee_force"
+            ECOSYSTEM ("small green fish school together, larger red predators hunt them"):
+            MUST generate ALL these components (never return empty!):
+            1. fish_schooling_cohesion: "move toward center of nearby fish group" (type: force)
+               - Implementation: "attract to average position of nearby same-species particles"
+            2. fish_schooling_alignment: "align velocity with nearby fish" (type: force)
+               - Implementation: "match average velocity of nearby same-species particles"
+            3. fish_schooling_separation: "avoid crowding nearby fish" (type: force)
+               - Implementation: "repel from fish that are too close"
+            4. predator_hunt: "locate and chase nearest prey" (type: force)
+               - Implementation: "find nearest different-species particle and pursue"
+            5. prey_escape: "detect and flee from nearest predator" (type: force)
+               - Implementation: "find nearest predator and move away rapidly"
             Context: {"fish_speed": 80.0, "predator_speed": 120.0, "school_radius": 50.0}
-            NOTE: NO GRID STATES NEEDED - uses particle positions directly
+            Species Names: [
+                {"species_id": 0, "name": "predator"},
+                {"species_id": 1, "name": "prey"}
+            ]
+            Species color descriptions: [
+                {{"species_id": 0, "color_description": "red"}},
+                {{"species_id": 1, "color_description": "green"}}
+            ]
+            NOTE: Uses particle positions, NOT grid states
+            
+            COMPETITION WITH FOOD ("blue and teal species compete for green food"):
+            MUST generate ALL these components:
+            1. blue_seek_food: "blue species seeks nearest food" (type: force)
+               - Implementation: "find nearest green food particle and move toward it"
+               - applies_to_species: [0]  # Blue species
+            2. teal_seek_food: "teal species seeks nearest food" (type: force)
+               - Implementation: "find nearest green food particle and move toward it"
+               - applies_to_species: [1]  # Teal species
+            3. teal_chase_blue: "teal chases blue species" (type: force)
+               - Implementation: "teal actively hunts blue particles"
+               - applies_to_species: [1]  # Teal species
+            4. blue_flee_teal: "blue flees from teal" (type: force)
+               - Implementation: "blue escapes from nearest teal particle"
+               - applies_to_species: [0]  # Blue species
+            5. random_wander: "wander when no targets nearby" (type: force)
+               - Implementation: "apply random movement when no food or threats detected"
+            6. consume_food: "consume food on contact" (type: state_update)
+               - Implementation: "set food particle active=0 when blue or teal touches it"
+            Context: {"blue_speed": 250.0, "teal_speed": 150.0, "food_mass": 10.0}
+            Species Names: [
+                {"species_id": 0, "name": "blue"},
+                {"species_id": 1, "name": "teal"},
+                {"species_id": 2, "name": "food"}
+            ]
+            Species color descriptions: [
+                {{"species_id": 0, "color_description": "blue"}},
+                {{"species_id": 1, "color_description": "teal"}},
+                {{"species_id": 2, "color_description": "green"}}
+            ]
+            IMPORTANT: Food is species 2, stationary (vel=0, mass=10)
             
             CELLULAR AUTOMATA ("lives/dies based on neighbors"):
             Components:
-            1. update_grid_position: "grid_x = int(pos.x / cell_size); grid_y = int(pos.y / cell_size)"
-            2. count_neighbors: "scan 8 surrounding cells, count alive neighbors"
-            3. apply_life_rules: "if alive and (neighbors < 2 or neighbors > 3): next_state = 0"
+            1. update_grid_position: "map particle position to grid coordinates" (type: state_update)
+            2. count_neighbors: "count alive neighbors in surrounding cells" (type: state_update)
+            3. apply_life_rules: "apply Conway's Game of Life rules" (type: state_update)
+            4. cell_temporal_update: "update cell states each generation" (type: temporal_update)
+               - Implementation: "synchronous state updates based on neighbor counts"
             Context: {"cell_size": 10.0, "rules": "B3/S23"}
             REQUIRES: grid_x, grid_y, is_alive, neighbor_count states
             
-            PREDATOR-PREY ("chase but never catch"):
+            ENERGY-BASED BEHAVIOR ("predators hunt with energy that depletes"):
             Components:
-            1. predator_chase: "if prey nearby: force = normalize(prey_pos - pos) * 100.0"
-            2. prey_flee: "if predator nearby: force = normalize(pos - predator_pos) * 150.0"
-            Context: {"prey_speed": 150.0, "predator_speed": 100.0, "catch_distance": 20.0}
-            NOTE: Uses species field, not grid states
+            1. predator_hunt_with_energy: "hunt prey when energy sufficient" (type: force)
+               - Implementation: "chase prey if energy > 30, stronger force with more energy"
+               - is_temporal: false
+            2. prey_flee: "escape from predators" (type: force)
+               - is_temporal: false
+            3. energy_dynamics: "update energy based on activity" (type: temporal_update)
+               - Implementation: "decrease energy when moving fast, regenerate when resting"
+               - is_temporal: true
+               - required_states: [("energy", "particle")]
+            REQUIRES: energy state with temporal update
+            
+            TEMPORAL BEHAVIOR ("particles lose energy over time and become tired"):
+            Components:
+            1. movement_with_energy: "move based on available energy" (type: force)
+               - Implementation: "scale movement force by energy level"
+               - is_temporal: false
+            2. energy_depletion: "continuously decrease energy" (type: temporal_update)
+               - Implementation: "decrease energy only when moving: energy -= velocity.norm() * 0.01"
+               - is_temporal: true
+               - required_states: [("energy", "particle")]
+            3. tired_behavior: "modify behavior when low energy" (type: state_update)
+               - Implementation: "if energy < 20: reduce velocity by 50%"
+               - is_temporal: false
+            NOTE: Only add energy decay if description explicitly mentions it!
+            
+            PREDATOR-PREY ("red predators hunt green prey"):
+            REQUIRED components array (NEVER leave empty):
+            [
+                {
+                    "expert_name": "predator_chase",
+                    "expert_type": "force",
+                    "description": "Predators actively hunt prey",
+                    "implementation": "locate nearest prey particle and apply pursuit force",
+                    "priority": 1.0,
+                    "applies_to_species": [0]  // Only species 0 (predators) use this
+                },
+                {
+                    "expert_name": "prey_flee",
+                    "expert_type": "force",
+                    "description": "Prey escape from predators",
+                    "implementation": "detect nearest predator and apply escape force",
+                    "priority": 1.0,
+                    "applies_to_species": [1]  // Only species 1 (prey) use this
+                }
+            ]
+            Context: {"prey_speed": 150.0, "predator_speed": 100.0}
+            Species Names: [
+                {"species_id": 0, "name": "predator"},
+                {"species_id": 1, "name": "prey"}
+            ]
+            Species color descriptions: [
+                {{"species_id": 0, "color_description": "red"}},
+                {{"species_id": 1, "color_description": "green"}}
+            ]
+            REMEMBER: The components array MUST have these entries with applies_to_species!
             
             FLOCKING ("move together but don't crowd"):
             Components:
-            1. separation: "avoid neighbors closer than 20 units"
-            2. alignment: "match average velocity of neighbors"
-            3. cohesion: "move toward local center of mass"
+            1. separation: "maintain minimum distance from neighbors"
+            2. alignment: "align velocity with nearby particles"
+            3. cohesion: "stay close to local group center"
             Context: {"perception_radius": 50.0, "separation_distance": 20.0}
             
             TRAIL FOLLOWING ("leave trails others follow"):
             Components:
-            1. deposit_trail: "mark pixel at current position with pheromone"
-            2. sense_trail: "sample trail strength ahead, turn toward stronger"
-            3. trail_decay: "reduce all trail strengths over time"
+            1. deposit_trail: "deposit pheromone at current position"
+            2. sense_trail: "detect and follow stronger trail concentrations"
+            3. trail_decay: "gradually decrease trail intensity"
             Context: {"deposit_rate": 1.0, "decay_rate": 0.99, "sensor_angle": 0.5}
             REQUIRES: heading, sensor_distance states
             
-            SIMPLE BEHAVIORS (single expert):
-            - Gravity: "return ti.math.vec2(0.0, -300.0 * mass)"
-            - Random drift: "return ti.math.vec2(ti.random()-0.5, ti.random()-0.5) * 50.0"
-            - Center attraction: "force = normalize(center - pos) * 100.0"
+            SPECIES-SPECIFIC MOVEMENTS ("Species one moves left, Species two moves down"):
+            Components:
+            1. species_one_move_left: "apply leftward force" (type: force)
+               - Implementation: "apply constant leftward force"
+               - applies_to_species: [0]  # CRITICAL!
+            2. species_two_move_down: "apply downward force" (type: force)
+               - Implementation: "apply constant downward force"
+               - applies_to_species: [1]  # CRITICAL!
+            NOTE: Each species gets its own expert with applies_to_species set!
+            
+            SINGLE-EXPERT BEHAVIORS:
+            - Gravity: "apply downward force proportional to mass"
+            - Random drift: "apply random forces for wandering motion"
+            - Center attraction: "attract particles toward center point"
             
             Remember:
             - Ecosystem behaviors use species field and positions, NOT grid states
             - Only cellular automata needs grid states
             - Always declare force variable before conditionals
             - Never use 'return' inside if blocks
+            
+            FINAL CRITICAL RULE:
+            The 'components' field in your response MUST contain AT LEAST ONE BehaviorComponent.
+            An empty components list will cause the system to fail!
+            
+            Example of VALID response structure:
+            {
+                "original_description": "...",
+                "interpretation": "...",
+                "components": [  // THIS MUST NOT BE EMPTY!
+                    {"expert_name": "...", "expert_type": "force", ...},
+                    {"expert_name": "...", "expert_type": "force", ...}  // May have 1 or more
+                ],
+                "species_info": {...}
+            }
             """
         
         return agent
@@ -347,16 +648,54 @@ class BehaviorDecomposer:
             
             prompt = f"""Analyze this behavior and create expert specifications: "{description}"
             
-            1. First determine if this is SIMPLE (one expert) or COMPLEX (multiple experts)
-            2. For each expert needed, provide:
-               - expert_name: function name (e.g., 'gravity_force')
-               - implementation: concrete force/logic (e.g., 'return vec2(0, -300*mass)')
-               - expert_type: 'force', 'interaction', 'state_update', or 'visual'
-            3. If COMPLEX, establish context with constraints and shared parameters
+            CRITICAL: You MUST generate components. Never return an empty components list!
             
-            Examples:
-            - "particles fall with gravity" → SIMPLE, one 'gravity_force' expert
-            - "predator chases prey" → COMPLEX, needs 'predator_chase' + 'prey_flee' with speed constraints"""
+            1. IDENTIFY SPECIES AND COLORS: Extract species and their colors
+               - "small green fish" and "larger red predators" = 2 species
+                 → species_color_descriptions: [
+                     {{"species_id": 0, "color_description": "red"}},
+                     {{"species_id": 1, "color_description": "green"}}
+                 ]
+               - "lime green particles chase aqua ones" = 2 species
+                 → species_color_descriptions: [
+                     {{"species_id": 0, "color_description": "lime green"}},
+                     {{"species_id": 1, "color_description": "aqua"}}
+                 ]
+               - "crimson hunters and coral prey" = 2 species
+                 → species_color_descriptions: [
+                     {{"species_id": 0, "color_description": "crimson"}},
+                     {{"species_id": 1, "color_description": "coral"}}
+                 ]
+               - Extract ANY color mentioned, even complex ones
+               - Default to 1 species if just "particles" with no distinction
+               
+            2. EXTRACT PARTICLE COUNT (if mentioned):
+               - "4000 particles" → particle_count: 4000
+               - "thousands of particles" → particle_count: 3000
+               - "hundreds of particles" → particle_count: 500
+               - "a few dozen particles" → particle_count: 50
+               - No count mentioned → particle_count: null
+               
+            3. GENERATE COMPONENTS (NEVER EMPTY!):
+               For ecosystem/predator-prey: MUST create chase AND escape experts
+               For schooling/flocking: MUST create cohesion, alignment, separation
+               For cellular automata: MUST create grid update, neighbor count, rules
+               
+            4. Each component needs:
+               - expert_name: descriptive function name (specific behavior, NOT generic like "species_initialization")
+               - implementation: behavioral guidance (NOT code)
+               - expert_type: 'force' or 'interaction' (NOT 'initialization' or 'configuration')
+               - priority: 0.5-1.0
+               
+            CRITICAL RULES:
+            - DO NOT create initialization or configuration experts (handled elsewhere)
+            - Each expert must return a force vector (ti.math.vec2)
+            - Each expert must have a DISTINCT behavioral purpose
+            - Name experts based on BEHAVIOR not color (e.g., "predator_hunt" not "orange_chase")
+            - Avoid overlapping functionality between experts
+               
+            REMEMBER: Ecosystem behaviors ALWAYS need both predator AND prey experts!
+            Generate as many components as needed to fully implement the behavior!"""
             
             with collector.trace_node("llm_decompose", "llm_call",
                                      model=self.model_name) as llm_node:
@@ -407,7 +746,7 @@ class BehaviorDecomposer:
                         response_tokens=response_tokens,
                         parsed_response={
                             "interpretation": result.output.interpretation,
-                            "is_simple": result.output.is_simple,
+                            "behavior_category": result.output.behavior_category,
                             "components": [
                                 {
                                     "expert_name": c.expert_name,
@@ -430,7 +769,7 @@ class BehaviorDecomposer:
             if node:
                 node.output_data = {
                     "interpretation": decomposed.interpretation,
-                    "is_simple": decomposed.is_simple,
+                    "behavior_category": decomposed.behavior_category,
                     "components": [
                         {
                             "expert_name": c.expert_name,
@@ -519,6 +858,15 @@ class BehaviorDecomposer:
         ]):
             examples["evolutionary"] = "Genetic variation and selection over time"
             examples["genetic_component"] = "Requires gene states and fitness tracking"
+        
+        # Check for temporal patterns
+        if any(phrase in desc_lower for phrase in [
+            "over time", "gradually", "slowly", "depletes", "regenerates",
+            "ages", "grows", "decays", "tired", "exhausted", "hungry",
+            "loses energy", "gains energy", "weakens", "strengthens"
+        ]):
+            examples["temporal_dynamics"] = "State changes over time requiring temporal updates"
+            examples["temporal_component"] = "Requires temporal_update components with is_temporal=true"
             
         # Check for wave patterns
         if any(phrase in desc_lower for phrase in [

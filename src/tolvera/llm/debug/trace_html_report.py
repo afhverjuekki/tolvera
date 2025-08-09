@@ -718,7 +718,7 @@ class TraceHTMLReporter:
         stats = [
             ("Duration", f"{(trace_data.get('duration_ms') or 0):.1f}ms", ""),
             ("LLM Calls", str(len(llm_calls)), ""),
-            ("Success Rate", f"{(successful_calls/len(llm_calls)*100 if llm_calls else 0):.0f}%", ""),
+            # ("Success Rate", f"{(successful_calls/len(llm_calls)*100 if llm_calls else 0):.0f}%", ""),
             ("Timestamp", trace_data.get('timestamp', '').split('.')[0], "")
         ]
         
@@ -1122,7 +1122,6 @@ class TraceHTMLReporter:
             return ''
         
         components = parsed_response.get('components', [])
-        is_simple = parsed_response.get('is_simple', False)
         interpretation = parsed_response.get('interpretation', '')
         context = parsed_response.get('context', {})
         
@@ -1134,8 +1133,8 @@ class TraceHTMLReporter:
                     <strong>Interpretation:</strong> {html.escape(interpretation)}
                 </div>
                 <div style="margin-bottom: 10px;">
-                    <strong>Complexity:</strong> <span style="color: {'#4CAF50' if is_simple else '#FF9800'}">
-                        {'Simple (single expert)' if is_simple else f'Complex ({len(components)} experts)'}
+                    <strong>Components:</strong> <span style="color: {'#4CAF50' if len(components) == 1 else '#FF9800'}">
+                        {len(components)} expert{'s' if len(components) != 1 else ''}
                     </span>
                 </div>
                 

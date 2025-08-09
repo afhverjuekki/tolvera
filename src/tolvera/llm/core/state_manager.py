@@ -22,12 +22,43 @@ class StateManager:
             'species': 'llm_species'
         }
         
+        # Track temporal updates for states
+        self.temporal_updates = {
+            'global': {},
+            'particle': {},
+            'species': {}
+        }
+        
         logger.info(f"Initialized StateManager for Tölvera with {self.tv.pn} particles")
     
     def create_states_from_spec(self, spec: Dict[str, Any]) -> None:
         for category in ['global', 'particle', 'species']:
             if category in spec and spec[category]:
                 self._create_category_states(category, spec[category])
+    
+    def collect_and_create_states(self, all_states_specs: List[Dict[str, Any]]) -> None:
+        """
+        Collect all state requirements from multiple specs and create them once.
+        
+        Args:
+            all_states_specs: List of state specification dictionaries
+        """
+        # Merge all state specifications
+        merged_spec = {'global': {}, 'particle': {}, 'species': {}}
+        
+        for spec in all_states_specs:
+            for category in ['global', 'particle', 'species']:
+                if category in spec and spec[category]:
+                    for state_name, state_def in spec[category].items():
+                        if state_name not in merged_spec[category]:
+                            merged_spec[category][state_name] = state_def
+                            logger.info(f"Collected {category} state: {state_name}")
+                        else:
+                            logger.debug(f"State {state_name} already collected for {category}")
+        
+        # Create all states at once
+        logger.info(f"Creating all collected states: {sum(len(states) for states in merged_spec.values())} total")
+        self.create_states_from_spec(merged_spec)
     
     def _create_category_states(self, category: str, states: Dict[str, StateDefinition]):
         BUILTIN_PARTICLE_PROPS = {'pos', 'vel', 'mass', 'size', 'speed', 'species', 'active', 'ppos', 'pvel'}
@@ -40,10 +71,18 @@ class StateManager:
         
         container_name = self.container_names[category]
         
+        # Check if container already exists
         if container_name in self.tv.s and self.tv.s[container_name] is not None:
-            logger.info(f"State container '{container_name}' already exists, updating registry")
-            self.state_registry[category].update(states)
-            return
+            logger.info(f"State container '{container_name}' already exists, skipping creation")
+            # Update registry with any new states
+            for state_name, state_def in states.items():
+                if state_name not in self.state_registry[category]:
+                    logger.info(f"Registering new {category} state: {state_name} (container already exists)")
+                    self.state_registry[category][state_name] = state_def
+                    # Register temporal update if present
+                    if hasattr(state_def, 'temporal_update') and state_def.temporal_update:
+                        self.register_temporal_update(category, state_name, state_def.temporal_update)
+            return  # Don't recreate the container
         
         if category == 'particle':
             filtered_states = {}
@@ -60,24 +99,46 @@ class StateManager:
         
         state_spec = {}
         for prop_name, prop_def in states.items():
-            if isinstance(prop_def, StateDefinition):
-                state_spec[prop_name] = (
-                    self._get_taichi_type(prop_def.type),
-                    prop_def.min,
-                    prop_def.max
-                )
+            # Handle both StateDefinition/StateRequirement Pydantic models and dicts
+            if hasattr(prop_def, 'type'):
+                # It's a Pydantic model (StateDefinition or StateRequirement)
+                type_str = prop_def.type
+                taichi_type = self._get_taichi_type(type_str)
+                min_val = prop_def.min
+                max_val = prop_def.max
+                
+                # Convert to int if this is an integer type but we have float min/max
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    if isinstance(min_val, float):
+                        min_val = int(min_val)
+                    if isinstance(max_val, float):
+                        max_val = int(max_val)
+                
+                state_spec[prop_name] = (taichi_type, min_val, max_val)
             elif isinstance(prop_def, dict):
-                state_spec[prop_name] = (
-                    self._get_taichi_type(prop_def['type']),
-                    prop_def['min'],
-                    prop_def['max']
-                )
+                type_str = prop_def.get('type', 'ti.f32')
+                taichi_type = self._get_taichi_type(type_str)
+                # Set appropriate defaults based on type
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = prop_def.get('min', 0)
+                    max_val = prop_def.get('max', 100)
+                else:
+                    min_val = prop_def.get('min', 0.0)
+                    max_val = prop_def.get('max', 1.0)
+                state_spec[prop_name] = (taichi_type, min_val, max_val)
+        
+        # Check if we have any integer states - if so, don't randomise
+        # Integer states should be initialized explicitly
+        has_integer_states = any(
+            spec[0] in (ti.i32, ti.i64, ti.u32, ti.u64)
+            for spec in state_spec.values()
+        )
         
         self.tv.s.set(container_name, {
             'state': state_spec,
             'shape': shape_map[category],
             'osc': ('get', 'set') if category != 'particle' else ('get',),
-            'randomise': category != 'global'
+            'randomise': False if has_integer_states or category == 'global' else True
         })
         
         self.state_registry[category] = states
@@ -124,16 +185,35 @@ class StateManager:
     
     def _init_global_states(self, state_obj, states: Dict[str, Any]):
         for prop_name, prop_def in states.items():
-            if isinstance(prop_def, StateDefinition):
+            # Handle both StateDefinition objects and StateRequirement objects from behavior_requirements
+            if hasattr(prop_def, 'initial'):
+                # It's a Pydantic model (StateDefinition or StateRequirement)
                 initial = prop_def.initial
                 min_val = prop_def.min
                 max_val = prop_def.max
                 type_str = prop_def.type
-            else:
+            elif isinstance(prop_def, dict):
+                # It's a dictionary
                 initial = prop_def.get('initial')
-                min_val = prop_def.get('min', 0.0)
-                max_val = prop_def.get('max', 1.0)
                 type_str = prop_def.get('type', 'ti.f32')
+                # Set appropriate defaults based on type
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = prop_def.get('min', 0)
+                    max_val = prop_def.get('max', 100)
+                else:
+                    min_val = prop_def.get('min', 0.0)
+                    max_val = prop_def.get('max', 1.0)
+            else:
+                # Fallback for other types
+                initial = None
+                type_str = 'ti.f32'
+                # Check if it's an integer type and set appropriate defaults
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = 0
+                    max_val = 100
+                else:
+                    min_val = 0.0
+                    max_val = 1.0
             
             if initial is not None:
                 setattr(state_obj.field[0], prop_name, initial)
@@ -160,7 +240,7 @@ class StateManager:
                     else:
                         initial_val = (min_val + max_val) / 2
                 
-                if not isinstance(initial_val, list) and ('i32' in type_str or 'i64' in type_str or 'int' in type_str):
+                if not isinstance(initial_val, list) and ('i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str):
                     initial_val = int(initial_val)
                     
                 setattr(state_obj.field[0], prop_name, initial_val)
@@ -169,17 +249,35 @@ class StateManager:
         import random
         
         for prop_name, prop_def in states.items():
-            # Extract definition
-            if isinstance(prop_def, StateDefinition):
+            # Extract definition - handle both Pydantic models and dicts
+            if hasattr(prop_def, 'initial'):
+                # It's a Pydantic model (StateDefinition or StateRequirement)
                 initial = prop_def.initial
                 min_val = prop_def.min
                 max_val = prop_def.max
                 type_str = prop_def.type
-            else:
+            elif isinstance(prop_def, dict):
+                # It's a dictionary
                 initial = prop_def.get('initial')
-                min_val = prop_def.get('min', 0.0)
-                max_val = prop_def.get('max', 1.0)
                 type_str = prop_def.get('type', 'ti.f32')
+                # Set appropriate defaults based on type
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = prop_def.get('min', 0)
+                    max_val = prop_def.get('max', 100)
+                else:
+                    min_val = prop_def.get('min', 0.0)
+                    max_val = prop_def.get('max', 1.0)
+            else:
+                # Fallback
+                initial = None
+                type_str = 'ti.f32'
+                # Check if it's an integer type and set appropriate defaults
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = 0
+                    max_val = 100
+                else:
+                    min_val = 0.0
+                    max_val = 1.0
             
             for i in range(self.tv.pn):
                 if initial is not None:
@@ -196,6 +294,8 @@ class StateManager:
                     if isinstance(min_val, (list, tuple)):
                         raise ValueError("Energy should be scalar")
                     initial_val = min_val + (max_val - min_val) * 0.8
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        initial_val = int(initial_val)
                     setattr(state_obj.field[i], prop_name, initial_val)
                 else:
                     # Random within range
@@ -204,23 +304,41 @@ class StateManager:
                                       for j in range(len(min_val))]
                     else:
                         initial_val = min_val + random.random() * (max_val - min_val)
-                        if 'i32' in type_str or 'i64' in type_str or 'int' in type_str:
+                        if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
                             initial_val = int(initial_val)
                     setattr(state_obj.field[i], prop_name, initial_val)
     
     def _init_species_states(self, state_obj, states: Dict[str, Any]):
         for prop_name, prop_def in states.items():
-            # Extract definition
-            if isinstance(prop_def, StateDefinition):
+            # Extract definition - handle both Pydantic models and dicts
+            if hasattr(prop_def, 'initial'):
+                # It's a Pydantic model (StateDefinition or StateRequirement)
                 initial = prop_def.initial
                 min_val = prop_def.min
                 max_val = prop_def.max
                 type_str = prop_def.type
-            else:
+            elif isinstance(prop_def, dict):
+                # It's a dictionary
                 initial = prop_def.get('initial')
-                min_val = prop_def.get('min', 0.0)
-                max_val = prop_def.get('max', 1.0)
                 type_str = prop_def.get('type', 'ti.f32')
+                # Set appropriate defaults based on type
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = prop_def.get('min', 0)
+                    max_val = prop_def.get('max', 100)
+                else:
+                    min_val = prop_def.get('min', 0.0)
+                    max_val = prop_def.get('max', 1.0)
+            else:
+                # Fallback
+                initial = None
+                type_str = 'ti.f32'
+                # Check if it's an integer type and set appropriate defaults
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    min_val = 0
+                    max_val = 100
+                else:
+                    min_val = 0.0
+                    max_val = 1.0
             
             for s in range(self.tv.sn):
                 if initial is not None:
@@ -233,7 +351,7 @@ class StateManager:
                         variation = (s / max(1, self.tv.sn - 1)) * 0.4 - 0.2
                         initial_val = (min_val + max_val) / 2 + (max_val - min_val) * variation
                         initial_val = max(min_val, min(max_val, initial_val))
-                        if 'i32' in type_str or 'i64' in type_str or 'int' in type_str:
+                        if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
                             initial_val = int(initial_val)
                     setattr(state_obj.field[s], prop_name, initial_val)
     
@@ -257,14 +375,36 @@ class StateManager:
             code_lines.append("        'state': {")
             
             for name, state_def in self.state_registry['global'].items():
-                if isinstance(state_def, StateDefinition):
+                # Handle both Pydantic models and dicts
+                if hasattr(state_def, 'type'):
+                    # It's a Pydantic model (StateDefinition or StateRequirement)
                     type_str = state_def.type
                     min_val = state_def.min
                     max_val = state_def.max
-                else:
+                    # Convert to int if this is an integer type but we have float min/max
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        if isinstance(min_val, float):
+                            min_val = int(min_val)
+                        if isinstance(max_val, float):
+                            max_val = int(max_val)
+                elif isinstance(state_def, dict):
                     type_str = state_def.get('type', 'ti.f32')
-                    min_val = state_def.get('min', 0.0)
-                    max_val = state_def.get('max', 1.0)
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = state_def.get('min', 0)
+                        max_val = state_def.get('max', 100)
+                    else:
+                        min_val = state_def.get('min', 0.0)
+                        max_val = state_def.get('max', 1.0)
+                else:
+                    type_str = 'ti.f32'
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = 0
+                        max_val = 100
+                    else:
+                        min_val = 0.0
+                        max_val = 1.0
                 
                 code_lines.append(f"            '{name}': ({type_str}, {min_val}, {max_val}),")
             
@@ -281,21 +421,53 @@ class StateManager:
             code_lines.append("        'state': {")
             
             for name, state_def in self.state_registry['particle'].items():
-                if isinstance(state_def, StateDefinition):
+                # Handle both Pydantic models and dicts
+                if hasattr(state_def, 'type'):
+                    # It's a Pydantic model (StateDefinition or StateRequirement)
                     type_str = state_def.type
                     min_val = state_def.min
                     max_val = state_def.max
-                else:
+                    # Convert to int if this is an integer type but we have float min/max
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        if isinstance(min_val, float):
+                            min_val = int(min_val)
+                        if isinstance(max_val, float):
+                            max_val = int(max_val)
+                elif isinstance(state_def, dict):
                     type_str = state_def.get('type', 'ti.f32')
-                    min_val = state_def.get('min', 0.0)
-                    max_val = state_def.get('max', 1.0)
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = state_def.get('min', 0)
+                        max_val = state_def.get('max', 100)
+                    else:
+                        min_val = state_def.get('min', 0.0)
+                        max_val = state_def.get('max', 1.0)
+                else:
+                    type_str = 'ti.f32'
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = 0
+                        max_val = 100
+                    else:
+                        min_val = 0.0
+                        max_val = 1.0
                 
                 code_lines.append(f"            '{name}': ({type_str}, {min_val}, {max_val}),")
             
             code_lines.append("        },")
             code_lines.append("        'shape': tv.pn,")
             code_lines.append("        'osc': ('get',),")
-            code_lines.append("        'randomise': True")
+            
+            # Check if any particle states are integer types - if so, disable randomization
+            has_integer_states = False
+            for name, state_def in self.state_registry['particle'].items():
+                type_str = state_def.type if hasattr(state_def, 'type') else 'ti.f32'
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    has_integer_states = True
+                    break
+            
+            randomise_value = "False" if has_integer_states else "True"
+            code_lines.append(f"        'randomise': {randomise_value}")
             code_lines.append("    })")
         
         if self.state_registry['species']:
@@ -305,21 +477,53 @@ class StateManager:
             code_lines.append("        'state': {")
             
             for name, state_def in self.state_registry['species'].items():
-                if isinstance(state_def, StateDefinition):
+                # Handle both Pydantic models and dicts
+                if hasattr(state_def, 'type'):
+                    # It's a Pydantic model (StateDefinition or StateRequirement)
                     type_str = state_def.type
                     min_val = state_def.min
                     max_val = state_def.max
-                else:
+                    # Convert to int if this is an integer type but we have float min/max
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        if isinstance(min_val, float):
+                            min_val = int(min_val)
+                        if isinstance(max_val, float):
+                            max_val = int(max_val)
+                elif isinstance(state_def, dict):
                     type_str = state_def.get('type', 'ti.f32')
-                    min_val = state_def.get('min', 0.0)
-                    max_val = state_def.get('max', 1.0)
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = state_def.get('min', 0)
+                        max_val = state_def.get('max', 100)
+                    else:
+                        min_val = state_def.get('min', 0.0)
+                        max_val = state_def.get('max', 1.0)
+                else:
+                    type_str = 'ti.f32'
+                    # Ensure integer types get integer defaults
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                        min_val = 0
+                        max_val = 100
+                    else:
+                        min_val = 0.0
+                        max_val = 1.0
                 
                 code_lines.append(f"            '{name}': ({type_str}, {min_val}, {max_val}),")
             
             code_lines.append("        },")
             code_lines.append("        'shape': tv.sn,")
             code_lines.append("        'osc': ('get', 'set'),")
-            code_lines.append("        'randomise': True")
+            
+            # Check if any species states are integer types - if so, disable randomization
+            has_integer_states = False
+            for name, state_def in self.state_registry['species'].items():
+                type_str = state_def.type if hasattr(state_def, 'type') else 'ti.f32'
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
+                    has_integer_states = True
+                    break
+            
+            randomise_value = "False" if has_integer_states else "True"
+            code_lines.append(f"        'randomise': {randomise_value}")
             code_lines.append("    })")
         
         return "\n".join(code_lines)
@@ -397,13 +601,22 @@ class StateManager:
         return "\n".join(code_lines) if code_lines else "# State values use defaults"
     
     def _get_initial_value_for_codegen(self, name: str, state_def: Any, category: str, species_id: int = 0):
-        # Extract definition
+        # Import here to avoid circular import
+        from ..core.behavior_requirements import StateRequirement
+        
+        # Extract definition based on object type
         if isinstance(state_def, StateDefinition):
             initial = state_def.initial
             min_val = state_def.min
             max_val = state_def.max
             type_str = state_def.type
+        elif isinstance(state_def, StateRequirement):
+            initial = state_def.initial
+            min_val = state_def.min
+            max_val = state_def.max
+            type_str = state_def.type
         else:
+            # Assume it's a dict
             initial = state_def.get('initial')
             min_val = state_def.get('min', 0.0)
             max_val = state_def.get('max', 1.0)
@@ -464,10 +677,161 @@ class StateManager:
         
         return False
     
+    def register_temporal_update(self, category: str, state_name: str, temporal_update) -> None:
+        """Register a temporal update rule for a state.
+        
+        Args:
+            category: State category (global, particle, species)
+            state_name: Name of the state
+            temporal_update: TemporalUpdate object or dict with update info
+        """
+        if category not in self.temporal_updates:
+            logger.warning(f"Unknown category '{category}' for temporal update")
+            return
+            
+        self.temporal_updates[category][state_name] = temporal_update
+        logger.info(f"Registered temporal update for {category}.{state_name}")
+    
+    def generate_temporal_update_kernel(self) -> str:
+        """Generate a complete temporal update kernel from all registered temporal updates."""
+        # Check if we have any temporal updates
+        has_updates = any(
+            updates for updates in self.temporal_updates.values()
+        )
+        
+        if not has_updates:
+            return ""
+        
+        kernel_lines = [
+            "@ti.kernel",
+            "def update_temporal_states():",
+            "    '''Update all temporal states based on registered rules.'''",
+            "    frame = tv.ctx.i[None]",
+            "    dt = 1.0 / 60.0  # Assuming 60 FPS",
+            ""
+        ]
+        
+        # Generate global state updates
+        if self.temporal_updates['global']:
+            kernel_lines.append("    # Global state updates")
+            for state_name, update in self.temporal_updates['global'].items():
+                update_expr = self._format_temporal_update(
+                    update, state_name, 'global', '0'
+                )
+                if update_expr:
+                    kernel_lines.extend(update_expr)
+            kernel_lines.append("")
+        
+        # Generate particle state updates
+        if self.temporal_updates['particle']:
+            kernel_lines.append("    # Particle state updates")
+            kernel_lines.append("    for i in range(tv.pn):")
+            kernel_lines.append("        if tv.p.field[i].active > 0:")
+            
+            for state_name, update in self.temporal_updates['particle'].items():
+                update_expr = self._format_temporal_update(
+                    update, state_name, 'particle', 'i', indent=3
+                )
+                if update_expr:
+                    kernel_lines.extend(update_expr)
+            kernel_lines.append("")
+        
+        # Generate species state updates
+        if self.temporal_updates['species']:
+            kernel_lines.append("    # Species state updates")
+            kernel_lines.append("    for s in range(tv.sn):")
+            
+            for state_name, update in self.temporal_updates['species'].items():
+                update_expr = self._format_temporal_update(
+                    update, state_name, 'species', 's', indent=2
+                )
+                if update_expr:
+                    kernel_lines.extend(update_expr)
+        
+        return "\n".join(kernel_lines)
+    
+    def _format_temporal_update(self, update, state_name: str, category: str, 
+                                index: str, indent: int = 1) -> List[str]:
+        """Format a single temporal update into kernel code."""
+        lines = []
+        ind = "    " * indent
+        container = self.container_names[category]
+        
+        # Handle both TemporalUpdate objects and dicts
+        if hasattr(update, 'update_expression'):
+            # It's a TemporalUpdate pydantic model
+            update_expr = update.update_expression
+            update_cond = update.update_condition
+            update_freq = update.update_frequency
+            affects = update.affects_behavior
+        elif isinstance(update, dict):
+            # It's a dictionary
+            update_expr = update.get('update_expression', '')
+            update_cond = update.get('update_condition')
+            update_freq = update.get('update_frequency', 1)
+            affects = update.get('affects_behavior')
+        else:
+            return lines
+        
+        # Check update frequency
+        if update_freq > 1:
+            lines.append(f"{ind}if frame % {update_freq} == 0:")
+            ind += "    "
+        
+        # Add condition if specified
+        if update_cond:
+            # Parse condition to replace state references
+            condition = update_cond
+            if category == 'particle':
+                condition = condition.replace('species', 'tv.p.field[i].species')
+                condition = condition.replace('vel', 'tv.p.field[i].vel')
+            lines.append(f"{ind}if {condition}:")
+            ind += "    "
+        
+        # Get current value
+        lines.append(f"{ind}value = tv.s.{container}.field[{index}].{state_name}")
+        
+        # Apply update expression
+        # Parse the expression to replace 'value' with actual value
+        expr = update_expr.replace(state_name, 'value')
+        
+        # Handle special variables in expression
+        if category == 'particle':
+            expr = expr.replace('vel.norm()', 'tv.p.field[i].vel.norm()')
+            expr = expr.replace('speed', 'tv.p.field[i].vel.norm()')
+        
+        lines.append(f"{ind}{expr}")
+        
+        # Get state bounds from registry
+        state_def = self.state_registry.get(category, {}).get(state_name)
+        if state_def:
+            min_val = state_def.min if hasattr(state_def, 'min') else state_def.get('min', 0.0)
+            max_val = state_def.max if hasattr(state_def, 'max') else state_def.get('max', 1.0)
+            
+            # Clamp value
+            lines.append(f"{ind}value = max({min_val}, min({max_val}, value))")
+        
+        # Store updated value
+        lines.append(f"{ind}tv.s.{container}.field[{index}].{state_name} = value")
+        
+        # Apply behavioral effects if specified
+        if affects and category == 'particle':
+            lines.append(f"{ind}# Behavioral coupling")
+            # Parse affects to apply behavioral changes
+            affects_parsed = affects.replace(':', ':\n' + ind + '    ')
+            lines.append(f"{ind}{affects_parsed}")
+        
+        return lines
+    
     def clear_states(self):
         self.state_registry = {
             'global': {},
             'particle': {},
             'species': {}
         }
-        logger.info("Cleared state registry")
+        self.temporal_updates = {
+            'global': {},
+            'particle': {},
+            'species': {}
+        }
+        logger.info("Cleared state registry and temporal updates")

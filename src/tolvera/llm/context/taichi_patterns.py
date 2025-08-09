@@ -36,7 +36,11 @@ Consequences for physics:
     @ti.func
     def compute_force(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
         diff = p2.pos - p1.pos
-        return diff.normalized() * 100.0
+        dist = diff.norm()
+        if dist > 0.001:
+            return (diff / dist) * 100.0  # Manual normalization
+        else:
+            return ti.math.vec2(0.0, 0.0)
 
 ## Field Access Patterns
 ### Scalar Fields
@@ -51,17 +55,21 @@ vec_field[i, j][0]  # Access x component
 vec_field[i, j].x   # Alternative for n<=4
 vec_field[i, j].xy  # Access multiple components
 
-### Struct Fields (Particles)
-@ti.dataclass
-class Particle:
-    pos: ti.math.vec2
-    vel: ti.math.vec2
-    mass: ti.f32
-    species: ti.i32
+### Struct Fields (Tölvera Particles)
+# Access particle properties
+tv.p.field[i].pos    # Position (ti.math.vec2)
+tv.p.field[i].vel    # Velocity (ti.math.vec2)
+tv.p.field[i].mass   # Mass (ti.f32)
+tv.p.field[i].size   # Display size (ti.f32)
+tv.p.field[i].species # Species ID (ti.i32)
+tv.p.field[i].active  # Activity level (ti.f32)
 
-particles = Particle.field(shape=(n,))
-particles[i].pos    # Access position
-particles[i].vel.x  # Access x velocity
+# Or in kernels, use template parameter:
+@ti.kernel
+def process(particles: ti.template()):
+    p = particles[i]
+    pos = p.pos
+    vel = p.vel
 
 ## Loop Patterns
 ### Basic Range Loop
@@ -168,7 +176,7 @@ ARTIFICIAL_LIFE_PATTERNS = """
 # Artificial Life Patterns in Tölvera
 
 ## Standard Behavior Structure
-Based on vera class template:
+Based on vera class template from examples:
 
 @ti.data_oriented
 class CustomBehavior:
@@ -176,7 +184,7 @@ class CustomBehavior:
         self.tv = tolvera
         self.kwargs = kwargs
         
-        # Constants
+        # Constants using CONSTS utility
         self.CONSTS = CONSTS({
             "PARAM1": (ti.f32, 100.0),
             "PARAM2": (ti.f32, 0.5),
@@ -185,8 +193,9 @@ class CustomBehavior:
         # Species interaction matrix
         self.tv.s.behavior_s = {
             "state": {
-                "attraction": (ti.f32, -1.0, 1.0),
-                "repulsion": (ti.f32, 0.0, 100.0),
+                "attract": (ti.f32, -1.0, 1.0),
+                "repel": (ti.f32, 0.0, 100.0),
+                "radius": (ti.f32, 10.0, 200.0),
             },
             "shape": (self.tv.sn, self.tv.sn),
             "randomise": True,
@@ -197,34 +206,45 @@ class CustomBehavior:
             "state": {
                 "energy": (ti.f32, 0.0, 100.0),
                 "phase": (ti.f32, 0.0, 2*3.14159),
+                "nearby": (ti.i32, 0, 100),
             },
             "shape": self.tv.pn,
-            "randomise": True,
+            "randomise": False,
         }
     
     @ti.kernel
     def step(self, particles: ti.template(), weight: ti.f32):
         n = particles.shape[0]
         for i in range(n):
+            # Skip inactive particles
             if particles[i].active == 0:
                 continue
                 
-            total_force = ti.math.vec2(0.0, 0.0)
             p1 = particles[i]
-            
-            # Single particle forces
-            total_force += self.compute_self_force(p1, i)
+            total_force = ti.math.vec2(0.0, 0.0)
             
             # Pair-wise interactions
             for j in range(n):
-                if i != j and particles[j].active > 0:
-                    p2 = particles[j]
-                    rules = self.tv.s.behavior_s[p1.species, p2.species]
-                    total_force += self.compute_pair_force(p1, p2, rules)
+                # Skip self and inactive particles
+                if i == j or particles[j].active == 0:
+                    continue
+                    
+                p2 = particles[j]
+                # Get species interaction rules
+                rules = self.tv.s.behavior_s[p1.species, p2.species]
+                
+                diff = p2.pos - p1.pos
+                dist = diff.norm()
+                
+                if dist > 0.01 and dist < rules.radius:
+                    direction = diff / dist
+                    # Apply attraction/repulsion
+                    force = direction * (rules.attract - rules.repel / (dist + 1.0))
+                    total_force += force
             
-            # Update particle
-            particles[i].vel += total_force * weight
-            particles[i].pos += particles[i].vel * 0.016  # dt
+            # Update particle with weighted force
+            particles[i].vel += total_force * weight * 0.01
+            particles[i].pos += particles[i].vel
     
     @ti.func
     def compute_self_force(self, p: ti.template(), idx: ti.i32) -> ti.math.vec2:
@@ -248,25 +268,25 @@ class CustomBehavior:
         self.step(particles.field, weight)
 
 ## Multi-Behavior Integration
-Combining multiple behaviors in render loop:
+Combining multiple behaviors in render loop (from examples):
 
 @tv.render
 def _():
     # Pixel effects
-    tv.px.diffuse(0.99)
-    tv.px.decay(0.995)
+    tv.px.diffuse(0.99)  # Blur/spread pixels
     
-    # Physics update
-    tv.p()
+    # Apply vera behaviors
+    tv.v.flock(tv.p, weight=0.5)  # Flocking behavior
+    tv.v.slime(tv.p)  # Slime mold behavior (returns pixels)
     
-    # Apply behaviors with weights
-    tv.v.flock(tv.p, weight=0.5)
-    tv.v.slime.move(tv.p, weight=0.3)
-    custom_behavior(tv.p, weight=0.2)
+    # Alternative: chain behaviors
+    # tv.v.plife(tv.p)  # Particle life
+    # tv.v.swarm(tv.p, 11)  # Swarm with parameter
     
-    # Render
+    # Draw particles with species colors
     tv.px.particles(tv.p, tv.s.species())
-    return tv.px
+    
+    return tv.px  # Return pixel buffer for display
 
 ## Common A-Life Behavior Components
 

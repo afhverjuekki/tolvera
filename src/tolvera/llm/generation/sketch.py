@@ -20,10 +20,12 @@ import numpy as np
 
 def main(**kwargs):
     """Main function for Tölvera sketch."""
-    tv = Tolvera(**kwargs)
-    
     # === Configuration ===
+    # CRITICAL: Set ALL kwargs BEFORE creating Tölvera instance
     {config_code}
+    
+    # Create Tölvera instance with properly configured kwargs
+    tv = Tolvera(**kwargs)
     
     # === Particle Initialization ===
 {init_code}
@@ -40,15 +42,67 @@ def main(**kwargs):
     # === Temporal Updates ===
 {temporal_code}
     
+    # === Drawing Functions ===
+{drawing_code}
+    
+    # === Drawing Kernel ===
+{drawing_kernel}
+    
+    # === Respawn Functions ===
+{respawn_code}
+    
     @tv.render
     def _():
         tv.px.diffuse(0.99)
         
-        # Update states and apply behaviors
+        # Pre-particle drawing
+        {pre_draw_calls}
+        
+        # Apply behaviors and physics
         {update_calls}
         
+        # Post-particle drawing
+        {post_draw_calls}
+        
         # Render particles
-        tv.px.particles(tv.p, tv.s.species())
+        {render_particles_call}
+        
+        return tv.px
+
+if __name__ == "__main__":
+    run(main)
+'''
+        
+        self.pure_drawing_template = '''"""
+Auto-generated Tölvera pure drawing sketch: {description}
+Generated: {timestamp}
+"""
+
+import taichi as ti
+from tolvera import Tolvera, run
+
+def main(**kwargs):
+    """Main function for pure drawing sketch."""
+    # === Configuration ===
+    # Pure drawing mode - minimal setup
+    kwargs['width'] = kwargs.get('width', 1920)
+    kwargs['height'] = kwargs.get('height', 1080)
+    kwargs['pn'] = 1  # Minimal particles (not used)
+    kwargs['sn'] = 1  # Minimal species (not used)
+    
+    # Create Tölvera instance
+    tv = Tolvera(**kwargs)
+    
+    # === Drawing Functions ===
+{drawing_code}
+    
+    @tv.render
+    def _():
+        # Clear screen
+        tv.px.clear()
+        
+        # Execute drawing
+        draw()
         
         return tv.px
 
@@ -65,7 +119,13 @@ if __name__ == "__main__":
         state_code: str = "",
         temporal_code: str = "",
         config_code: str = "",
-        metadata: Optional[Dict[str, Any]] = None
+        drawing_code: str = "",
+        drawing_kernel: str = "",
+        respawn_code: str = "",
+        pre_draw_calls: List[str] = None,
+        post_draw_calls: List[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        has_non_visual_experts: bool = True
     ) -> str:
         """
         Generate complete sketch file.
@@ -78,35 +138,83 @@ if __name__ == "__main__":
             state_code: State initialization code
             temporal_code: Temporal update code
             config_code: Additional configuration code
+            drawing_code: Drawing behavior functions
+            drawing_kernel: Drawing kernel that calls visual experts
+            respawn_code: Respawn functions for food/resources
+            pre_draw_calls: Drawing calls before particles
+            post_draw_calls: Drawing calls after particles
             metadata: Optional metadata to include
+            has_non_visual_experts: Whether there are non-visual experts (single/interaction)
             
         Returns:
             Complete sketch code as string
         """
-        # Build update calls
+        # Build update calls - CORRECT ORDER IS CRITICAL
         update_calls = []
         
-        # Add temporal updates if present
-        if temporal_code and "update_temporal_states" in temporal_code:
-            update_calls.append("update_temporal_states()")
+        # Only include particle physics if we have non-visual experts
+        if has_non_visual_experts:
+            # 1. First apply temporal updates if present
+            if temporal_code and "update_temporal_states" in temporal_code:
+                update_calls.append("update_temporal_states()")
+            
+            # 2. Apply expert behaviors to calculate forces
+            update_calls.append("apply_all_experts()")
+            
+            # 3. Update physics (positions, velocities, boundaries)
+            update_calls.append("tv.p()")
         
-        # Always call particle update
-        update_calls.append("tv.p()")
+        # 4. Apply drawing behaviors if present
+        if drawing_kernel and "draw" in drawing_kernel:
+            update_calls.append("draw()  # Execute visual behaviors")
         
-        # Always apply experts
-        update_calls.append("apply_all_experts()")
+        # 5. Check for respawn (e.g., food particles)
+        if respawn_code and "respawn_food" in respawn_code:
+            update_calls.append("respawn_food()")
+        
+        # Format drawing calls
+        if pre_draw_calls is None:
+            pre_draw_calls = ["# No pre-draw effects"]
+        if post_draw_calls is None:
+            post_draw_calls = ["# No post-draw effects"]
         
         # Format components - indent code sections properly
+        # Enhanced config code to always set kwargs properly
+        if not config_code or config_code == "# No additional configuration":
+            # Always generate proper kwargs configuration
+            config_code = """# Configure Tölvera parameters
+    # Default configuration - modify kwargs as needed
+    if 'width' not in kwargs:
+        kwargs['width'] = 1920
+    if 'height' not in kwargs:
+        kwargs['height'] = 1080
+    if 'pn' not in kwargs:
+        kwargs['pn'] = 1000
+    if 'sn' not in kwargs:
+        kwargs['sn'] = 1  # Default to 1 species"""
+        
+        # Determine whether to render particles
+        if has_non_visual_experts:
+            render_particles_call = "tv.px.particles(tv.p, tv.s.species())"
+        else:
+            render_particles_call = "# No particle rendering (only visual behaviors)"
+        
         return self.template.format(
             description=description,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            config_code=config_code.strip() if config_code else "# No additional configuration",
+            config_code=config_code.strip(),
             init_code=self._indent(init_code.strip(), 4),
             state_code=self._indent(state_code.strip() if state_code else "# No custom states needed", 4),
             expert_code=self._indent("\n\n".join(experts), 4),
             kernel_code=self._indent(kernel, 4),
             temporal_code=self._indent(temporal_code if temporal_code else "# No temporal updates needed", 4),
-            update_calls="\n        ".join(update_calls)
+            drawing_code=self._indent(drawing_code if drawing_code else "# No drawing functions", 4),
+            drawing_kernel=self._indent(drawing_kernel if drawing_kernel else "# No drawing kernel", 4),
+            respawn_code=self._indent(respawn_code if respawn_code else "# No respawn functions", 4),
+            pre_draw_calls="\n        ".join(pre_draw_calls),
+            post_draw_calls="\n        ".join(post_draw_calls),
+            update_calls="\n        ".join(update_calls),
+            render_particles_call=render_particles_call
         )
     
     def _indent(self, code: str, spaces: int = 4) -> str:
@@ -155,15 +263,29 @@ if __name__ == "__main__":
         if response.temporal_update:
             temporal_code = response.temporal_update.to_code()
         
-        # Build config code if needed
-        config_code = ""
-        if tv_config:
-            config_lines = []
-            if 'species' in tv_config:
-                config_lines.append(f"# Configured for {tv_config['species']} species")
-            if 'particles' in tv_config:
-                config_lines.append(f"# Particle count: {tv_config['particles']}")
-            config_code = "\n".join(config_lines)
+        # Build config code - ALWAYS set kwargs properly
+        config_lines = []
+        
+        # Get species count from response
+        species_count = 1
+        if hasattr(response, 'species_config') and response.species_config:
+            if hasattr(response.species_config, 'species_ids'):
+                species_count = len(response.species_config.species_ids)
+            elif hasattr(response.species_config, 'total_count'):
+                species_count = response.species_config.total_count
+        
+        # Generate proper kwargs configuration - using correct Tolvera parameter names
+        config_lines.append("# === CRITICAL: Set ALL kwargs BEFORE creating Tölvera instance ===")
+        config_lines.append(f"kwargs['species'] = {species_count}  # Use detected species count")
+        
+        # Set particle count - use 'particles' which is the correct parameter name
+        default_particles = tv_config.get('particles', 1000) if tv_config else 1000
+        config_lines.append(f"kwargs['particles'] = kwargs.get('particles', {default_particles})  # Particle count")
+        
+        config_lines.append("kwargs['width'] = kwargs.get('width', 1920)")
+        config_lines.append("kwargs['height'] = kwargs.get('height', 1080)")
+        
+        config_code = "\n    ".join(config_lines)
         
         return self.generate(
             description=description,
@@ -280,3 +402,26 @@ if __name__ == "__main__":
             code_lines.append("    })")
         
         return "\n".join(code_lines) if code_lines else "# No custom states defined"
+    
+    def generate_pure_drawing(
+        self,
+        description: str,
+        drawing_code: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Generate a pure drawing sketch without particle systems.
+        
+        Args:
+            description: Description of what to draw
+            drawing_code: The drawing kernel/function code
+            metadata: Optional metadata
+            
+        Returns:
+            Complete pure drawing sketch code
+        """
+        return self.pure_drawing_template.format(
+            description=description,
+            timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            drawing_code=self._indent(drawing_code.strip(), 4)
+        )

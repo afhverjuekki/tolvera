@@ -19,7 +19,8 @@ class SpeciesInfo:
 
 class SpeciesAnalyzer:
     
-    def __init__(self):
+    def __init__(self, color_resolver=None):
+        self.color_resolver = color_resolver
         self.species_terms = {
             'predator': {'color': 'red', 'behavior': 'hunting'},
             'prey': {'color': 'green', 'behavior': 'fleeing'},
@@ -91,19 +92,41 @@ class SpeciesAnalyzer:
         names = {}
         next_id = 0
         
-        # Check for ecosystem roles
+        # First check for color-based species (priority over ecosystem roles)
+        # Updated pattern to catch more variations
+        color_patterns = [
+            r'(red|blue|green|yellow|purple|orange|pink|cyan|brown|gray|white|black)\s+(?:species|particles?|agents?|predators?|prey)',
+            r'(red|blue|green|yellow|purple|orange|pink|cyan|brown|gray|white|black)\s+(?:ones?|group|type)',
+            r'the\s+(red|blue|green|yellow|purple|orange|pink|cyan|brown|gray|white|black)\s+(?:species)?'
+        ]
+        
+        seen_colors = set()
+        for pattern in color_patterns:
+            color_matches = re.findall(pattern, text)
+            for color in color_matches:
+                if color not in seen_colors:
+                    names[next_id] = f"{color}_species"
+                    seen_colors.add(color)
+                    next_id += 1
+        
+        # Check for ecosystem roles (but don't duplicate if color already assigned)
         for term in self.species_terms:
             if term in text or f"{term}s" in text:
-                names[next_id] = term
-                next_id += 1
+                # Check if this term is already associated with a color
+                already_exists = False
+                for existing_name in names.values():
+                    if term in existing_name:
+                        already_exists = True
+                        break
+                
+                if not already_exists:
+                    names[next_id] = term
+                    next_id += 1
         
-        # Check for color-based species
-        color_pattern = r'(red|blue|green|yellow|purple|orange|pink|cyan|brown|gray|white|black)\s+(?:species|particles?|agents?)'
-        color_matches = re.findall(color_pattern, text)
-        for color in color_matches:
-            if next_id not in names:
-                names[next_id] = f"{color}_species"
-                next_id += 1
+        # Special case: if we see "food" mentioned, add it as a species
+        if 'food' in text.lower() and 'food' not in str(names.values()):
+            names[next_id] = 'food'
+            next_id += 1
         
         return names
     
@@ -257,10 +280,21 @@ class SpeciesAnalyzer:
         # Check explicit hints
         if species_id in species_info.color_hints:
             color_name = species_info.color_hints[species_id]
+            
+            # Use simple mappings for now (async resolution happens elsewhere)
             if color_name in self.color_mappings:
                 return self.color_mappings[color_name]
         
-        # Default colors based on species index
+        # Use ColorResolver for defaults if available
+        if self.color_resolver:
+            from ..core.color_resolver import ColorResolver
+            if not isinstance(self.color_resolver, ColorResolver):
+                self.color_resolver = ColorResolver()
+            defaults = self.color_resolver.get_default_species_colors(max(8, species_id + 1))
+            if species_id in defaults:
+                return defaults[species_id]
+        
+        # Fallback to hardcoded defaults
         default_colors = [
             [1.0, 0.3, 0.3, 1.0],  # Red
             [0.3, 0.3, 1.0, 1.0],  # Blue

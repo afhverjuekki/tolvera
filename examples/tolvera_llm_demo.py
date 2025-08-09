@@ -52,18 +52,21 @@ async def demo_basic_behaviors():
     tv = Tolvera(width=1920, height=1080, pn=500, sn=2)
     agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
     
-    behaviors = [
-        ("particles fall downward with gravity", 1.0),
-        ("particles drift randomly", 0.5),
-    ]
+    # Combine behaviors into a single description to avoid state conflicts
+    # combined_behavior = "two species, one blue and tangerine colored, repel one another."
+    # combined_behavior = "draw geometric triangles that overlap and fill the screen in a beautiful colorful stained glass appearance.  More overlap every few seconds."
+    combined_behavior = "one blue species moves faster during the day than at night.  The red species does the opposite"
+    # combined_behavior = "a tangerine species circles around and red rectangle that is drawn in the center of the screen"
     
-    print("\nAdding behaviors:")
-    for description, weight in behaviors:
-        try:
-            result = await agent.add_behavior(description, weight)
-            print(f"✓ {description}: {result['experts_added']} experts added")
-        except Exception as e:
-            print(f"✗ {description}: Failed - {e}")
+    print(f"\nAdding behavior: {combined_behavior}")
+    try:
+        result = await agent.add_behavior(combined_behavior, weight=1.0)
+        print(f"✓ Behavior added successfully")
+        print(f"  - Experts added: {result['experts_added']}")
+        print(f"  - Pattern detected: {result.get('pattern_type', 'particle_system')}")
+        print(f"  - States created: {result.get('states_created', 0)}")
+    except Exception as e:
+        print(f"✗ Failed to add behavior: {e}")
     
     experts = agent.get_expert_info()
     print(f"\nTotal experts: {len(experts)}")
@@ -99,33 +102,27 @@ async def demo_complex_behaviors():
     agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
     
     complex_description = """
-    Create an ecosystem where small green fish school together and swim in 
-    coordinated patterns, while larger red predator fish hunt them. The small 
-    fish should avoid predators and move as a group. Blue scavenger fish 
-    clean up after the predators.
+    Two species, one blue and one teal, are competing for food (green particles).  The blue one is quicker than the teal and runs away with the food while
+    the slower blue one always chases the teal one.  The food (green particles) disappears when consumed by either species.  Even if no food is present, the blue species will continue to move with the teal species chasing them.
+    The food regenerates over time in random places.
     """
+    # complex_description = """
+    # Species one (green) moves left continuously.  Species two (orange) moves down continously.
+    # Speices three (turquoise) moves to the upper-right continously.  Species four (pink) moves to the upper-left continuously.
+    # I want there to be 3000 pixels overall.
+    # """
     
     print(f"\nComplex behavior: {complex_description.strip()}")
     
     try:
-        result = await agent.add_complex_behavior(
-            complex_description,
-            weight=1.0,
-            decompose=True,
-            auto_embellish=True
-        )
+        # Use regular add_behavior which will detect ecosystem pattern and handle appropriately
+        result = await agent.add_behavior(complex_description, weight=1.0)
         
-        print(f"\nInterpretation: {result['interpretation']}")
-        print(f"Components: {len(result['components'])}")
-        for i, comp in enumerate(result['components']):
-            print(f"  {i+1}. {comp['description']}")
-        
-        if result['embellishments']:
-            print(f"\nEmbellishments: {len(result['embellishments'])}")
-            for emb in result['embellishments']:
-                print(f"  + {emb['description']}")
-        
-        print(f"\nTotal experts created: {result['total_experts']}")
+        print(f"\n✓ Complex behavior synthesized successfully")
+        print(f"  - Pattern detected: {result.get('pattern_type', 'unknown')}")
+        print(f"  - Pattern confidence: {result.get('pattern_confidence', 0):.2f}")
+        print(f"  - Experts added: {result.get('experts_added', 0)}")
+        print(f"  - States created: {result.get('states_created', 0)}")
         
         if agent.current_species_config:
             print("\n🐟 Detected Species Configuration:")
@@ -164,8 +161,15 @@ async def demo_drawing_behaviors():
     tv = Tolvera(width=1920, height=1080, pn=200, sn=3)
     agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
     
-    await agent.add_behavior("particles move in circular orbits", 1.0)
-    await agent.add_behavior("species 0 and species 1 attract each other", 0.5)
+    # Combine movement behaviors to avoid state conflicts
+    movement_behavior = "particles move in circular orbits and species 0 and species 1 attract each other"
+    
+    print(f"\nAdding movement behavior: {movement_behavior}")
+    try:
+        result = await agent.add_behavior(movement_behavior, 1.0)
+        print(f"✓ Movement behavior added: {result['experts_added']} experts")
+    except Exception as e:
+        print(f"✗ Failed to add movement behavior: {e}")
     
     drawing_behaviors = [
         ("draw trails behind fast-moving particles", 1.0, "pre"),
@@ -484,7 +488,7 @@ async def demo_artificial_life_patterns():
     
     print("\n🧬 Testing artificial life pattern recognition and synthesis:")
     print("\nEach description represents a classic a-life pattern without naming it.")
-    print("The system should recognize and decompose these into appropriate components.\n")
+    print("The system should recognize and synthesize these patterns correctly.\n")
     
     for idx, pattern in enumerate(alife_patterns):
         print(f"\n{idx + 1}. Testing: \"{pattern['description']}\"")
@@ -494,37 +498,27 @@ async def demo_artificial_life_patterns():
         try:
             test_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
             
-            print("   🔍 Calling add_complex_behavior with decompose=True...")
-            result = await test_agent.add_complex_behavior(
+            print("   🔍 Using add_behavior to detect and synthesize pattern...")
+            result = await test_agent.add_behavior(
                 pattern['description'],
-                weight=1.0,
-                decompose=True,
-                auto_embellish=False
+                weight=1.0
             )
             
-            print("\n   ✅ Successfully decomposed and synthesized!")
-            print(f"   Interpretation: {result.get('interpretation', 'N/A')}")
-            print(f"   Total experts created: {result.get('total_experts', 0)}")
-            
-            if 'components' in result:
-                print(f"\n   Components ({len(result['components'])}):")
-                for j, comp in enumerate(result['components']):
-                    comp_result = comp.get('result', {})
-                    experts = comp_result.get('experts_added', 0)
-                    states = comp_result.get('states_created', 0)
-                    print(f"     {j+1}. {comp['description']}")
-                    print(f"        Type: {comp.get('type', 'unknown')}")
-                    if experts > 0:
-                        print(f"        ✓ {experts} experts, {states} states")
-                    else:
-                        print("        ✗ Failed to synthesize")
+            print("\n   ✅ Successfully synthesized!")
+            print(f"   Pattern detected: {result.get('pattern_type', 'unknown')}")
+            print(f"   Pattern confidence: {result.get('pattern_confidence', 0):.2f}")
+            print(f"   Total experts created: {result.get('experts_added', 0)}")
             
             if result.get('states_created', 0) > 0:
                 print(f"\n   📊 States automatically generated: {result['states_created']}")
-                available_states = agent.state_manager.get_available_states()
+                available_states = test_agent.state_manager.get_available_states()
                 for category in ['global', 'particle', 'species']:
                     if category in available_states and available_states[category]:
                         print(f"      {category.capitalize()}: {', '.join(available_states[category])}")
+            
+            # Check for helper functions
+            if test_agent.helper_functions:
+                print(f"\n   🔧 Helper functions generated: {list(test_agent.helper_functions.keys())}")
             
         except Exception as e:
             print(f"\n   ❌ Error: {e}")
@@ -535,22 +529,22 @@ async def demo_artificial_life_patterns():
     
     combined_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
     
-    combined_patterns = [
-        "particles form groups where each one lives or dies based on how many neighbors it has",
-        "some particles leave trails that others follow to find food sources",
-        "predator particles hunt prey particles in coordinated groups"
-    ]
+    # Single combined behavior to avoid state conflicts
+    combined_pattern = """
+    particles form groups where each one lives or dies based on how many neighbors it has,
+    while some particles leave trails that others follow to find food sources,
+    and predator particles hunt prey particles in coordinated groups
+    """
     
-    print("\nAdding behaviors for combined sketch:")
-    for pattern in combined_patterns:
-        try:
-            if "trail" in pattern:
-                await combined_agent.add_complex_behavior(pattern, weight=0.8, decompose=True)
-            else:
-                await combined_agent.add_behavior(pattern, weight=1.0)
-            print(f"  ✓ Added: {pattern[:50]}...")
-        except Exception as e:
-            print(f"  ✗ Failed: {pattern[:50]}... - {e}")
+    print("\nAdding combined a-life behavior:")
+    try:
+        result = await combined_agent.add_behavior(combined_pattern, weight=1.0)
+        print(f"  ✓ Added combined behavior")
+        print(f"    - Pattern: {result.get('pattern_type', 'unknown')}")
+        print(f"    - Experts: {result.get('experts_added', 0)}")
+        print(f"    - States: {result.get('states_created', 0)}")
+    except Exception as e:
+        print(f"  ✗ Failed to add combined behavior: {e}")
     
     _, sketch_path = combined_agent.generate_sketch(
         description="Artificial life patterns demonstration",

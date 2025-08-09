@@ -34,6 +34,20 @@ from ..context.alife_patterns import (
     MORPHOGENETIC_PATTERNS,
     SWARM_INTELLIGENCE
 )
+try:
+    from ..context.initialization_patterns import INITIALIZATION_PATTERNS, SPECIES_INITIALIZATION_PATTERNS
+    from ..context.temporal_patterns_extended import TEMPORAL_UPDATE_PATTERNS, TEMPORAL_CONFIGURATION_PATTERNS
+except ImportError:
+    INITIALIZATION_PATTERNS = ""
+    SPECIES_INITIALIZATION_PATTERNS = ""
+    TEMPORAL_UPDATE_PATTERNS = ""
+    TEMPORAL_CONFIGURATION_PATTERNS = ""
+
+try:
+    from ..context.temporal_dynamics import TEMPORAL_DYNAMICS_PATTERNS, TEMPORAL_UPDATE_EXAMPLES
+except ImportError:
+    TEMPORAL_DYNAMICS_PATTERNS = ""
+    TEMPORAL_UPDATE_EXAMPLES = ""
 
 
 class ContextAwarePromptBuilder:
@@ -48,6 +62,13 @@ class ContextAwarePromptBuilder:
             'state_access': STATE_ACCESS_PATTERNS,
             'boundaries': BOUNDARY_HANDLING,
             'movement': MOVEMENT_PATTERNS,
+            'initialization': INITIALIZATION_PATTERNS,
+            'species_initialization': SPECIES_INITIALIZATION_PATTERNS,
+            'temporal_updates': TEMPORAL_UPDATE_PATTERNS,
+            'temporal_dynamics': TEMPORAL_DYNAMICS_PATTERNS,  # New comprehensive temporal patterns
+            'temporal_examples': TEMPORAL_UPDATE_EXAMPLES,    # New temporal examples
+            'temporal_patterns_extended': TEMPORAL_UPDATE_PATTERNS,  # Extended patterns
+            'configuration': TEMPORAL_CONFIGURATION_PATTERNS,
             'flocking': FLOCKING_PATTERNS,
             'interaction': INTERACTION_PATTERNS,
             'temporal': TEMPORAL_PATTERNS,
@@ -72,13 +93,26 @@ class ContextAwarePromptBuilder:
         description: str,
         available_states: Dict[str, List[str]],
         include_contexts: Optional[List[str]] = None,
-        constrained: bool = True
+        constrained: bool = True,
+        context: Optional[Dict] = None
     ) -> str:
         """Build comprehensive prompt for expert synthesis"""
         
         # Auto-detect relevant contexts
         if include_contexts is None:
             include_contexts = self._detect_relevant_contexts(description)
+        
+        # Add pattern-specific contexts if provided
+        if context and context.get('pattern_type'):
+            pattern_type = context['pattern_type']
+            if pattern_type == 'cellular_automaton':
+                include_contexts.extend(['cellular', 'temporal'])
+            elif pattern_type == 'physarum':
+                include_contexts.extend(['movement', 'alife_patterns'])
+            elif pattern_type == 'ecosystem':
+                include_contexts.extend(['ecosystem', 'species_interactions'])
+            elif pattern_type == 'swarm':
+                include_contexts.extend(['swarm', 'flocking'])
         
         # Always include core contexts
         include_contexts = ['core_api', 'taichi', 'taichi_fundamentals'] + include_contexts
@@ -122,6 +156,13 @@ class ContextAwarePromptBuilder:
 - Force scaling: Use larger values (200-1000) for visible motion
 - ALWAYS use @ti.func decorator (NOT @ti.kernel) for expert functions
 
+## IMPORTANT EXPERT SYNTHESIS RULES:
+1. DO NOT generate experts for species initialization or configuration - this is handled elsewhere
+2. DO NOT generate experts that just set particle properties without returning forces
+3. FOCUS on behavior experts that return actual force vectors
+4. Each expert should have ONE clear behavioral purpose
+5. Avoid creating multiple experts that do the same thing
+
 ## FORCE BALANCING GUIDELINES:
 Force magnitudes should create emergent behaviors without being overpowering:
 - **Gravity**: Use strength 300-800, apply as negative Y: ti.math.vec2(0.0, -gravity_strength * mass)
@@ -142,58 +183,317 @@ Detection ranges for interactions:
 - **Separation bubble**: 20-40 units
 - **Long-range attraction**: 300-500 units
 
-## TAICHI VARIABLE DECLARATION (CRITICAL):
+## CRITICAL TAICHI SYNTAX (MUST FOLLOW TO AVOID CRASHES):
+
+### VECTOR OPERATIONS - USE CORRECT METHODS:
+❌ WRONG - These will crash with AttributeError:
+```python
+dist = diff.norm()  # ERROR if diff is not ti.math.vec2
+dir = diff.normalized()  # ERROR: no normalized() method
+vec = ti.Vector([x, y]).norm()  # ERROR on ti.Vector
+```
+
+✅ CORRECT - Use these patterns:
+```python
+# For ti.math.vec2 (PREFERRED):
+force = ti.math.vec2(0.0, 0.0)
+diff = p2.pos - p1.pos  # Assuming pos is ti.math.vec2
+dist = diff.norm()  # Works for ti.math.vec2
+
+# For normalization:
+if dist > 0.001:
+    direction = diff / dist  # Manual normalize
+# OR use ti.math functions:
+direction = ti.math.normalize(diff)
+length = ti.math.length(diff)
+
+# For ti.Vector (older style):
+vec = ti.Vector([x, y])
+dist = ti.sqrt(vec[0]**2 + vec[1]**2)  # Manual magnitude
+```
+
+### TAICHI VARIABLE DECLARATION (CRITICAL - CAUSES "NAME NOT DEFINED" ERRORS):
 ALL variables MUST be declared before conditional branches:
-❌ WRONG:
+
+❌ WRONG - Variable declared inside nested conditionals:
+```python
+if neighbor_count > 0:
+    avg_velocity /= neighbor_count
+    if avg_velocity.norm() > 0.001:
+        desired_velocity = (avg_velocity / avg_velocity.norm()) * speed  # Declared here
+    else:
+        desired_velocity = vel  # Also declared here
+    force = desired_velocity - vel  # ERROR: desired_velocity may not be defined!
+```
+
+✅ CORRECT - Declare BEFORE any conditionals:
+```python
+if neighbor_count > 0:
+    avg_velocity /= neighbor_count
+    desired_velocity = vel  # DECLARE with default value FIRST
+    if avg_velocity.norm() > 0.001:
+        desired_velocity = (avg_velocity / avg_velocity.norm()) * speed  # MODIFY
+    force = desired_velocity - vel  # OK: always defined
+```
+
+❌ WRONG - Simple case:
+```python
 if species == 0:
     strength = 150.0
 else:
     strength = 50.0
 return strength * vec  # ERROR!
+```
 
-✅ CORRECT:
-strength = 50.0  # Default value
+✅ CORRECT - Simple case:
+```python
+strength = 50.0  # Default value FIRST
 if species == 0:
-    strength = 150.0
-return strength * vec  # OK!
+    strength = 150.0  # Modify if needed
+return strength * vec  # OK!```
 
-## TAICHI RETURN STATEMENTS (CRITICAL - THIS WILL CRASH IF WRONG):
+## MATH FUNCTIONS - USE TAICHI VERSIONS:
+❌ WRONG - Python math module doesn't work in Taichi:
+```python
+import math
+angle = math.sin(t)  # ERROR in Taichi scope
+dist = math.sqrt(x*x + y*y)  # ERROR
+```
+
+✅ CORRECT - Use ti.* math functions:
+```python
+angle = ti.sin(t)
+dist = ti.sqrt(x*x + y*y)
+cos_val = ti.cos(angle)
+abs_val = ti.abs(x)
+max_val = ti.max(a, b)
+min_val = ti.min(a, b)
+random_val = ti.random()  # NOT random.random()
+```
+
+## PARTICLE INDEX PARAMETER (CRITICAL - COMMON ERROR):
+When iterating through particles, you MUST use the `particle_idx` parameter passed to your function, NOT an undefined variable 'i'.
+
+### ❌ WRONG - Undefined 'i' Error:
+```python
+@ti.func
+def expert_function(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    for j in range(tv.pn):
+        if i != j:  # ERROR: name 'i' is not defined!
+            # ... rest of code
+```
+
+### ✅ CORRECT - Use particle_idx parameter:
+```python
+@ti.func
+def expert_function(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    for j in range(tv.pn):
+        if particle_idx != j:  # CORRECT: use the parameter passed to the function
+            # ... rest of code
+```
+
+The `particle_idx` parameter is the index of the current particle being processed. Always use this parameter when you need to:
+- Skip self in loops: `if particle_idx != j:`
+- Access current particle's custom states: `tv.s.llm_particle.field[particle_idx].some_state`
+- Create particle-specific randomness: `angle = (ti.random() + particle_idx * 0.1) * 2 * 3.14159`
+
+## TEMPORAL STATE UPDATES (FOR TIME-BASED BEHAVIORS):
+When implementing behaviors that change over time:
+
+### State Access Pattern:
+```python
+# Access temporal states via llm_particle/llm_global containers
+energy = tv.s.llm_particle.field[i].energy
+phase = tv.s.llm_particle.field[i].phase
+day_phase = tv.s.llm_global.field[0].day_phase
+```
+
+### Update Rates Based on Description:
+- "slowly" → multiply by 0.999 or add/subtract 0.001
+- "gradually" → multiply by 0.99 or add/subtract 0.01  
+- "quickly" → multiply by 0.95 or add/subtract 0.05
+- "rapidly" → multiply by 0.9 or add/subtract 0.1
+
+### Behavioral Coupling:
+```python
+# Low energy affects movement
+if energy < 20.0:
+    vel *= 0.8  # Tired particles move slower
+    
+# Age affects behavior
+if age > lifecycle_midpoint:
+    size = base_size * (1.0 - (age - lifecycle_midpoint) / lifecycle_midpoint)
+```
+
+## TAICHI RETURN STATEMENTS (CRITICAL - #1 CAUSE OF CRASHES):
 NEVER use return inside if/for/while blocks - Taichi will crash with "Return inside non-static if"!
 
-❌ WRONG - THIS EXACT PATTERN CAUSES CRASHES:
-if species != 1:
-    return ti.math.vec2(0.0, 0.0)  # CRASH: "Return inside non-static if"
+### ❌ WRONG PATTERNS THAT CRASH:
+```python
+# CRASH EXAMPLE 1: Early return for species check
+@ti.func
+def predator_hunt(...) -> ti.math.vec2:
+    if species != 0:  # Not a predator
+        return ti.math.vec2(0.0, 0.0)  # CRASH!
+    # Rest of code...
 
-❌ ALSO WRONG:
-if species == 0:
-    return ti.math.vec2(0.0, 0.0)  # CRASH!
-else:
-    return normal_force  # CRASH!
+# CRASH EXAMPLE 2: Return in species branch
+@ti.func
+def species_force(...) -> ti.math.vec2:
+    if species == 0:
+        return predator_force()  # CRASH!
+    elif species == 1:
+        return prey_force()  # CRASH!
+        
+# CRASH EXAMPLE 3: Early exit when no target found
+@ti.func
+def chase_behavior(...) -> ti.math.vec2:
+    target = find_target()
+    if target < 0:
+        return ti.math.vec2(0.0, 0.0)  # CRASH!
+```
 
-✅ CORRECT - ALWAYS USE THIS PATTERN:
-# 1. Declare result variable BEFORE any conditionals
-result = ti.math.vec2(0.0, 0.0)  # Default value
-
-# 2. Set result inside conditionals (no return!)
-if species == 1:
-    # Do calculations here
-    result = calculated_force
+### ✅ CORRECT PATTERNS - USE THESE:
+```python
+# CORRECT EXAMPLE 1: Predator that only hunts certain species
+@ti.func
+def predator_hunt(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # STEP 1: Always declare result variable FIRST
+    force = ti.math.vec2(0.0, 0.0)  # Default: no hunting
     
-# 3. Single return at the END of function
-return result
+    # STEP 2: Modify result in conditionals (NO RETURN!)
+    if species == 0:  # Only species 0 are predators
+        hunt_radius = 150.0
+        nearest_prey = -1
+        min_dist = hunt_radius
+        
+        # Find nearest prey (NOTE: no need to check j != particle_idx here since different species)
+        for j in range(tv.pn):
+            if tv.p.field[j].species == 1 and tv.p.field[j].active > 0:
+                dist = (tv.p.field[j].pos - pos).norm()
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_prey = j
+        
+        # Apply force if prey found
+        if nearest_prey >= 0:
+            prey_pos = tv.p.field[nearest_prey].pos
+            to_prey = prey_pos - pos
+            dist_to_prey = to_prey.norm()
+            if dist_to_prey > 0.001:
+                direction = to_prey / dist_to_prey  # Manual normalize
+                force = direction * 350.0  # SET force, don't return!
+    
+    # STEP 3: SINGLE return at END
+    return force
 
-✅ ANOTHER CORRECT EXAMPLE:
-force = ti.math.vec2(0.0, 0.0)  # Always declare first
-if species == 0:  # Predator
-    # Calculate predator behavior
-    force = chase_force
-elif species == 1:  # Prey
-    # Calculate prey behavior
-    force = flee_force
-# Single return at end
-return force
+# CORRECT EXAMPLE 2: Flocking behavior - MUST use particle_idx to skip self
+@ti.func
+def flocking_cohesion(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Calculate center of nearby same-species particles
+    center = ti.math.vec2(0.0, 0.0)
+    neighbor_count = 0
+    perception_radius = 80.0
+    
+    for j in range(tv.pn):
+        if particle_idx != j:  # CRITICAL: Skip self using particle_idx parameter!
+            other = tv.p.field[j]
+            if other.species == species and other.active > 0:
+                diff = other.pos - pos
+                if diff.norm() < perception_radius:
+                    center += other.pos
+                    neighbor_count += 1
+    
+    # Calculate cohesion force
+    force = ti.math.vec2(0.0, 0.0)
+    if neighbor_count > 0:
+        center /= neighbor_count
+        to_center = center - pos
+        force = to_center * 0.1  # Gentle cohesion
+    
+    return force
 
-REMEMBER: Every expert function MUST follow this pattern or it will crash!""")
+# CORRECT EXAMPLE 3: Multi-species with different behaviors
+@ti.func
+def species_behavior(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Declare result first
+    result = ti.math.vec2(0.0, 0.0)
+    
+    # Use if/elif to SET result, never return inside
+    if species == 0:  # Predators
+        # Hunt logic
+        for j in range(tv.pn):
+            if tv.p.field[j].species != species:
+                diff = tv.p.field[j].pos - pos
+                dist = diff.norm()
+                if dist < 100.0 and dist > 0.001:
+                    result = (diff / dist) * 300.0  # Manual normalize
+                    break
+    elif species == 1:  # Prey
+        # Flee logic
+        for j in range(tv.pn):
+            if tv.p.field[j].species == 0:
+                diff = pos - tv.p.field[j].pos
+                dist = diff.norm()
+                if dist < 150.0 and dist > 0.001:
+                    result = (diff / dist) * 400.0  # Manual normalize
+                    break
+    elif species == 2:  # Neutral
+        # Wander randomly
+        t = ti.cast(tv.ctx.i[None], ti.f32) * 0.01
+        result = ti.math.vec2(ti.sin(t + particle_idx), ti.cos(t + particle_idx)) * 50.0
+    
+    # Only ONE return at the very end
+    return result
+```
+
+GOLDEN RULE: Declare your result variable FIRST, modify it in branches, return ONCE at the END!
+
+## NOTE ON IMPLEMENTATION APPROACH:
+The examples above show FROM-SCRATCH implementations using Taichi and Tölvera's state system.
+These demonstrate how to build behaviors at the lowest level for maximum control and customization.
+While Tölvera provides vera behaviors (tv.v.flock, tv.v.slime, etc.) that handle common patterns,
+creating custom experts allows you to:
+- Implement unique physics and interactions
+- Fine-tune specific parameters and forces
+- Combine behaviors in novel ways
+- Access and modify particle states directly
+- Create behaviors not covered by the vera library
+
+## TOROIDAL WRAPPING (RECOMMENDED FOR ECOSYSTEMS):
+For ecosystem simulations, use wrap-aware distance calculations to prevent boundary issues:
+
+```python
+@ti.func
+def wrap_distance(pos1: ti.math.vec2, pos2: ti.math.vec2) -> ti.math.vec2:
+    \"\"\"Calculate wrapped distance between two positions for toroidal topology.\"\"\"
+    diff = pos2 - pos1
+    
+    # Wrap X
+    if ti.abs(diff.x) > tv.x * 0.5:
+        if diff.x > 0:
+            diff.x -= tv.x
+        else:
+            diff.x += tv.x
+    
+    # Wrap Y
+    if ti.abs(diff.y) > tv.y * 0.5:
+        if diff.y > 0:
+            diff.y -= tv.y
+        else:
+            diff.y += tv.y
+    
+    return diff
+```
+
+Use this in your experts:
+```python
+# Instead of: diff = target_pos - pos
+diff = wrap_distance(pos, target_pos)
+dist = diff.norm()
+if dist > 0.001:
+    direction = diff / dist
+```""")
         
         # Add species detection hint
         prompt_sections.append(
@@ -369,8 +669,16 @@ Common state types with PROPER RANGES:
             contexts.append('interaction')  # Species often involve interactions
         
         # Temporal behaviors
-        if any(word in desc_lower for word in ['day', 'night', 'time', 'energy', 'tired', 'phase', 'cycle', 'periodic', 'rhythm']):
+        temporal_keywords = [
+            'day', 'night', 'time', 'energy', 'tired', 'phase', 'cycle', 'periodic', 'rhythm',
+            'over time', 'gradually', 'slowly', 'depletes', 'regenerates', 'ages', 'grows',
+            'exhausted', 'hungry', 'loses energy', 'gains energy', 'weakens', 'strengthens',
+            'decays', 'fades', 'oscillate', 'pulse', 'life cycle', 'generations'
+        ]
+        if any(keyword in desc_lower for keyword in temporal_keywords):
             contexts.append('temporal')
+            contexts.append('temporal_dynamics')  # Include comprehensive temporal patterns
+            contexts.append('temporal_examples')  # Include temporal examples
         
         # Cellular automata
         if any(word in desc_lower for word in ['cellular', 'automaton', 'automata', 'game of life', 'conway', 'grid', 'cells', 'neighbors']):

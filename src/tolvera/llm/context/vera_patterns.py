@@ -1,6 +1,38 @@
 SPECIES_INTERACTION_PATTERNS = """
 ## CRITICAL: Proper Species Interaction Implementation
 
+### FUNDAMENTAL PRINCIPLE: Force → Velocity → Position Chain
+The Tölvera particle system follows this flow:
+1. **Experts return FORCE vectors** (ti.math.vec2)
+2. **Forces are applied to particle velocity**: `vel += force * dt`
+3. **Position updates use velocity AND speed**: `pos += vel * speed * dt`
+
+The `speed` attribute (lines 221-224 in particles.py) is CRITICAL:
+- Each particle has individual `speed` attribute (randomized 0.1-1.0)
+- Position updates: `vel * speed` determines actual movement
+- `limit_speed()` constrains velocity magnitude based on species speed
+
+### CORRECT Expert Function Pattern:
+```python
+@ti.func
+def expert_name(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # 1. Declare force variable FIRST
+    force = ti.math.vec2(0.0, 0.0)
+    
+    # 2. Calculate desired force (NOT velocity!)
+    if species == 0:  # Predator
+        # Find target and calculate FORCE toward it
+        target_force = calculate_chase_force(pos, vel, mass)
+        force = target_force
+    elif species == 1:  # Prey
+        # Calculate FORCE away from threat
+        escape_force = calculate_flee_force(pos, vel, mass)
+        force = escape_force
+    
+    # 3. Return force - integration kernel handles vel and pos updates
+    return force
+```
+
 ### 1. Spatial Awareness Pattern (from Flock.py)
 Both species in an interaction should actively scan their environment:
 ```python
@@ -23,27 +55,58 @@ Use different detection radii for different behaviors:
 - Flocking perception: 50-100 units (close neighbors)
 - Separation radius: 20-40 units (personal space)
 
-### 3. Force Balancing Guidelines
-Proper force magnitudes create emergent behavior:
-- Chase forces: 400-600 (strong but catchable)
-- Flee forces: 300-500 (slightly weaker for drama)
-- Flocking forces: 50-200 (gentle influences)
-- Separation forces: 100-300 (avoid collisions)
-- Random movement: 20-100 (idle behavior)
+### 3. Force Magnitude Guidelines (Working with Speed System)
+Forces interact with particle `speed` attribute in position updates:
+
+**Understanding the Chain**: 
+- Expert returns force → `vel += force * dt` → `pos += vel * speed * dt`
+- Higher `speed` = more movement per unit velocity
+- Forces should be scaled appropriately for the speed range (0.1-1.0)
+
+**Recommended Force Magnitudes**:
+- **Chase forces**: 300-500 (predators catch prey but not instantly)
+- **Flee forces**: 400-600 (prey escapes but creates chase dynamic)  
+- **Flocking cohesion**: 50-150 (gentle group attraction)
+- **Flocking separation**: 200-400 (avoid collisions effectively)
+- **Random wander**: 30-100 (subtle idle movement)
+- **Gravity**: 100-300 (constant downward force)
+- **Attraction to point**: 150-300 (pulls particles toward target)
+
+**Force-Speed Interaction Example**:
+```python
+# Slow particles (speed=0.2) with force=300: movement = vel * 0.2 * dt
+# Fast particles (speed=0.8) with force=300: movement = vel * 0.8 * dt
+# Same force, different actual speeds due to particle speed attribute
+```
 
 ### 4. Direction Calculation Patterns
 ```python
 # Chase: Move TOWARD target
 direction_to_target = target_pos - my_pos
-chase_force = direction_to_target.normalized() * strength
+dist_to_target = direction_to_target.norm()
+if dist_to_target > 0.001:
+    chase_force = (direction_to_target / dist_to_target) * strength
+else:
+    chase_force = ti.math.vec2(0.0, 0.0)
 
 # Flee: Move AWAY from threat  
 direction_from_threat = my_pos - threat_pos
-flee_force = direction_from_threat.normalized() * strength
+dist_from_threat = direction_from_threat.norm()
+if dist_from_threat > 0.001:
+    flee_force = (direction_from_threat / dist_from_threat) * strength
+else:
+    flee_force = ti.math.vec2(0.0, 0.0)
 
 # Add randomness for natural movement
 random_offset = ti.math.vec2(ti.random() - 0.5, ti.random() - 0.5) * 0.3
-escape_direction = (direction_from_threat.normalized() + random_offset).normalized()
+if dist_from_threat > 0.001:
+    normalized_threat = direction_from_threat / dist_from_threat
+    escape_direction = normalized_threat + random_offset
+    escape_norm = escape_direction.norm()
+    if escape_norm > 0.001:
+        escape_direction = escape_direction / escape_norm
+else:
+    escape_direction = random_offset
 ```
 
 ### 5. Idle Behavior
@@ -92,6 +155,59 @@ for j in range(tv.pn):
 if nearby_count > 0:
     force = base_force / ti.sqrt(nearby_count + 1.0)
 ```
+
+### 9. VERA FORCE API COMPATIBILITY
+Our experts must be compatible with Tölvera's underlying force system:
+
+**From vera/forces.py - Key Patterns:**
+```python
+# attract_particle() pattern - returns velocity change
+@ti.func
+def attract_particle(p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f32) -> ti.math.vec2:
+    target_distance = (pos - p.pos).norm()
+    vel = ti.Vector([0.0, 0.0])
+    if target_distance < radius:
+        factor = (radius - target_distance) / radius
+        vel = (pos - p.pos).normalized() * mass * factor
+    return vel
+```
+
+**Our Expert Functions Should Follow Similar Patterns:**
+```python
+@ti.func
+def expert_chase(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    
+    if species == 0:  # Predator chases
+        nearest_prey_pos = ti.math.vec2(0.0, 0.0)
+        min_dist = 1000.0
+        found_prey = False
+        
+        # Scan for prey (similar to vera pattern)
+        for j in range(tv.pn):
+            if tv.p.field[j].species == 1 and tv.p.field[j].active > 0.0:
+                dist = (tv.p.field[j].pos - pos).norm()
+                if dist < 300.0 and dist < min_dist:  # Detection radius
+                    min_dist = dist
+                    nearest_prey_pos = tv.p.field[j].pos
+                    found_prey = True
+        
+        # Apply chase force (similar to vera attract)
+        if found_prey and min_dist > 0.001:
+            direction = (nearest_prey_pos - pos) / min_dist  # normalized
+            # Scale by distance like vera forces
+            factor = 1.0 if min_dist < 50.0 else (300.0 - min_dist) / 250.0
+            force = direction * 400.0 * factor
+    
+    return force
+```
+
+**Key Vera-Compatible Principles:**
+- Always check `.active > 0.0` before processing particles
+- Use `.norm()` for distances, manual normalization for directions
+- Apply distance-based scaling factors
+- Return force vectors that work with speed system
+- Follow vera's radius-based interaction patterns
 """
 
 VERA_PATTERNS = """
@@ -199,34 +315,30 @@ def process_neighbors(i: ti.i32, pos: ti.math.vec2):
                     coh_sum += other.pos
                     coh_count += 1
 
-## Force Patterns
-From vera/forces.py - common force calculations:
+## Using IML (Interactive Machine Learning)
+Pattern from states_from_vec.py:
 
-### Gravitational Attraction
-@ti.func
-def gravity_force(p1: ti.template(), p2: ti.template()) -> ti.math.vec2:
-    diff = p2.pos - p1.pos
-    dist_sq = diff.dot(diff)
-    if dist_sq > 1.0:  # Avoid singularity
-        force_mag = G * p1.mass * p2.mass / dist_sq
-        return diff.normalized() * force_mag
-    return ti.math.vec2(0.0, 0.0)
+```python
+# Map particle positions to behavior parameters
+states = ['species', 'flock_s']
+def states_from_vec(vec: list):
+    tv.s.from_vec(states, vec)
 
-### Spring Force
-@ti.func
-def spring_force(p1_pos: ti.math.vec2, p2_pos: ti.math.vec2, 
-                 rest_length: ti.f32, k: ti.f32) -> ti.math.vec2:
-    diff = p2_pos - p1_pos
-    dist = diff.norm()
-    if dist > 0.01:
-        displacement = dist - rest_length
-        return diff.normalized() * (k * displacement)
-    return ti.math.vec2(0.0, 0.0)
+tv.iml.particles_pos2states = {
+    'size': ((tv.pn, 2), tv.s.get_size(states)),
+    'io': (tv.p.get_pos_all_2d, states_from_vec),
+    'randomise': True,
+}
 
-### Damping Force
-@ti.func
-def damping_force(vel: ti.math.vec2, damping_coeff: ti.f32) -> ti.math.vec2:
-    return -vel * damping_coeff
+# Or map flock parameters dynamically
+tv.iml.flock_p2flock_s = {
+    'type': 'fun2fun',
+    'size': (tv.s.flock_p.size, tv.s.flock_s.size),
+    'io': (tv.s.flock_p.to_vec, tv.s.flock_s.from_vec),
+    'randomise': True,
+    'update_rate': tv.ti.fps,
+}
+```
 
 ## State Initialization Pattern
 From iil-examples - flexible state initialization:

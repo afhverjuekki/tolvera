@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from .synthesizer import Synthesizer
 from .state_manager import StateManager
 from .decomposer import BehaviorDecomposer
+from .behavior_requirements import BehaviorRequirementsAnalyzer, BehaviorRequirements
 from ..debug.tracing import get_collector
 from ..generation.kernel import IntegrationKernelGenerator
 from ..generation.sketch import SketchGenerator
@@ -22,6 +23,7 @@ class ExpertInfo:
     expert_type: str  # 'single', 'interaction', 'drawing', 'drawing_interaction'
     code: str
     draw_order: Optional[str] = None  # 'pre' or 'post' for drawing experts
+    applies_to_species: Optional[List[int]] = None  # Species IDs this expert applies to
 
 
 class BehaviorAgent:
@@ -56,6 +58,7 @@ class BehaviorAgent:
         self.synthesizer = Synthesizer(model_name, tolvera_instance, api_key)
         self.state_manager = StateManager(tolvera_instance)
         self.species_manager = SpeciesManager(tolvera_instance)
+        self.requirements_analyzer = BehaviorRequirementsAnalyzer()
         
         from .prompts import ContextAwarePromptBuilder
         prompt_builder = ContextAwarePromptBuilder()
@@ -68,9 +71,320 @@ class BehaviorAgent:
         self.expert_weights: Dict[str, float] = {}
         
         self.current_species_config = None
+        self.detected_particle_count: Optional[int] = None  # Store particle count from decomposer
         
         self.temporal_updates: List[Any] = []
         
+        # Track behavior requirements for holistic synthesis
+        self.current_behavior_requirements: Optional[BehaviorRequirements] = None
+        self.synthesized_helpers: Dict[str, str] = {}  # Helper functions synthesized by experts
+        
+        # Track synthesized components (from new LLM synthesis)
+        self.synthesized_initialization = None
+        self.synthesized_temporal_update = None
+        self.synthesized_configuration = None
+        
+    async def synthesize_complete_behavior(self, description: str, weight: float = 1.0, decomposition=None) -> Dict[str, Any]:
+        """
+        Holistic synthesis method that analyzes requirements upfront and synthesizes with shared context.
+        
+        Args:
+            description: Natural language behavior description
+            weight: Weight for this behavior
+            decomposition: Optional pre-computed decomposition to avoid double decomposition
+            
+        Returns:
+            Dictionary with synthesis results
+        """
+        collector = get_collector()
+        
+        with collector.trace_node("synthesize_complete_behavior", "synthesis", description=description) as node:
+            logger.info(f"Starting holistic synthesis for: {description}")
+            
+            # 1. Use provided decomposition or decompose if not provided
+            decomposed = decomposition
+            if decomposed is None and self.decomposer:
+                try:
+                    decomposed = await self.decomposer.decompose(description)
+                    logger.info(f"Decomposed behavior: components={len(decomposed.components)}")
+                    
+                    # Extract particle count if detected
+                    if decomposed and hasattr(decomposed, 'particle_count') and decomposed.particle_count:
+                        self.detected_particle_count = decomposed.particle_count
+                        logger.info(f"Detected particle count: {self.detected_particle_count}")
+                    
+                    # Extract species configuration from decomposition
+                    if decomposed and hasattr(decomposed, 'species_info') and decomposed.species_info:
+                        from .models import SpeciesConfiguration
+                        from .color_resolver import ColorResolver
+                        species_info = decomposed.species_info
+                        
+                        # Resolve color descriptions to RGBA values
+                        resolved_colors = {}
+                        if species_info.species_color_descriptions:
+                            # Pass the synthesizer's model to ColorResolver for LLM color resolution
+                            color_resolver = ColorResolver(llm_client=self.synthesizer.model)
+                            # Now it's a list of SpeciesColor objects
+                            for color_mapping in species_info.species_color_descriptions:
+                                species_id = color_mapping.species_id
+                                color_desc = color_mapping.color_description
+                                try:
+                                    # Use async color resolution if available
+                                    resolved_colors[species_id] = await color_resolver.resolve_color_name(color_desc)
+                                    logger.info(f"Resolved color '{color_desc}' for species {species_id}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to resolve color '{color_desc}': {e}")
+                                    # Use fallback colors
+                                    resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
+                        elif species_info.species_colors:
+                            # Use directly provided RGBA colors if available
+                            resolved_colors = species_info.species_colors
+                        else:
+                            # Generate default colors
+                            color_resolver = ColorResolver()
+                            resolved_colors = color_resolver.get_default_species_colors(species_info.total_count)
+                        
+                        # Convert species names from list to dict
+                        species_names_dict = {}
+                        if species_info.species_names:
+                            for item in species_info.species_names:
+                                species_names_dict[item.species_id] = item.name
+
+                        # Convert to SpeciesConfiguration format
+                        self.current_species_config = SpeciesConfiguration(
+                            species_ids=list(range(species_info.total_count)),
+                            species_names=species_names_dict,
+                            interaction_pairs=species_info.interaction_pairs or [],
+                            species_behaviors=None,
+                            requires_all_species=False,
+                            colors=resolved_colors
+                        )
+                        logger.info(f"Extracted species config from decomposition: {species_info.total_count} species")
+                except Exception as e:
+                    logger.warning(f"Decomposition failed: {e}")
+                    decomposed = None
+            
+            # 2. Check for pure drawing behavior from decomposition
+            # NOTE: We should NOT bypass synthesis for pure drawing - we still need to create proper experts
+            # Pure drawing behaviors should still generate @ti.func experts that return zero force
+            if decomposed and hasattr(decomposed, 'behavior_category') and decomposed.behavior_category == 'pure_drawing':
+                logger.info("Detected pure drawing behavior - will synthesize drawing expert with zero force")
+            
+            # 3. Check for uniform speed specification from decomposition
+            if decomposed and hasattr(decomposed, 'speed_spec'):
+                self.current_speed_spec = decomposed.speed_spec
+                logger.info(f"Detected speed specification: uniform={decomposed.speed_spec.uniform}, magnitude={decomposed.speed_spec.magnitude}")
+            
+            # 4. Analyze requirements with decomposition info
+            if decomposed:
+                self.current_behavior_requirements = self.requirements_analyzer.analyze(description, decomposed)
+            else:
+                self.current_behavior_requirements = self.requirements_analyzer.analyze(description)
+            logger.info(f"Pattern detected: {self.current_behavior_requirements.pattern_type}")
+            
+            # 3. Create ALL states upfront
+            if self.current_behavior_requirements.state_requirements:
+                all_states_specs = []
+                temporal_count = 0
+                
+                for state_req in self.current_behavior_requirements.state_requirements:
+                    # Create state spec
+                    spec = {state_req.category: {state_req.name: state_req}}
+                    all_states_specs.append(spec)
+                    
+                    # Register temporal update if present
+                    if hasattr(state_req, 'temporal_update') and state_req.temporal_update:
+                        self.state_manager.register_temporal_update(
+                            state_req.category,
+                            state_req.name,
+                            state_req.temporal_update
+                        )
+                        temporal_count += 1
+                        logger.info(f"Registered temporal update for {state_req.category}.{state_req.name}")
+                
+                # Use the new collect_and_create_states method
+                self.state_manager.collect_and_create_states(all_states_specs)
+                logger.info(f"Created {len(self.current_behavior_requirements.state_requirements)} states upfront")
+                if temporal_count > 0:
+                    logger.info(f"Registered {temporal_count} temporal updates")
+            
+            # 4. Helper functions will be synthesized by experts as needed
+            # No pre-generated templates - each expert creates what it needs
+            
+            # 5. Build shared context for synthesis
+            shared_context = {
+                "behavior_requirements": self.current_behavior_requirements,
+                "available_states": self.state_manager.get_available_states(),
+                "synthesized_helpers": self.synthesized_helpers.copy(),  # Pass already synthesized helpers
+                "existing_experts": [e.name for e in self.experts],
+                "pattern_type": self.current_behavior_requirements.pattern_type,
+                "pattern_confidence": self.current_behavior_requirements.pattern_confidence,
+                "shared_parameters": self.current_behavior_requirements.shared_parameters,
+                "constraints": self.current_behavior_requirements.constraints,
+                "pixel_field": self.current_behavior_requirements.pixel_field,
+                "temporal": self.current_behavior_requirements.temporal,
+                "states_already_created": True  # Signal states are created upfront
+            }
+            
+            # 6. Synthesize ALL components from decomposer
+            if decomposed and decomposed.components:
+                logger.info(f"Processing behavior with {len(decomposed.components)} component(s)")
+                
+                # Synthesize each component with shared context
+                components_results = []
+                for component in decomposed.components:
+                    comp_result = await self._synthesize_component_with_context(
+                        component, weight, shared_context
+                    )
+                    if comp_result is None:
+                        logger.error(f"Component synthesis returned None for: {component.expert_name}")
+                        comp_result = {
+                            'success': False,
+                            'experts_added': 0,
+                            'expert_names': [],
+                            'states_created': 0
+                        }
+                    components_results.append({
+                        'expert_name': component.expert_name,
+                        'description': component.description,
+                        'result': comp_result
+                    })
+                
+                # Safely calculate total experts, handling None results
+                total_experts = 0
+                for r in components_results:
+                    if r.get('result') and isinstance(r['result'], dict):
+                        total_experts += r['result'].get('experts_added', 0)
+                
+                # Generate temporal kernel if needed
+                if self.current_behavior_requirements.temporal:
+                    # First try to use StateManager's temporal updates
+                    temporal_kernel_code = self.state_manager.generate_temporal_update_kernel()
+                    if not temporal_kernel_code:
+                        # Fallback to template-based generation
+                        temporal_kernel_code = self._generate_temporal_update_kernel()
+                    if temporal_kernel_code:
+                        self.temporal_kernel = temporal_kernel_code
+                        logger.info("Generated temporal update kernel")
+                
+                # Generate pixel kernels if needed
+                if self.current_behavior_requirements.pixel_field:
+                    pixel_kernels = self._generate_pixel_kernels(self.current_behavior_requirements.pixel_field)
+                    if pixel_kernels:
+                        self.pixel_kernels = pixel_kernels
+                        logger.info(f"Generated {len(pixel_kernels)} pixel kernels")
+                
+                return {
+                    'success': True,
+                    'pattern_type': self.current_behavior_requirements.pattern_type if self.current_behavior_requirements else 'unknown',
+                    'experts_added': total_experts,
+                    'components': components_results,
+                    'states_created': len(self.current_behavior_requirements.state_requirements) if self.current_behavior_requirements and self.current_behavior_requirements.state_requirements else 0,
+                    'helpers_synthesized': len(self.synthesized_helpers),
+                    'requirements': self.current_behavior_requirements,
+                    'expert_names': [c['expert_name'] for c in components_results]
+                }
+            else:
+                # This should never happen since decomposer always returns at least 1 component
+                logger.error(f"Decomposer returned no components for: {description}")
+                return {
+                    'success': False,
+                    'pattern_type': 'unknown',
+                    'experts_added': 0,
+                    'expert_names': [],
+                    'states_created': 0,
+                    'helpers_synthesized': 0,
+                    'requirements': self.current_behavior_requirements
+                }
+    
+    async def _synthesize_component_with_context(
+        self, 
+        component: Any, 
+        weight: float,
+        shared_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Synthesize a component with shared context."""
+        # Add component-specific context
+        synthesis_context = dict(shared_context)
+        synthesis_context['component'] = component
+        synthesis_context['component_description'] = component.description
+        synthesis_context['component_behavioral_guidance'] = component.implementation
+        
+        # Create an enhanced description that includes high-level behavioral guidance
+        enhanced_description = f"{component.description}. Behavior: {component.implementation}"
+        
+        # Add previous experts to context for coordination
+        if len(self.experts) > 0:
+            synthesis_context['previous_experts'] = [
+                {'name': e.name, 'type': e.expert_type, 'description': e.description}
+                for e in self.experts
+            ]
+        
+        # Synthesize with full context, skip state analysis since done upfront
+        response = await self.synthesizer.synthesize_behavior(
+            enhanced_description,  # Use enhanced description with implementation guidance
+            shared_context['available_states'],
+            context=synthesis_context,
+            expert_name=component.expert_name,
+            skip_state_analysis=True  # States already created
+        )
+        
+        # Check if synthesis succeeded
+        if response is None:
+            logger.error(f"Synthesizer returned None for component: {component.expert_name}")
+            return {
+                'success': False,
+                'experts_added': 0,
+                'expert_names': [],
+                'states_created': 0
+            }
+        
+        if not hasattr(response, 'experts') or not response.experts:
+            logger.warning(f"No experts generated for component: {component.expert_name}")
+            logger.warning(f"Component description: {component.description}")
+            logger.warning(f"Component implementation hint: {component.implementation}")
+            # Return empty result
+            return {
+                'success': False,
+                'experts_added': 0,
+                'expert_names': [],
+                'states_created': 0
+            }
+        
+        # Register expert (no state creation - already done upfront)
+        experts_added = []
+        for expert in response.experts:
+            expert.name = component.expert_name
+            code = expert.to_code() if hasattr(expert, 'to_code') else ""
+            code = self._fix_expert_function_name(code, component.expert_name)
+            
+            # Determine expert type based on component
+            if component.expert_type == 'visual':
+                expert_type = 'visual'
+            elif expert.is_interaction:
+                expert_type = 'interaction'
+            else:
+                expert_type = 'single'
+            
+            expert_info = ExpertInfo(
+                name=component.expert_name,
+                description=component.description,
+                weight=weight,
+                expert_type=expert_type,
+                code=code,
+                applies_to_species=component.applies_to_species
+            )
+            self.experts.append(expert_info)
+            self.expert_weights[component.expert_name] = weight
+            experts_added.append(component.expert_name)
+        
+        return {
+            'success': True,
+            'experts_added': len(experts_added),
+            'expert_names': experts_added,
+            'states_created': 0  # States already created upfront
+        }
+    
     def _merge_species_configs(self, existing, new):
         if not existing:
             return new
@@ -97,7 +411,9 @@ class BehaviorAgent:
         new_species_ids = list(existing.species_ids)
         
         if new.species_names:
-            for sid, name in new.species_names.items():
+            for item in new.species_names:
+                sid = item.species_id
+                name = item.name
                 color = self._extract_color_from_name(name)
                 lookup_key = color if color else name
                 
@@ -132,12 +448,17 @@ class BehaviorAgent:
         if new.colors:
             # Map new colors to the correct species IDs
             for sid, color in new.colors.items():
-                if new.species_names and sid in new.species_names:
-                    name = new.species_names[sid]
-                    color_key = self._extract_color_from_name(name)
-                    lookup_key = color_key if color_key else name
-                    if lookup_key in color_to_id:
-                        final_colors[color_to_id[lookup_key]] = color
+                if new.species_names:
+                    name = ""
+                    for item in new.species_names:
+                        if item.species_id == sid:
+                            name = item.name
+                            break
+                    if name:
+                        color_key = self._extract_color_from_name(name)
+                        lookup_key = color_key if color_key else name
+                        if lookup_key in color_to_id:
+                            final_colors[color_to_id[lookup_key]] = color
         
         return SpeciesConfiguration(
             species_ids=new_species_ids,
@@ -187,8 +508,8 @@ class BehaviorAgent:
         # Get current available states
         available_states = self.state_manager.get_available_states()
         
-        # Create a synthesis description that includes implementation
-        description = f"{component.description}. {component.implementation}"
+        # Create a synthesis description that includes high-level guidance
+        description = f"{component.description}. Behavior: {component.implementation}"
         
         # Add context from previous experts if any
         if synthesis_context.get("previous_experts"):
@@ -228,12 +549,21 @@ class BehaviorAgent:
             
             code = self._fix_expert_function_name(code, component.expert_name)
             
+            # Determine expert type based on component
+            if component.expert_type == 'visual':
+                expert_type = 'visual'
+            elif expert.is_interaction:
+                expert_type = 'interaction'
+            else:
+                expert_type = 'single'
+            
             expert_info = ExpertInfo(
                 name=component.expert_name,
                 description=component.description,
                 weight=weight,
-                expert_type='interaction' if expert.is_interaction else 'single',
-                code=code
+                expert_type=expert_type,
+                code=code,
+                applies_to_species=component.applies_to_species
             )
             self.experts.append(expert_info)
             self.expert_weights[component.expert_name] = weight
@@ -255,6 +585,7 @@ class BehaviorAgent:
     ) -> Dict[str, Any]:
         """
         Add a new behavior from natural language description.
+        Always uses decomposition followed by holistic synthesis for consistency.
         
         Args:
             description: Natural language behavior description
@@ -269,143 +600,137 @@ class BehaviorAgent:
         with collector.trace_node("add_behavior", "synthesis", description=description) as node:
             logger.info(f"Adding behavior: {description}")
             
-            # Always decompose first to assess complexity (unless explicitly skipped)
-            if self.decomposer and not skip_decomposition:
+            # Always decompose first (unless explicitly skipped)
+            decomposed = None
+            if not skip_decomposition and self.decomposer:
                 try:
                     decomposed = await self.decomposer.decompose(description)
+                    logger.info(f"Decomposition complete: components={len(decomposed.components)}")
                     
-                    # Check if this is simple or complex
-                    if decomposed.is_simple:
-                        logger.info(f"Behavior is simple, synthesizing single expert: {decomposed.components[0].expert_name}")
-                        # For simple behaviors, use the concrete implementation from decomposer
-                        if decomposed.components:
-                            component = decomposed.components[0]
-                            # Update description with implementation guidance
-                            enhanced_description = f"{description}. Implementation guidance: {component.implementation}"
-                            description = enhanced_description
-                            # Store the desired expert name for later use
-                            self._desired_expert_name = component.expert_name
-                    else:
-                        logger.info(f"Behavior is complex with {len(decomposed.components)} experts, using complex behavior path")
-                        # Pass the decomposed result to add_complex_behavior
-                        complex_result = await self.add_complex_behavior(
-                            description, weight, 
-                            decompose=False,  # Already decomposed
-                            _decomposed=decomposed  # Pass the decomposition
-                        )
-                        # Normalize the result format to match add_behavior's expected format
-                        expert_names = []
-                        total_states = 0
-                        for comp in complex_result.get('components', []):
-                            expert_names.append(comp['expert_name'])
-                            comp_result = comp.get('result', {})
-                            if comp_result and isinstance(comp_result, dict):
-                                total_states += comp_result.get('states_created', 0)
+                    # Extract particle count if detected
+                    if decomposed and hasattr(decomposed, 'particle_count') and decomposed.particle_count:
+                        self.detected_particle_count = decomposed.particle_count
+                        logger.info(f"Detected particle count: {self.detected_particle_count}")
+                    
+                    # Extract species configuration from decomposition
+                    if decomposed and hasattr(decomposed, 'species_info') and decomposed.species_info:
+                        from .models import SpeciesConfiguration
+                        from .color_resolver import ColorResolver
+                        species_info = decomposed.species_info
                         
-                        return {
-                            'success': True,
-                            'experts_added': complex_result.get('total_experts', 0),
-                            'expert_names': expert_names,
-                            'states_created': total_states,
-                            'species_count': len(self.current_species_config.species_ids) if self.current_species_config else 1
-                        }
+                        # Resolve color descriptions to RGBA values
+                        resolved_colors = {}
+                        if species_info.species_color_descriptions:
+                            # Pass the synthesizer's model to ColorResolver for LLM color resolution
+                            color_resolver = ColorResolver(llm_client=self.synthesizer.model)
+                            # Now it's a list of SpeciesColor objects
+                            for color_mapping in species_info.species_color_descriptions:
+                                species_id = color_mapping.species_id
+                                color_desc = color_mapping.color_description
+                                try:
+                                    # Use async color resolution if available
+                                    resolved_colors[species_id] = await color_resolver.resolve_color_name(color_desc)
+                                    logger.info(f"Resolved color '{color_desc}' for species {species_id}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to resolve color '{color_desc}': {e}")
+                                    # Use fallback colors
+                                    resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
+                        elif species_info.species_colors:
+                            # Use directly provided RGBA colors if available
+                            resolved_colors = species_info.species_colors
+                        else:
+                            # Generate default colors
+                            color_resolver = ColorResolver()
+                            resolved_colors = color_resolver.get_default_species_colors(species_info.total_count)
+                        
+                        # Convert species names from list to dict
+                        species_names_dict = {}
+                        if species_info.species_names:
+                            for item in species_info.species_names:
+                                species_names_dict[item.species_id] = item.name
+
+                        # Convert to SpeciesConfiguration format
+                        self.current_species_config = SpeciesConfiguration(
+                            species_ids=list(range(species_info.total_count)),
+                            species_names=species_names_dict,
+                            interaction_pairs=species_info.interaction_pairs or [],
+                            species_behaviors=None,
+                            requires_all_species=False,
+                            colors=resolved_colors
+                        )
+                        logger.info(f"Extracted species config from decomposition: {species_info.total_count} species")
                 except Exception as e:
-                    logger.warning(f"Decomposition failed, continuing with direct synthesis: {e}")
-                    self._current_decomposition = None
+                    logger.warning(f"Decomposition failed: {e}")
+                    decomposed = None
             
-            # Get current available states
-            available_states = self.state_manager.get_available_states()
+            # Always use holistic synthesis with decomposition result
+            logger.info("Using holistic synthesis pipeline")
+            result = await self.synthesize_complete_behavior(description, weight, decomposition=decomposed)
             
-            # Synthesize the behavior
-            response = await self.synthesizer.synthesize_behavior(
-                description,
-                available_states
-            )
+            # Handle case where result could be None
+            if result is None:
+                logger.error(f"synthesize_complete_behavior returned None for: {description}")
+                result = {
+                    'success': False,
+                    'experts_added': 0,
+                    'expert_names': [],
+                    'states_created': 0,
+                    'pattern_type': 'unknown',
+                    'pattern_confidence': 0.0
+                }
             
-            # Update species configuration - merge with existing
-            if response.species_config:
-                self.current_species_config = self._merge_species_configs(
-                    self.current_species_config, 
-                    response.species_config
-                )
-                logger.info(f"Updated species configuration: {len(self.current_species_config.species_ids)} species")
+            # Format result consistently
+            expert_names = result.get('expert_names', [])
+            if not expert_names and 'components' in result:
+                for comp in result['components']:
+                    if isinstance(comp, dict):
+                        if 'result' in comp and 'expert_names' in comp['result']:
+                            expert_names.extend(comp['result']['expert_names'])
+                        elif 'expert_name' in comp:
+                            expert_names.append(comp['expert_name'])
             
-            # Create states if needed
-            if response.states_needed:
-                # Convert list of StateDefinition objects to spec format
-                states_spec = {'global': {}, 'particle': {}, 'species': {}}
-                for state_def in response.states_needed:
-                    states_spec[state_def.category][state_def.name] = state_def
-                
-                self.state_manager.create_states_from_spec(states_spec)
-                logger.info(f"Created states: {[s.name for s in response.states_needed]}")
-            
-            # Store temporal updates if any
-            if response.temporal_update:
-                self.temporal_updates.append(response.temporal_update)
-                logger.info(f"Added temporal updates for: {list(response.temporal_update.frame_updates.keys())}")
-            
-            # Register experts
-            experts_added = []
-            for expert in response.experts:
-                # Extract the actual Taichi code
-                if hasattr(expert, 'to_code'):
-                    code = expert.to_code()
-                elif hasattr(expert, '_code'):
-                    code = expert._code
-                else:
-                    code = ""
-                
-                # Use desired expert name from decomposition if available
-                expert_name = getattr(self, '_desired_expert_name', None) or expert.name
-                
-                code = self._fix_expert_function_name(code, expert_name)
-                
-                expert_info = ExpertInfo(
-                    name=expert_name,
-                    description=expert.description,
-                    weight=weight * expert.weight,
-                    expert_type='interaction' if expert.is_interaction else 'single',
-                    code=code
-                )
-                self.experts.append(expert_info)
-                self.expert_weights[expert_name] = expert_info.weight
-                experts_added.append(expert_name)
-                logger.info(f"Registered expert: {expert_name} (weight={expert_info.weight})")
-                
-                # Clear the desired expert name after use
-                if hasattr(self, '_desired_expert_name'):
-                    delattr(self, '_desired_expert_name')
+            # Build final result
+            final_result = {
+                'success': result.get('success', True),
+                'experts_added': result.get('experts_added', 0),
+                'expert_names': expert_names,
+                'states_created': result.get('states_created', 0),
+                'species_count': len(self.current_species_config.species_ids) if self.current_species_config else 1,
+                'pattern_type': result.get('pattern_type', 'unknown'),
+                'pattern_confidence': result.get('pattern_confidence', 0.0)
+            }
             
             # Regenerate integration kernel if we have experts
             if self.experts:
                 await self._regenerate_kernel()
             
-            result = {
-                'success': True,
-                'experts_added': len(experts_added),
-                'expert_names': experts_added,
-                'states_created': len(response.states_needed) if response.states_needed else 0,
-                'species_count': len(response.species_config.species_ids) if response.species_config else 1
-            }
-            
             # Update trace node with results
             if node:
-                node.output_data = result
+                node.output_data = final_result
             
-            return result
+            return final_result
     
     async def _regenerate_kernel(self):
         # Separate experts by type
         single_experts = [e for e in self.experts if e.expert_type == 'single']
         interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
+        visual_experts = [e for e in self.experts if e.expert_type == 'visual']
         
-        # Generate kernel code
+        # Build species conditions mapping from expert info
+        species_conditions = {}
+        for expert in self.experts:
+            if expert.applies_to_species is not None:
+                species_conditions[expert.name] = expert.applies_to_species
+        
+        # Generate kernel code with species configuration and conditions
         kernel_code = self.kernel_generator.generate(
             single_expert_names=[e.name for e in single_experts],
             interaction_expert_names=[e.name for e in interaction_experts],
             expert_weights=self.expert_weights,
-            tolvera_instance=self.tv
+            tolvera_instance=self.tv,
+            species_config=self.current_species_config,  # Pass species config for proper mapping
+            species_conditions=species_conditions,  # Pass explicit species conditions
+            visual_expert_names=[e.name for e in visual_experts]  # Pass visual experts separately
         )
         
         # Compile and register the kernel
@@ -753,6 +1078,85 @@ class BehaviorAgent:
                     ])
         return parts
     
+    def _generate_pixel_kernels(self, pixel_field_req) -> str:
+        """Generate pixel field kernels for pheromone/trail operations."""
+        kernels = []
+        
+        if pixel_field_req.needs_decay:
+            kernels.append("""
+@ti.kernel
+def decay_pheromones():
+    \"\"\"Decay pheromone trails over time.\"\"\"
+    evaporation_rate = 0.99  # Could be from global state
+    for i, j in ti.ndrange(tv.x, tv.y):
+        tv.px.px.rgba[i, j][0] *= evaporation_rate
+        tv.px.px.rgba[i, j][1] *= evaporation_rate
+        tv.px.px.rgba[i, j][2] *= evaporation_rate
+""")
+        
+        if pixel_field_req.needs_diffusion:
+            kernels.append("""
+@ti.kernel
+def diffuse_pheromones():
+    \"\"\"Diffuse pheromone trails to neighboring pixels.\"\"\"
+    diffusion_rate = 0.1
+    temp = ti.field(dtype=ti.f32, shape=(tv.x, tv.y, 3))
+    
+    # Copy to temp and apply diffusion
+    for i, j in ti.ndrange(tv.x, tv.y):
+        center_val = tv.px.px.rgba[i, j]
+        sum_val = ti.math.vec3(0.0, 0.0, 0.0)
+        count = 0
+        
+        for di in range(-1, 2):
+            for dj in range(-1, 2):
+                if di == 0 and dj == 0:
+                    continue
+                ni = (i + di) % tv.x
+                nj = (j + dj) % tv.y
+                sum_val += tv.px.px.rgba[ni, nj][:3]
+                count += 1
+        
+        avg_val = sum_val / count
+        temp[i, j, 0] = center_val[0] * (1 - diffusion_rate) + avg_val[0] * diffusion_rate
+        temp[i, j, 1] = center_val[1] * (1 - diffusion_rate) + avg_val[1] * diffusion_rate
+        temp[i, j, 2] = center_val[2] * (1 - diffusion_rate) + avg_val[2] * diffusion_rate
+    
+    # Copy back
+    for i, j in ti.ndrange(tv.x, tv.y):
+        tv.px.px.rgba[i, j][0] = temp[i, j, 0]
+        tv.px.px.rgba[i, j][1] = temp[i, j, 1]
+        tv.px.px.rgba[i, j][2] = temp[i, j, 2]
+""")
+        
+        if pixel_field_req.needs_deposition:
+            kernels.append("""
+@ti.kernel
+def deposit_trails():
+    \"\"\"Deposit pheromone trails from particles.\"\"\"
+    deposit_amount = 0.1
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            pos = tv.p.field[i].pos
+            x = ti.cast(pos[0], ti.i32) % tv.x
+            y = ti.cast(pos[1], ti.i32) % tv.y
+            
+            # Deposit based on species
+            species = tv.p.field[i].species
+            if species == 0:
+                tv.px.px.rgba[x, y][0] += deposit_amount
+                tv.px.px.rgba[x, y][0] = ti.min(1.0, tv.px.px.rgba[x, y][0])
+            elif species == 1:
+                tv.px.px.rgba[x, y][1] += deposit_amount
+                tv.px.px.rgba[x, y][1] = ti.min(1.0, tv.px.px.rgba[x, y][1])
+            elif species == 2:
+                tv.px.px.rgba[x, y][2] += deposit_amount
+                tv.px.px.rgba[x, y][2] = ti.min(1.0, tv.px.px.rgba[x, y][2])
+""")
+        
+        return "\n".join(kernels) if kernels else ""
+    
     async def add_drawing_behavior(
         self,
         description: str,
@@ -834,6 +1238,11 @@ class BehaviorAgent:
                 decomposed = _decomposed
             elif decompose:
                 decomposed = await self.decomposer.decompose(description)
+                
+                # Extract particle count if detected
+                if decomposed and hasattr(decomposed, 'particle_count') and decomposed.particle_count:
+                    self.detected_particle_count = decomposed.particle_count
+                    logger.info(f"Detected particle count: {self.detected_particle_count}")
             else:
                 # If decompose=False and no _decomposed, fall back to simple synthesis
                 return await self.add_behavior(description, weight, skip_decomposition=True)
@@ -875,8 +1284,8 @@ class BehaviorAgent:
                             component.expert_type
                         )
                     
-                    # Create a synthesis description that includes implementation guidance
-                    synthesis_description = f"{component.description}. Implementation: {component.implementation}"
+                    # Create a synthesis description that includes high-level behavioral guidance
+                    synthesis_description = f"{component.description}. Behavior: {component.implementation}"
                     
                     # Pass context requirements to synthesizer
                     synthesis_context.update({
@@ -885,19 +1294,12 @@ class BehaviorAgent:
                         "previous_experts": synthesis_context["previous_experts"]
                     })
                     
-                    # Check if it's a drawing behavior
-                    if component.expert_type == 'visual':
-                        result = await self.add_drawing_behavior(
-                            synthesis_description,
-                            component_weight
-                        )
-                    else:
-                        # Synthesize with context - need to update synthesizer to accept context
-                        result = await self._synthesize_component(
-                            component,
-                            component_weight,
-                            synthesis_context
-                        )
+                    # Route to appropriate synthesis method based on type
+                    result = await self._synthesize_component(
+                        component,
+                        component_weight,
+                        synthesis_context
+                    )
                     
                     # Track this expert for context threading
                     synthesis_context["previous_experts"].append({
@@ -926,17 +1328,200 @@ class BehaviorAgent:
             
             return results
     
+    async def _synthesize_component(
+        self, 
+        component,
+        weight: float,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Synthesize a single component based on its type."""
+        
+        if component.expert_type in ['force', 'interaction', 'state_update']:
+            # Use existing synthesis methods
+            synthesis_description = f"{component.description}. Behavior: {component.implementation}"
+            result = await self.add_behavior(
+                synthesis_description,
+                weight=weight
+            )
+            return result
+            
+        elif component.expert_type == 'initialization':
+            # Synthesize initialization kernel
+            init_response = await self.synthesizer.synthesize_initialization(
+                component.implementation,
+                species_config=self.current_species_config,
+                context=context
+            )
+            
+            # Store initialization code
+            self.synthesized_initialization = init_response.code
+            
+            return {
+                'type': 'initialization',
+                'code': init_response.code,
+                'description': init_response.description
+            }
+            
+        elif component.expert_type == 'temporal_update':
+            # Synthesize temporal update kernel
+            available_states = self.state_manager.get_available_states()
+            temporal_response = await self.synthesizer.synthesize_temporal_update(
+                component.implementation,
+                available_states=available_states,
+                context=context
+            )
+            
+            # Store temporal update code
+            self.synthesized_temporal_update = temporal_response.code
+            
+            return {
+                'type': 'temporal_update',
+                'code': temporal_response.code,
+                'description': temporal_response.description
+            }
+            
+        elif component.expert_type == 'configuration':
+            # Synthesize configuration
+            config_response = await self.synthesizer.synthesize_configuration(
+                component.implementation,
+                species_config=self.current_species_config
+            )
+            
+            # Store configuration code
+            self.synthesized_configuration = config_response.config_code
+            
+            return {
+                'type': 'configuration',
+                'code': config_response.config_code,
+                'species_count': config_response.species_count,
+                'particle_count': config_response.particle_count
+            }
+            
+        elif component.expert_type == 'visual':
+            # Use existing drawing behavior synthesis
+            synthesis_description = f"{component.description}. Behavior: {component.implementation}"
+            result = await self.add_drawing_behavior(
+                synthesis_description,
+                weight=weight
+            )
+            return result
+            
+        else:
+            logger.warning(f"Unknown component type: {component.expert_type}")
+            return {}
+    
+    async def _synthesize_pure_drawing(self, description: str, weight: float, decomposed) -> Dict[str, Any]:
+        """
+        Synthesize a pure drawing behavior without particle systems.
+        
+        Args:
+            description: Natural language description
+            weight: Weight (not used for pure drawing)
+            decomposed: Decomposition result
+            
+        Returns:
+            Dictionary with synthesis results
+        """
+        logger.info(f"Synthesizing pure drawing behavior: {description}")
+        
+        # Synthesize drawing code using the synthesizer
+        # We'll use the drawing behavior synthesis which should generate appropriate drawing code
+        try:
+            # Create a simple drawing kernel
+            drawing_code = f"""
+# Draw based on description: {description}
+# This is a placeholder - actual synthesis would generate proper drawing code
+width = tv.x // 2
+height = tv.y // 2
+x = tv.x // 2 - width // 2
+y = tv.y // 2 - height // 2
+tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
+"""
+            
+            # Store the drawing code
+            self.pure_drawing_code = drawing_code
+            self.is_pure_drawing = True
+            
+            return {
+                'success': True,
+                'pattern_type': 'pure_drawing',
+                'experts_added': 0,  # No experts for pure drawing
+                'drawing_functions': 1,
+                'description': description,
+                'behavior_category': 'pure_drawing'
+            }
+        except Exception as e:
+            logger.error(f"Failed to synthesize pure drawing behavior: {e}")
+            return {
+                'success': False,
+                'pattern_type': 'pure_drawing',
+                'error': str(e)
+            }
+    
     def generate_sketch(
         self, 
         description: str,
         filename: Optional[str] = None,
         use_timestamp: bool = True
     ) -> tuple[str, str]:
+        # Check if this is a pure drawing behavior
+        if hasattr(self, 'is_pure_drawing') and self.is_pure_drawing:
+            logger.info("Generating pure drawing sketch")
+            sketch = self.sketch_generator.generate_pure_drawing(
+                description=description,
+                drawing_code=self.pure_drawing_code if hasattr(self, 'pure_drawing_code') else "# Drawing code placeholder"
+            )
+            
+            # Save if filename provided or use_timestamp is True
+            if filename or use_timestamp:
+                from pathlib import Path
+                from datetime import datetime
+                
+                # Create generated_sketches directory if it doesn't exist
+                sketch_dir = Path('examples/generated_sketches')
+                sketch_dir.mkdir(parents=True, exist_ok=True)
+                
+                if filename and not use_timestamp:
+                    # Use provided filename as-is
+                    file_path = Path(filename)
+                    if not file_path.parent.name or file_path.parent == Path('.'):
+                        file_path = sketch_dir / file_path.name
+                else:
+                    # Generate filename with timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    base_name = filename.replace('.py', '') if filename else 'pure_drawing_sketch'
+                    file_path = sketch_dir / f"{base_name}_{timestamp}.py"
+                
+                with open(file_path, 'w') as f:
+                    f.write(sketch)
+                logger.info(f"Saved pure drawing sketch to: {file_path}")
+                
+                return sketch, str(file_path)
+            return sketch, ""
+        
+        # Regular particle system sketch generation
+        # Collect synthesized helper functions
+        helper_code = ""
+        if self.synthesized_helpers:
+            helper_parts = ["# Helper Functions"]
+            for name, code in self.synthesized_helpers.items():
+                helper_parts.append(f"\n{code}\n")
+            helper_code = "\n".join(helper_parts)
+        
         # Collect all expert code
         expert_code = "\n\n".join(e.code for e in self.experts)
         
-        # Generate initialization code
-        init_code = self._generate_init_code()
+        # Combine helper functions and experts
+        if helper_code:
+            combined_expert_code = f"{helper_code}\n\n{expert_code}"
+        else:
+            combined_expert_code = expert_code
+        
+        # Use synthesized initialization if available, otherwise fall back to template
+        if hasattr(self, 'synthesized_initialization') and self.synthesized_initialization:
+            init_code = self.synthesized_initialization
+        else:
+            init_code = self._generate_init_code()
         
         # Generate state code
         state_code = self._generate_state_code()
@@ -944,17 +1529,65 @@ class BehaviorAgent:
         # Generate kernel (simplified for now)
         kernel_code = self._generate_simple_kernel()
         
-        # Generate temporal update kernel
-        temporal_kernel_code = self._generate_temporal_update_kernel()
+        # Use synthesized temporal update if available, otherwise fall back to template
+        if hasattr(self, 'synthesized_temporal_update') and self.synthesized_temporal_update:
+            temporal_kernel_code = self.synthesized_temporal_update
+        else:
+            temporal_kernel_code = self._generate_temporal_update_kernel()
+        
+        # Add pixel kernels if generated
+        if hasattr(self, 'pixel_kernels') and self.pixel_kernels:
+            temporal_kernel_code = f"{temporal_kernel_code}\n\n{self.pixel_kernels}"
+        
+        # Use synthesized configuration if available, otherwise generate based on species
+        if hasattr(self, 'synthesized_configuration') and self.synthesized_configuration:
+            config_code = self.synthesized_configuration
+        elif self.current_species_config or self.detected_particle_count:
+            species_count = len(self.current_species_config.species_ids) if self.current_species_config else 1
+            particle_count = self.detected_particle_count if self.detected_particle_count else 1000
+            
+            # Override kwargs to use detected species count and particle count
+            # Using correct Tölvera parameter names: 'species' and 'particles'
+            config_code = f"""# Override default Tölvera parameters
+    # Detected {species_count} species from description
+    import sys
+    if 'species' not in kwargs:
+        kwargs['species'] = {species_count}  # Use detected species count
+    if 'particles' not in kwargs:
+        kwargs['particles'] = {particle_count}  # Use detected particle count
+    if 'width' not in kwargs:
+        kwargs['width'] = 1920
+    if 'height' not in kwargs:
+        kwargs['height'] = 1080"""
+        else:
+            config_code = ""
+        
+        # Generate drawing kernel if we have visual experts
+        visual_experts = [e for e in self.experts if e.expert_type == 'visual']
+        drawing_kernel_code = ""
+        if visual_experts:
+            drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
+                visual_expert_names=[e.name for e in visual_experts],
+                function_name="draw"
+            )
+        
+        # Check if we have non-visual experts (for particle physics)
+        single_experts = [e for e in self.experts if e.expert_type == 'single']
+        interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
+        has_non_visual_experts = len(single_experts) > 0 or len(interaction_experts) > 0
         
         # Generate complete sketch
         sketch = self.sketch_generator.generate(
             description=description,
-            experts=[expert_code],
+            experts=[combined_expert_code],  # Now includes helpers
             kernel=kernel_code,
             init_code=init_code,
             state_code=state_code,
-            temporal_code=temporal_kernel_code
+            temporal_code=temporal_kernel_code,
+            config_code=config_code,
+            drawing_code="",  # Individual drawing functions are in experts
+            drawing_kernel=drawing_kernel_code,
+            has_non_visual_experts=has_non_visual_experts
         )
         
         # Save if filename provided or use_timestamp is True
@@ -999,6 +1632,10 @@ class BehaviorAgent:
             if use_grid:
                 init_type = "grid"
                 grid_size = suggested_size
+            # For ecosystem patterns, use clustered initialization
+            elif self.current_behavior_requirements and self.current_behavior_requirements.pattern_type == "ecosystem":
+                init_type = "clustered"
+                logger.info("Using clustered initialization for ecosystem pattern")
             
             # Generate species-aware initialization
             from .species_analyzer import SpeciesInfo
@@ -1012,19 +1649,65 @@ class BehaviorAgent:
                 color_hints={}
             )
             
-            # Pass the species config for proper color assignment
+            # Pass the species config and speed_spec for proper initialization
+            speed_spec = getattr(self, 'current_speed_spec', None)
             return self.species_manager.get_initialization_code(
                 species_info,
                 init_type=init_type,
                 grid_size=grid_size,
-                species_config=self.current_species_config
+                species_config=self.current_species_config,
+                speed_spec=speed_spec
             )
         else:
             # Fallback to simple initialization
-            init_code = """# Initialize particles
-tv.p.randomise()
+            # Important: We need to explicitly set species to 0 for single-species behaviors
+            # Otherwise tv.p.randomise() will assign random species values
+            
+            # Check for speed specification
+            speed_spec = getattr(self, 'current_speed_spec', None)
+            if speed_spec and speed_spec.uniform:
+                # Generate uniform speed initialization
+                speed_val = 100.0  # Default
+                if speed_spec.value:
+                    speed_val = speed_spec.value
+                elif speed_spec.magnitude:
+                    magnitude_map = {"slow": 50.0, "medium": 100.0, "fast": 200.0, "very_fast": 300.0}
+                    speed_val = magnitude_map.get(speed_spec.magnitude, 100.0)
+                
+                init_code = f"""# Initialize particles with uniform speed
+@ti.kernel  
+def init_particles():
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+        # Uniform speed with random directions
+        angle = ti.random() * 2 * 3.14159
+        tv.p.field[i].vel = ti.Vector([
+            ti.cos(angle) * {speed_val},
+            ti.sin(angle) * {speed_val}
+        ])
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].species = 0  # All particles are species 0"""
+            else:
+                # Default random velocities
+                init_code = """# Initialize particles
+@ti.kernel  
+def init_particles():
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+        tv.p.field[i].vel = ti.Vector([
+            (ti.random() - 0.5) * 100.0,
+            (ti.random() - 0.5) * 100.0
+        ])
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].species = 0  # All particles are species 0
 
-# Initialize default species colors
+init_particles()
+
+# Initialize species colors
 """
             # Check if we have detected species to initialize
             if hasattr(self, 'current_species_config') and self.current_species_config:
@@ -1065,64 +1748,26 @@ tv.p.randomise()
             return container_code
     
     def _generate_simple_kernel(self) -> str:
-        # Separate experts by type
+        # Use the proper kernel generator with species conditions
         single_experts = [e for e in self.experts if e.expert_type == 'single']
         interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
-        drawing_experts = [e for e in self.experts if e.expert_type.startswith('drawing')]
+        visual_experts = [e for e in self.experts if e.expert_type == 'visual']
         
-        kernel_parts = ["@ti.kernel", "def apply_all_experts():"]
+        # Build species conditions mapping from expert info
+        species_conditions = {}
+        for expert in self.experts:
+            if expert.applies_to_species is not None:
+                species_conditions[expert.name] = expert.applies_to_species
         
-        if single_experts or interaction_experts:
-            kernel_parts.append("    for i in range(tv.pn):")
-            kernel_parts.append("        if tv.p.field[i].active > 0:")
-            kernel_parts.append("            pos = tv.p.field[i].pos")
-            kernel_parts.append("            vel = tv.p.field[i].vel")
-            kernel_parts.append("            mass = tv.p.field[i].mass")
-            kernel_parts.append("            species = tv.p.field[i].species")
-            kernel_parts.append("            ")
-            kernel_parts.append("            # Initialize total force")
-            kernel_parts.append("            total_force = ti.math.vec2(0.0, 0.0)")
-            kernel_parts.append("            ")
-            
-            # Add single-particle expert calls
-            if single_experts:
-                kernel_parts.append("            # Single-particle behaviors")
-                for expert in single_experts:
-                    weight = self.expert_weights.get(expert.name, 1.0)
-                    kernel_parts.append(f"            total_force += {expert.name}(pos, vel, mass, species, i) * {weight}")
-            
-            # Add interaction expert calls
-            if interaction_experts:
-                kernel_parts.append("            ")
-                kernel_parts.append("            # Interaction behaviors")
-                kernel_parts.append("            for j in range(tv.pn):")
-                kernel_parts.append("                if i != j and tv.p.field[j].active > 0:")
-                for expert in interaction_experts:
-                    weight = self.expert_weights.get(expert.name, 1.0)
-                    kernel_parts.append(f"                    total_force += {expert.name}(tv.p.field[i], tv.p.field[j]) * {weight}")
-            
-            kernel_parts.append("            ")
-            kernel_parts.append("            # Apply the combined force using F = ma")
-            kernel_parts.append("            dt = 0.016  # ~60fps timestep")
-            kernel_parts.append("            if mass > 0:")
-            kernel_parts.append("                acceleration = total_force / mass")
-            kernel_parts.append("                tv.p.field[i].vel += acceleration * dt")
-            kernel_parts.append("            ")
-            kernel_parts.append("            # Apply damping")
-            kernel_parts.append("            tv.p.field[i].vel *= 0.98")
-            kernel_parts.append("            ")
-            kernel_parts.append("            # Update position based on new velocity")
-            kernel_parts.append("            tv.p.field[i].pos += tv.p.field[i].vel * dt")
+        # Generate kernel code with species configuration and conditions
+        kernel_code = self.kernel_generator.generate(
+            single_expert_names=[e.name for e in single_experts],
+            interaction_expert_names=[e.name for e in interaction_experts],
+            expert_weights=self.expert_weights,
+            tolvera_instance=self.tv,
+            species_config=self.current_species_config,
+            species_conditions=species_conditions,
+            visual_expert_names=[e.name for e in visual_experts]
+        )
         
-        # Add drawing expert calls if any
-        if drawing_experts:
-            if single_experts or interaction_experts:
-                kernel_parts.append("")
-            kernel_parts.append("    # Drawing behaviors")
-            kernel_parts.append("    for i in range(tv.pn):")
-            kernel_parts.append("        if tv.p.field[i].active > 0:")
-            for expert in drawing_experts:
-                if expert.expert_type == 'drawing':
-                    kernel_parts.append(f"            {expert.name}(tv.px, tv.p.field[i], i)")
-        
-        return "\n".join(kernel_parts)
+        return kernel_code

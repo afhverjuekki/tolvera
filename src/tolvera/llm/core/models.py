@@ -126,6 +126,10 @@ class ExpertFunction(BaseModel):
     draw_order: Literal["pre", "post"] = "post"
     computation: Union[ForceComputation, DrawingComputation]
     weight: float = Field(default=1.0, ge=0.1, le=2.0)
+    applies_to_species: Optional[List[int]] = Field(
+        default=None,
+        description="Species IDs this expert applies to (None means all species)"
+    )
     
     def to_code(self) -> str:
         if self.is_drawing:
@@ -173,6 +177,29 @@ def expert_{self.name}({params}) -> ti.math.vec2:
     return force'''
 
 
+class TemporalUpdate(BaseModel):
+    """Defines how a state changes over time."""
+    update_expression: str = Field(
+        description="Expression for updating the state (e.g., 'value *= 0.99', 'value += 0.1')"
+    )
+    update_condition: Optional[str] = Field(
+        default=None,
+        description="Condition for when to apply update (e.g., 'if species == 0', 'if vel.norm() > 10')"
+    )
+    update_frequency: int = Field(
+        default=1,
+        description="Update every N frames (1 = every frame)"
+    )
+    affects_behavior: Optional[str] = Field(
+        default=None,
+        description="How state affects behavior (e.g., 'if value < 20: vel *= 0.5')"
+    )
+    coupling_strength: float = Field(
+        default=1.0,
+        description="Strength of behavioral coupling (0.0 to 1.0)"
+    )
+
+
 class StateDefinition(BaseModel):
     name: str = Field(description="Name of the state variable")
     category: Literal["global", "particle", "species"] = Field(description="Category of the state")
@@ -181,6 +208,10 @@ class StateDefinition(BaseModel):
     max: Union[float, List[float]] = Field(description="Maximum value(s)")
     description: str = Field(default="")
     initial: Optional[Union[float, List[float]]] = None
+    temporal_update: Optional[TemporalUpdate] = Field(
+        default=None,
+        description="Temporal update rule for this state"
+    )
     
     @validator('min', 'max', 'initial')
     def validate_vector_bounds(cls, v, values):
@@ -222,17 +253,13 @@ class SpeciesConfiguration(BaseModel):
     def get_init_code(self, particle_count: int, screen_size: Tuple[int, int]) -> str:
         num_species = len(self.species_ids)
         
-        # Default colors with semantic awareness
-        default_colors = [
-            [1.0, 0.3, 0.3, 1.0],  # Red
-            [0.3, 0.3, 1.0, 1.0],  # Blue
-            [0.3, 1.0, 0.3, 1.0],  # Green
-            [1.0, 1.0, 0.3, 1.0],  # Yellow
-            [1.0, 0.3, 1.0, 1.0],  # Magenta
-            [0.3, 1.0, 1.0, 1.0],  # Cyan
-            [1.0, 0.6, 0.3, 1.0],  # Orange
-            [0.6, 0.4, 0.2, 1.0],  # Brown
-        ]
+        # Import ColorResolver for default colors
+        from ..core.color_resolver import ColorResolver
+        color_resolver = ColorResolver()
+        default_colors_dict = color_resolver.get_default_species_colors(max(8, num_species))
+        
+        # Convert to list format for backward compatibility
+        default_colors = [default_colors_dict[i] for i in range(max(8, num_species))]
         
         # Build initialization code
         init_code = ""
@@ -414,6 +441,10 @@ class BehaviorSynthesisResponse(BaseModel):
     species_config: SpeciesConfiguration
     integration_kernel: IntegrationKernel
     temporal_update: Optional[TemporalUpdate] = None
+    helper_functions: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Helper functions generated alongside experts"
+    )
     
     def get_init_code(self) -> str:
         return self.species_config.get_init_code(300, (800, 600))

@@ -23,14 +23,15 @@ class SpeciesManager:
         species_info: SpeciesInfo,
         init_type: str = "random",
         grid_size: Optional[int] = None,
-        species_config=None
+        species_config=None,
+        speed_spec=None
     ) -> str:
         if init_type == "grid" and grid_size:
-            return self._generate_grid_init(species_info, grid_size, species_config)
+            return self._generate_grid_init(species_info, grid_size, species_config, speed_spec)
         elif init_type == "clustered":
-            return self._generate_clustered_init(species_info, species_config)
+            return self._generate_clustered_init(species_info, species_config, speed_spec)
         else:
-            return self._generate_random_init(species_info, species_config)
+            return self._generate_random_init(species_info, species_config, speed_spec)
     
     def get_species_colors(self, species_info: SpeciesInfo, species_config=None) -> Dict[int, List[float]]:
         colors = {}
@@ -44,7 +45,25 @@ class SpeciesManager:
         
         return colors
     
-    def _generate_random_init(self, species_info: SpeciesInfo, species_config=None) -> str:
+    def _get_speed_value(self, speed_spec) -> float:
+        """Get speed value from speed specification."""
+        if not speed_spec:
+            return 100.0  # Default medium speed
+        
+        if speed_spec.value is not None:
+            return speed_spec.value
+        
+        # Map magnitude to values
+        magnitude_map = {
+            "slow": 50.0,
+            "medium": 100.0, 
+            "fast": 200.0,
+            "very_fast": 300.0
+        }
+        
+        return magnitude_map.get(speed_spec.magnitude, 100.0)
+    
+    def _generate_random_init(self, species_info: SpeciesInfo, species_config=None, speed_spec=None) -> str:
         colors = self.get_species_colors(species_info, species_config)
         
         if species_info.total_count > 1:
@@ -57,15 +76,29 @@ species_map = ti.field(dtype=ti.i32, shape={species_info.total_count})
         else:
             species_map_code = ""
         
+        # Handle velocity initialization based on speed_spec
+        if speed_spec and speed_spec.uniform:
+            # All particles same speed, random directions
+            speed_val = self._get_speed_value(speed_spec)
+            velocity_init = f"""        # Uniform speed with random directions
+        angle = ti.random() * 2 * 3.14159
+        tv.p.field[i].vel = ti.Vector([
+            ti.cos(angle) * {speed_val},
+            ti.sin(angle) * {speed_val}
+        ])"""
+        else:
+            # Default random velocities
+            velocity_init = f"""        tv.p.field[i].vel = ti.Vector([
+            (ti.random() - 0.5) * 100.0,
+            (ti.random() - 0.5) * 100.0
+        ])"""
+        
         init_code = f"""{species_map_code}@ti.kernel
 def init_particles():
     for i in range(tv.pn):
         tv.p.field[i].active = 1.0
         tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
-        tv.p.field[i].vel = ti.Vector([
-            (ti.random() - 0.5) * 100.0,
-            (ti.random() - 0.5) * 100.0
-        ])
+{velocity_init}
         tv.p.field[i].size = 5.0
         tv.p.field[i].mass = 1.0
         
@@ -89,7 +122,7 @@ def init_particles():
         
         return init_code
     
-    def _generate_grid_init(self, species_info: SpeciesInfo, grid_size: int, species_config=None) -> str:
+    def _generate_grid_init(self, species_info: SpeciesInfo, grid_size: int, species_config=None, speed_spec=None) -> str:
         colors = self.get_species_colors(species_info, species_config)
         
         init_code = f"""@ti.kernel
@@ -138,7 +171,7 @@ init_particles_grid()
         
         return init_code
     
-    def _generate_clustered_init(self, species_info: SpeciesInfo, species_config=None) -> str:
+    def _generate_clustered_init(self, species_info: SpeciesInfo, species_config=None, speed_spec=None) -> str:
         colors = self.get_species_colors(species_info, species_config)
         
         init_code = f"""@ti.kernel
@@ -169,11 +202,26 @@ def init_particles_clustered():
             tv.p.field[particle_idx].pos = cluster_center_{sid} + ti.Vector([
                 ti.cos(angle) * radius,
                 ti.sin(angle) * radius
-            ])
+            ])"""
+            
+            # Add velocity initialization based on speed_spec
+            if speed_spec and speed_spec.uniform:
+                speed_val = self._get_speed_value(speed_spec)
+                init_code += f"""
+            # Uniform speed with random directions
+            vel_angle = ti.random() * 2 * 3.14159
+            tv.p.field[particle_idx].vel = ti.Vector([
+                ti.cos(vel_angle) * {speed_val},
+                ti.sin(vel_angle) * {speed_val}
+            ])"""
+            else:
+                init_code += f"""
             tv.p.field[particle_idx].vel = ti.Vector([
                 (ti.random() - 0.5) * 50.0,
                 (ti.random() - 0.5) * 50.0
-            ])
+            ])"""
+            
+            init_code += f"""
             tv.p.field[particle_idx].size = 5.0
             tv.p.field[particle_idx].mass = 1.0
             tv.p.field[particle_idx].species = {sid}
@@ -236,12 +284,23 @@ def init_particles_clustered():
     def should_use_grid_init(self, description: str) -> Tuple[bool, Optional[int]]:
         desc_lower = description.lower()
         
-        # Grid indicators
+        # Grid indicators - ONLY for cellular automata, NOT ecosystems
         grid_patterns = [
             'cellular automaton', 'game of life', 'conway',
-            'grid', 'cells', 'neighbors', 'lattice'
+            'grid', 'cells', 'lattice'
         ]
         
+        # Exclude ecosystem patterns from grid init
+        ecosystem_patterns = [
+            'ecosystem', 'predator', 'prey', 'fish', 'school',
+            'hunt', 'chase', 'flee', 'scavenger', 'food chain'
+        ]
+        
+        # Check if it's an ecosystem pattern - don't use grid
+        if any(pattern in desc_lower for pattern in ecosystem_patterns):
+            return False, None
+        
+        # Check for explicit grid patterns
         if any(pattern in desc_lower for pattern in grid_patterns):
             # Try to extract grid size
             size_match = re.search(r'(\d+)x\1', desc_lower)

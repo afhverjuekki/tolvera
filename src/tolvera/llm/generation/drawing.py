@@ -105,7 +105,7 @@ class DrawingClassifier:
 
 
 class DrawingKernelGenerator:
-    """Generates integration kernels for drawing behaviors"""
+    """Generates integration for drawing behaviors"""
     
     def generate(
         self,
@@ -116,61 +116,58 @@ class DrawingKernelGenerator:
         tolvera_instance: Any
     ) -> str:
         """
-        Generate a drawing integration kernel.
+        Generate code to call drawing kernels in the render pipeline.
+        
+        Note: Drawing behaviors are implemented as kernels, not functions,
+        so they're called directly in the render pipeline, not integrated.
         
         Args:
-            pre_draw_experts: Expert names for pre-particle drawing
-            post_draw_experts: Expert names for post-particle drawing
-            interaction_draw_experts: Expert names requiring particle pairs
+            pre_draw_experts: Kernel names for pre-particle drawing
+            post_draw_experts: Kernel names for post-particle drawing
+            interaction_draw_experts: Kernel names requiring particle pairs
             expert_weights: Weights for each expert
             tolvera_instance: Tolvera instance for field info
             
         Returns:
-            Generated kernel code
+            Generated code to add to render pipeline
         """
-        kernel_parts = []
-        
-        # Header
-        kernel_parts.append("@ti.kernel")
-        kernel_parts.append("def apply_drawing_behaviors(tv: ti.template()):")
-        kernel_parts.append("    # Drawing integration kernel")
+        render_calls = []
         
         # Pre-particle drawing phase
         if pre_draw_experts:
-            kernel_parts.append("\n    # Pre-particle drawing effects")
-            kernel_parts.append("    for i in range(tv.pn):")
-            kernel_parts.append("        if tv.p.active[i] > 0:")
-            
-            for expert in pre_draw_experts:
-                weight = expert_weights.get(expert, 1.0)
+            render_calls.append("# Pre-particle drawing effects")
+            for kernel in pre_draw_experts:
+                weight = expert_weights.get(kernel, 1.0)
                 if weight > 0:
-                    kernel_parts.append(f"            {expert}(tv.px, tv.p[i], i)")
+                    render_calls.append(f"{kernel}()  # Draw before particles")
+        
+        # Note: Drawing kernels should be called directly, not through an integration kernel
+        # They're added to the render pipeline like:
+        # @tv.render
+        # def _():
+        #     tv.px.clear()
+        #     draw_trails()  # Pre-draw
+        #     tv.p()  # Particles
+        #     draw_glows()  # Post-draw
+        #     return tv.px
         
         # Interaction drawing phase
         if interaction_draw_experts:
-            kernel_parts.append("\n    # Interaction-based drawing")
-            kernel_parts.append("    for i in range(tv.pn):")
-            kernel_parts.append("        if tv.p.active[i] > 0:")
-            kernel_parts.append("            for j in range(i + 1, tv.pn):")
-            kernel_parts.append("                if tv.p.active[j] > 0:")
-            
-            for expert in interaction_draw_experts:
-                weight = expert_weights.get(expert, 1.0)
+            render_calls.append("# Interaction-based drawing")
+            for kernel in interaction_draw_experts:
+                weight = expert_weights.get(kernel, 1.0)
                 if weight > 0:
-                    kernel_parts.append(f"                    {expert}(tv.px, tv.p[i], tv.p[j])")
+                    render_calls.append(f"{kernel}()  # Draw particle interactions")
         
         # Post-particle drawing phase
         if post_draw_experts:
-            kernel_parts.append("\n    # Post-particle drawing effects")
-            kernel_parts.append("    for i in range(tv.pn):")
-            kernel_parts.append("        if tv.p.active[i] > 0:")
-            
-            for expert in post_draw_experts:
-                weight = expert_weights.get(expert, 1.0)
+            render_calls.append("# Post-particle drawing effects")
+            for kernel in post_draw_experts:
+                weight = expert_weights.get(kernel, 1.0)
                 if weight > 0:
-                    kernel_parts.append(f"            {expert}(tv.px, tv.p[i], i)")
+                    render_calls.append(f"{kernel}()  # Draw after particles")
         
-        return "\n".join(kernel_parts)
+        return "\n".join(render_calls)
 
 
 class DrawingSynthesizer:
@@ -239,51 +236,62 @@ class DrawingSynthesizer:
         """Get drawing-specific instructions based on classification"""
         
         if classification["requires_interaction"]:
-            return """## DRAWING EXPERT REQUIREMENTS (Particle-Particle)
-Generate a Taichi drawing function for particle-particle visualizations.
+            return """## DRAWING KERNEL REQUIREMENTS (Particle-Particle)
+Generate a Taichi kernel for particle-particle visualizations.
 
 Function signature:
-@ti.func
-def draw_<descriptive_name>(px: ti.template(), p1: ti.template(), p2: ti.template()):
-    # Drawing based on relationship between p1 and p2
-    pass
+@ti.kernel
+def draw_<descriptive_name>():
+    # Drawing based on relationships between particles
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            for j in range(i + 1, tv.pn):
+                if tv.p.field[j].active > 0:
+                    # Draw connection/interaction
 
 IMPORTANT:
-- Function name should start with 'draw_' (NOT 'expert_draw_')
-- Access pixels with px.px.rgba[x, y] where x, y are integer coordinates
-- Use p1.pos and p2.pos for particle positions
-- Consider distance, species, and other particle properties
-- Handle boundaries with modulo or clamp operations
-- Focus on visualizing relationships, connections, and interactions
-- CRITICAL: Declare ALL variables before conditional branches:
-  distance = 0.0  # Default
-  if condition:
-      distance = calculate_distance()"""
+- Use @ti.kernel NOT @ti.func
+- Access particles with tv.p.field[i] and tv.p.field[j]
+- Use Pixels API methods:
+  * tv.px.line(x1, y1, x2, y2, color) for lines
+  * tv.px.circle(x, y, radius, color) for circles
+  * tv.px.rect(x, y, width, height, color) for rectangles
+- NEVER use px.px.rgba[x,y] - this is incorrect!
+- Colors are ti.math.vec4(r, g, b, a) with values 0.0-1.0
+- Cast positions to appropriate types for drawing:
+  x = ti.cast(tv.p.field[i].pos[0], ti.i32)
+- Handle boundaries with modulo: x % tv.x
+- Example:
+  tv.px.line(p1.pos[0], p1.pos[1], p2.pos[0], p2.pos[1], ti.math.vec4(1, 0, 0, 0.5))"""
         else:
-            return f"""## DRAWING EXPERT REQUIREMENTS (Single Particle)
-Generate a Taichi drawing function for single-particle visualization.
+            return f"""## DRAWING KERNEL REQUIREMENTS (Single Particle)
+Generate a Taichi kernel for single-particle visualization.
 
 Function signature:
-@ti.func
-def draw_<descriptive_name>(px: ti.template(), p: ti.template(), particle_idx: ti.i32):
-    # Drawing effects for individual particle
-    pass
+@ti.kernel
+def draw_<descriptive_name>():
+    # Drawing effects for particles
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            p = tv.p.field[i]
+            # Draw effect for particle
 
 Draw order: {"PRE-particle rendering (background effects)" if classification["draw_order"] == "pre" else "POST-particle rendering (overlay effects)"}
 
 IMPORTANT:
-- Function name should start with 'draw_' (NOT 'expert_draw_')
-- Access pixels with px.px.rgba[x, y] where x, y are integer coordinates
-- Use p.pos for particle position, p.vel for velocity
-- Cast positions to integers: px_x = ti.cast(p.pos.x, ti.i32)
-- Check bounds: if 0 <= px_x < tv.x and 0 <= px_y < tv.y
-- For trails: use p.ppos (previous position) if available
-- For glows/halos: iterate over nearby pixels with appropriate falloff
-- Use alpha blending for transparency effects
-- CRITICAL: Declare ALL variables before conditional branches:
-  intensity = 0.5  # Default
-  if p.species == 0:
-      intensity = 1.0"""
+- Use @ti.kernel NOT @ti.func
+- Access particles with tv.p.field[i]
+- Use Pixels API methods:
+  * tv.px.line(x1, y1, x2, y2, color) for trails
+  * tv.px.circle(x, y, radius, color) for halos/glows
+  * tv.px.rect(x, y, width, height, color) for blocks
+- NEVER use px.px.rgba[x,y] - this is incorrect!
+- Colors are ti.math.vec4(r, g, b, a) or ti.Vector([r, g, b, a])
+- Positions can be float, internally cast by API
+- Example for trails:
+  tv.px.line(p.pos[0], p.pos[1], p.pos[0] - p.vel[0]*10, p.pos[1] - p.vel[1]*10, color)
+- Example for glow:
+  tv.px.circle(p.pos[0], p.pos[1], 10, ti.math.vec4(1, 1, 0, 0.3))"""
     
     def _extract_code(self, response: str) -> str:
         """Extract the function code from LLM response"""

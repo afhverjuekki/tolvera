@@ -147,11 +147,8 @@ class MermaidDiagramGenerator:
         
         if node.type == "decomposition" and node.output_data:
             components = node.output_data.get("components", [])
-            is_simple = node.output_data.get("is_simple", False)
-            if is_simple:
-                label += f"<br/>Simple → 1 expert"
-            else:
-                label += f"<br/>Complex → {len(components)} experts"
+            component_count = len(components)
+            label += f"<br/>{component_count} expert{'s' if component_count != 1 else ''}"
             
         elif node.type == "synthesis" and node.output_data:
             expert_count = 0
@@ -166,12 +163,9 @@ class MermaidDiagramGenerator:
             if 'decompose' in node.name.lower() or (node.parent_id and 'decompose' in node.parent_id):
                 parsed = node.llm_call.parsed_response
                 if parsed and isinstance(parsed, dict):
-                    is_simple = parsed.get("is_simple", False)
                     components = parsed.get("components", [])
-                    if is_simple:
-                        label += "<br/>Decompose → Simple"
-                    else:
-                        label += f"<br/>Decompose → {len(components)} experts"
+                    component_count = len(components)
+                    label += f"<br/>Decompose → {component_count} expert{'s' if component_count != 1 else ''}"
                 else:
                     label += "<br/>Decomposition"
             else:
@@ -271,14 +265,14 @@ class MermaidDiagramGenerator:
                 if llm_node.llm_call.parsed_response:
                     parsed = llm_node.llm_call.parsed_response
                     if isinstance(parsed, dict):
-                        is_simple = parsed.get("is_simple", False)
                         components = parsed.get("components", [])
-                        if is_simple:
-                            lines.append("    LLM-->>-Decomposer: Simple behavior")
-                            lines.append("    Decomposer-->>-Agent: Use single expert")
+                        component_count = len(components)
+                        if component_count == 1:
+                            lines.append("    LLM-->>-Decomposer: Single expert")
+                            lines.append("    Decomposer-->>-Agent: Use 1 expert")
                         else:
-                            lines.append(f"    LLM-->>-Decomposer: {len(components)} components")
-                            lines.append(f"    Decomposer-->>-Agent: {len(components)} experts needed")
+                            lines.append(f"    LLM-->>-Decomposer: {component_count} components")
+                            lines.append(f"    Decomposer-->>-Agent: {component_count} experts needed")
                 
             elif 'state_analysis' in llm_node.name.lower():
                 lines.append("    Agent->>+StateAnalyzer: Analyze state requirements")

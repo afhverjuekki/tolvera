@@ -146,15 +146,17 @@ class ConsoleTracer:
     def _show_decomposition_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)
         output = node.output_data
-        is_simple = output.get("is_simple", False)
         
         if "interpretation" in output:
             interp = self._color(f'"{output["interpretation"]}"', "dim")
             print(f"{indent}Interpretation: {interp}")
         
-        complexity_color = "green" if is_simple else "yellow"
-        complexity_text = "Simple (single expert)" if is_simple else f"Complex ({len(output.get('components', []))} experts)"
-        print(f"{indent}Complexity: {self._color(complexity_text, complexity_color)}")
+        # Show component count instead of complexity classification
+        components = output.get('components', [])
+        component_count = len(components)
+        complexity_color = "green" if component_count == 1 else "yellow"
+        complexity_text = f"{component_count} expert{'s' if component_count != 1 else ''}"
+        print(f"{indent}Components: {self._color(complexity_text, complexity_color)}")
         
         if "components" in output:
             print(f"{indent}Components:")

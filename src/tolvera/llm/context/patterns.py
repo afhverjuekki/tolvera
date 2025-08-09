@@ -5,16 +5,20 @@ MOVEMENT_PATTERNS = """
 ```python
 to_target = target - pos
 dist = to_target.norm()
+force = ti.math.vec2(0.0, 0.0)
 if dist > 1.0:  # Avoid division by zero
-    force = (to_target / dist) * attraction_strength
+    direction = to_target / dist
+    force = direction * attraction_strength
 ```
 
 ## Flee/Repulsion
 ```python
 away_from_target = pos - target
 dist = away_from_target.norm()
+force = ti.math.vec2(0.0, 0.0)
 if dist > 0.01 and dist < repulsion_radius:
-    force = (away_from_target / dist) * repulsion_strength
+    direction = away_from_target / dist
+    force = direction * repulsion_strength
 ```
 
 ## Wander/Random Walk
@@ -36,7 +40,8 @@ if dist > 1.0:
 ## Damped Spring
 ```python
 to_target = target - pos
-force = to_target * spring_constant - vel * damping
+vel_damping = vel * damping
+force = to_target * spring_constant - vel_damping
 ```
 
 ## Spiral Motion
@@ -56,30 +61,35 @@ FLOCKING_PATTERNS = """
 
 ## Alignment - Match neighbor velocities
 ```python
+# Declare ALL variables before conditionals
 perceived_velocity = ti.math.vec2(0.0, 0.0)
 neighbor_count = 0
+force = ti.math.vec2(0.0, 0.0)
 
 for j in range(tv.pn):
-    if i != j:
+    if particle_idx != j:  # Use particle_idx parameter, NOT 'i'
         other = tv.p.field[j]
-        if other.species == species:
+        if other.species == species and other.active > 0:
             diff = other.pos - pos
-            if diff.norm() < perception_radius:
+            dist = diff.norm()
+            if dist < perception_radius:
                 perceived_velocity += other.vel
                 neighbor_count += 1
 
 if neighbor_count > 0:
-    desired_vel = perceived_velocity / neighbor_count
-    force = (desired_vel - vel) * alignment_strength
+    perceived_velocity /= neighbor_count
+    # Calculate steering force towards average velocity
+    force = (perceived_velocity - vel) * alignment_strength
 ```
 
 ## Cohesion - Move toward group center
 ```python
 center_of_mass = ti.math.vec2(0.0, 0.0)
 neighbor_count = 0
+force = ti.math.vec2(0.0, 0.0)  # Declare force at the start
 
 for j in range(tv.pn):
-    if i != j and tv.p.field[j].species == species:
+    if particle_idx != j and tv.p.field[j].species == species:
         diff = tv.p.field[j].pos - pos
         if diff.norm() < perception_radius:
             center_of_mass += tv.p.field[j].pos
@@ -95,7 +105,7 @@ if neighbor_count > 0:
 separation_force = ti.math.vec2(0.0, 0.0)
 
 for j in range(tv.pn):
-    if i != j:
+    if particle_idx != j:  # Use particle_idx parameter
         diff = pos - tv.p.field[j].pos
         dist = diff.norm()
         if dist > 0.01 and dist < separation_radius:
@@ -112,11 +122,13 @@ INTERACTION_PATTERNS = """
 ## Chase/Predator-Prey
 ```python
 # In interaction function (p1 chases p2)
-if p1.species == predator_species and p2.species == prey_species:
+force = ti.math.vec2(0.0, 0.0)
+if p1.species == predator_species and p2.species == prey_species and p2.active > 0:
     to_prey = p2.pos - p1.pos
     dist = to_prey.norm()
     if dist > 1.0 and dist < hunt_radius:
-        force = (to_prey / dist) * chase_speed
+        direction = to_prey / dist
+        force = direction * chase_speed
 ```
 
 ## Mutual Repulsion
@@ -135,7 +147,8 @@ if (p1.species == 0 and p2.species == 1) or (p1.species == 1 and p2.species == 0
 diff = p2.pos - p1.pos
 dist_sq = diff.dot(diff)
 if dist_sq > 1.0:  # Minimum distance to avoid singularity
-    force = diff.normalized() * (G * p1.mass * p2.mass / dist_sq)
+    dist = ti.sqrt(dist_sq)
+    force = (diff / dist) * (G * p1.mass * p2.mass / dist_sq)
 ```
 
 ## Magnetic Dipole
@@ -145,8 +158,13 @@ diff = p2.pos - p1.pos
 dist = diff.norm()
 if dist > 1.0 and dist < interaction_radius:
     # Assuming particles have orientation stored in velocity direction
-    alignment = p1.vel.normalized().dot(p2.vel.normalized())
-    force = diff.normalized() * (alignment * magnetic_strength / (dist * dist))
+    # Normalize velocities manually
+    p1_vel_norm = p1.vel.norm()
+    p2_vel_norm = p2.vel.norm()
+    alignment = 0.0
+    if p1_vel_norm > 0.001 and p2_vel_norm > 0.001:
+        alignment = (p1.vel / p1_vel_norm).dot(p2.vel / p2_vel_norm)
+    force = (diff / dist) * (alignment * magnetic_strength / (dist * dist))
 ```
 
 ## Social Distancing
@@ -154,9 +172,11 @@ if dist > 1.0 and dist < interaction_radius:
 # Maintain preferred distance between particles
 diff = p2.pos - p1.pos
 dist = diff.norm()
+force = ti.math.vec2(0.0, 0.0)
 if dist > 0.01:
     deviation = dist - preferred_distance
-    force = diff.normalized() * (-deviation * social_strength)
+    direction = diff / dist
+    force = direction * (-deviation * social_strength)
 ```
 """
 

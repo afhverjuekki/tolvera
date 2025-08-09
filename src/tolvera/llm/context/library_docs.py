@@ -132,26 +132,29 @@ TAICHI_ESSENTIALS = """
 
 ## Vector Operations
 - Arithmetic: vec1 + vec2, vec1 - vec2, vec * scalar
-- Methods: vec.norm(), vec.normalized(), vec.dot(other)
+- Methods for ti.math.vec2: vec.norm(), vec.dot(other)
 - Access: vec[0] or vec.x, vec[1] or vec.y
+- Normalization: Manual division or ti.math.normalize()
 
 ## Common Patterns
-# Safe normalization
-if vec.norm() > 0.01:
-    direction = vec.normalized()
+# Safe normalization (CORRECT)
+dist = vec.norm()
+if dist > 0.01:
+    direction = vec / dist  # Manual normalization
+    # OR: direction = ti.math.normalize(vec)
 else:
     direction = ti.math.vec2(1.0, 0.0)
 
 # Distance calculation
-dist = (pos2 - pos1).norm()
+dist = (pos2 - pos1).norm()  # Works for ti.math.vec2
 
 # Random direction
 angle = ti.random() * 2 * 3.14159
 direction = ti.math.vec2(ti.cos(angle), ti.sin(angle))
 
 ## Important Notes
-- ❌ NEVER: ti.pi, math.sqrt(), vec.normalize()
-- ✅ ALWAYS: 3.14159, ti.sqrt(), vec.normalized()
+- ❌ NEVER: ti.pi, math.sqrt(), vec.normalized() (doesn't exist!)
+- ✅ ALWAYS: 3.14159, ti.sqrt(), vec / vec.norm() or ti.math.normalize(vec)
 - Check division by zero when normalizing
 - Taichi is statically typed - declare types explicitly
 
