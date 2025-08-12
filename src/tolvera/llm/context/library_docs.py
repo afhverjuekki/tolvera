@@ -39,9 +39,9 @@ Only create custom states for properties that DON'T already exist:
 - ❌ DON'T create states for: mass, pos, vel, species (already in particle struct)
 
 ### State Categories
-- **Global States**: System-wide parameters (gravity, time_of_day, temperature)
+- **Global States**: System-wide parameters INCLUDING time-based (gravity, temperature, day_phase, time_of_day)
   - Access: `tv.s.llm_global.field[0].state_name`
-  - Example ranges: gravity (0-1000), temperature (0-100)
+  - Example ranges: gravity (0-1000), temperature (0-100), day_phase (0.0-1.0), time_of_day (0.0-24.0)
 - **Particle States**: Per-particle custom data (energy, home_position, memory)
   - Access: `tv.s.llm_particle.field[i].state_name`
 - **Species States**: Per-species configuration (aggression, speed_modifier)
@@ -74,12 +74,14 @@ States are organized into containers that can be accessed via:
 PIXELS_API = """
 # Pixels API (tv.px)
 
-## Drawing Functions (Taichi kernel context)
-- tv.px.point(x, y, color): Draw single pixel
-- tv.px.line(x0, y0, x1, y1, color): Anti-aliased line
-- tv.px.circle(x, y, radius, color, fill=1): Circle (filled by default)
-- tv.px.rect(x, y, w, h, color, fill=1): Rectangle
-- tv.px.triangle(a, b, c, color, fill=1): Triangle
+## Drawing Functions (Taichi kernel context) - EXACT SIGNATURES
+- tv.px.point(x: ti.i32, y: ti.i32, rgba: vec4): Draw single pixel
+- tv.px.line(x0: ti.f32, y0: ti.f32, x1: ti.f32, y1: ti.f32, rgba: vec4): Anti-aliased line
+- tv.px.circle(x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4, fill: ti.i32 = 1): Circle (filled by default)
+- tv.px.rect(x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: vec4, fill: ti.i32 = 1): Rectangle
+- tv.px.triangle(a: vec2, b: vec2, c: vec2, rgba: vec4, fill: ti.i32 = 1): Triangle with vec2 points
+
+CRITICAL: Colors must be ti.math.vec4(r, g, b, a) or ti.Vector([r, g, b, a]) with values 0.0-1.0
 
 ## Pixel Field Access
 - tv.px.px.rgba[x, y]: Direct pixel access (ti.math.vec4)
@@ -190,9 +192,18 @@ return result  # Single return at end
 STATE_ACCESS_PATTERNS = """
 # State Access Patterns
 
-## Global States (shared across entire system)
+## IMPORTANT: Available States
+When synthesizing experts, you will be told what custom states are available.
+Only use states that have been explicitly created and are listed as available.
+
+## Global States (shared across entire system, INCLUDING time-based)
 Access: tv.s.llm_global.field[0].state_name
+Example: gravity = tv.s.llm_global.field[0].gravity_strength
 Example: day_phase = tv.s.llm_global.field[0].day_phase
+Common time-based global states:
+- day_phase: 0.0-1.0 (0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk)
+- time_of_day: 0.0-24.0 (hours)
+- season_cycle: 0.0-1.0 (0=winter, 0.25=spring, 0.5=summer, 0.75=fall)
 
 ## Particle States (per-particle data)
 Access: tv.s.llm_particle.field[particle_idx].state_name
@@ -205,12 +216,13 @@ Example: aggression = tv.s.llm_species.field[species].aggression_level
 ## Common State Types
 - Scalars: ti.f32 for continuous values
 - Vectors: ti.math.vec2 for positions, directions
+- Integers: ti.i32 for discrete values (grid positions, counts)
 - Bounded values: Always respect min/max ranges
 
-## Temporal States
-- frame_count: Current simulation frame
-- day_phase: 0.0-1.0 (0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk)
+## Temporal Patterns
 - Use modulo for cyclic behaviors: phase = (frame / cycle_length) % 1.0
+- Day/night cycles: Use sin(day_phase * 3.14159) for smooth transitions
+- Seasonal changes: Map season_cycle to behavior parameters
 """
 
 BOUNDARY_HANDLING = """

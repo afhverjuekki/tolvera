@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.gemini import GeminiModel
 
 from .models import (
     BehaviorSynthesisResponse,
@@ -68,6 +67,14 @@ class TemporalUpdateResponse(BaseModel):
     update_type: str = Field(description="Type: energy, oscillator, growth, day_night, etc.")
 
 
+class UtilityExpertResponse(BaseModel):
+    name: str = Field(description="Name of the utility function")
+    description: str = Field(description="What this utility function does")
+    code: str = Field(description="Complete @ti.func code without particle parameters")
+    utility_type: str = Field(description="Type: temporal_update, state_update, helper, etc.")
+    returns_value: bool = Field(default=False, description="Whether the function returns a value")
+
+
 class ConfigurationResponse(BaseModel):
     species_count: int = Field(description="Number of species detected")
     particle_count: int = Field(description="Recommended particle count")
@@ -101,25 +108,21 @@ class Synthesizer:
     
     def __init__(
         self,
-        model_name: str = "gemini-2.0-flash-exp",
+        model_name: str = "gemini-2.0-flash",
         tolvera_instance=None,
         api_key: Optional[str] = None
     ):
         # Load environment variables
         self._load_env()
         
-        # Get API key
-        if not api_key:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY not found")
-        
         self.model_name = model_name
         self.tv = tolvera_instance
         
-        # Set key for Gemini
-        os.environ['GEMINI_API_KEY'] = api_key
-        self.model = GeminiModel(model_name)
+        # Use model factory to create the appropriate model
+        from .model_factory import ModelFactory
+        self.model = ModelFactory.create_model(model_name, api_key)
+        self.provider = ModelFactory.get_provider_for_model(model_name)
+        logger.info(f"Synthesizer using provider '{self.provider}' with model '{model_name}'")
         
         # Initialize species components
         self.species_analyzer = SpeciesAnalyzer()
@@ -142,23 +145,75 @@ class Synthesizer:
                 load_dotenv(env_path)
                 break
     
+    def _get_expert_type_guidance(self, expert_type: Optional[str]) -> str:
+        """Get expert-type specific guidance for state analysis."""
+        if not expert_type:
+            return ""
+            
+        guidance_map = {
+            'force': """
+FORCE EXPERT CONTEXT:
+Focus on physics-related states that affect forces:
+- "particles chase food" → needs 'consumed' state (ti.i32) to mark eaten food
+- "energy depletes over time" → needs 'energy' state (ti.f32) that affects movement
+- "particles get tired" → needs 'energy' or 'stamina' state
+- "magnetic attraction" → might need 'charge' state (ti.f32)
+- "particles return home" → needs 'home_pos' state (ti.math.vec2)
+""",
+            'interaction': """
+INTERACTION EXPERT CONTEXT:
+Focus on relationship and detection states:
+- "predator hunts prey" → needs 'hunt_radius' state (ti.f32) for detection range
+- "particles form bonds" → needs 'bond_strength' or 'connection_count' states
+- "species interact differently" → needs species-specific parameters
+- "particles remember encounters" → needs 'last_interaction_time' state
+""",
+            'visual': """
+VISUAL EXPERT CONTEXT:
+Focus on animation and display states:
+- "particles blink" → needs 'blink_timer' or 'blink_phase' state (ti.f32)
+- "color changes over time" → needs 'color_phase' or 'hue_shift' state
+- "particles pulse" → needs 'pulse_phase' state for animation
+- "trails fade" → needs 'trail_intensity' state
+""",
+            'temporal_update': """
+TEMPORAL UPDATE CONTEXT:
+Focus on time-dependent state changes:
+- "day/night cycle" → needs 'day_phase' state (ti.f32) with periodic updates
+- "aging particles" → needs 'age' state (ti.f32) that increments
+- "energy regeneration" → needs energy state with recovery rules
+- "seasonal changes" → needs 'season' state with transitions
+""",
+            'utility': """
+UTILITY EXPERT CONTEXT:
+Focus on helper states and flags:
+- "grid-based behavior" → needs 'grid_x', 'grid_y' states (ti.i32)
+- "cellular automaton" → needs 'is_alive', 'neighbor_count' states
+- "state machines" → needs 'current_state' enumeration
+- "counters and timers" → needs accumulator states
+"""
+        }
+        
+        return guidance_map.get(expert_type, "")
+
     async def analyze_states_needed(
         self,
-        description: str
+        description: str,
+        expert_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        logger.info(f"Analyzing states needed for: {description}")
+        logger.info(f"Analyzing states needed for: {description} (type: {expert_type})")
         
         # Get trace collector
         collector = get_collector()
         
-        # Build state analysis prompt
-        prompt = self.prompt_builder.build_state_analysis_prompt(description)
+        # Build state analysis prompt with expert type context
+        prompt = self.prompt_builder.build_state_analysis_prompt(description, expert_type=expert_type)
         
         # Create structured agent for state analysis
         agent = Agent(
             self.model,
             output_type=StateAnalysisResponse,
-            system_prompt="""You are an expert at analyzing particle behaviors and determining what states they need.
+            system_prompt=f"""You are an expert at analyzing particle behaviors and determining what states they need.
 
 CRITICAL: The following properties are ALREADY AVAILABLE on every particle and must NOT be recreated:
 - pos, vel (position, velocity) - ti.math.vec2
@@ -170,6 +225,8 @@ CRITICAL: The following properties are ALREADY AVAILABLE on every particle and m
 - ppos, pvel (previous position/velocity) - ti.math.vec2
 
 DO NOT create states for any of these existing properties!
+
+{self._get_expert_type_guidance(expert_type)}
 
 Analyze the behavior and determine:
 1. What global states are needed (system-wide parameters like gravity strength, time of day)
@@ -357,15 +414,15 @@ For temporal updates, provide the state name and a VALID update expression that 
         
         # Update available_states to include both existing and new states
         if available_states is None:
-            available_states = {'global': [], 'particle': [], 'species': []}
+            available_states = {'global': [], 'particle': [], 'species': [], 'temporal': []}
         else:
             # Ensure all categories exist
-            for category in ['global', 'particle', 'species']:
+            for category in ['global', 'particle', 'species', 'temporal']:
                 if category not in available_states:
                     available_states[category] = []
         
         # Add analyzed states to available states for prompt
-        for category in ['global', 'particle', 'species']:
+        for category in ['global', 'particle', 'species', 'temporal']:
             if category in states_analysis:
                 for state_name in states_analysis[category].keys():
                     if state_name not in available_states[category]:
@@ -415,17 +472,38 @@ For pure drawing behaviors (e.g., "draw a red rectangle"):
 4. Drawing operations should use screen coordinates
 5. NO PARAMETERS - drawing functions take no arguments
 
-Example visual expert:
+Example visual expert WITH temporal state:
 @ti.func
 def draw_rectangle():
-    # Draw a red rectangle in the middle of the screen
+    # CRITICAL: Time-based animation states are now in llm_global!
+    # For oscillating/blinking effects, check global states
+    phase = tv.s.llm_global.field[0].phase  # Access animation state from global
+    
+    # Draw a red rectangle with oscillating opacity
     x = tv.x // 2 - 100
     y = tv.y // 2 - 50
     width = 200
     height = 100
-    color = ti.math.vec4(1.0, 0.0, 0.0, 1.0)
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
     tv.px.rect(x, y, width, height, color)
     # No return statement - this is a void function
+
+Example visual expert WITHOUT temporal state (fallback to frame counter):
+@ti.func
+def draw_rectangle():
+    # No temporal states available, use frame counter
+    frame = tv.ctx.i[None]
+    phase = (frame % 150) / 150.0  # 2.5 second cycle at 60fps
+    
+    # Draw with oscillating opacity
+    x = tv.x // 2 - 100
+    y = tv.y // 2 - 50
+    width = 200
+    height = 100
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
+    tv.px.rect(x, y, width, height, color)
 
 ## HELPER FUNCTION SYNTHESIS
 If your expert needs complex operations, you SHOULD generate helper functions.
@@ -463,7 +541,7 @@ if species == 0 or species == 1:  # Consumers
 diff = wrap_distance(pos, target_pos)
 dist = diff.norm()
 if dist > 0.001:
-    force = (diff / dist) * 100.0
+    force = (diff / dist) * 250.0
 
 ## CRITICAL TAICHI RULES - THESE PATTERNS WILL CRASH IF WRONG:
 
@@ -608,7 +686,39 @@ def species_behavior(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species
 
 REMEMBER: Every single return statement MUST be at the END of the function, NEVER inside if/for/while blocks!
 
-2. DEFINE ALL VARIABLES BEFORE USE:
+2. CRITICAL VARIABLE DECLARATION RULE - ALWAYS DECLARE BEFORE CONDITIONALS:
+❌ WRONG - Variable defined inside conditional (COMPILATION ERROR!):
+```python
+if species == 0:
+    alpha = 1.0      # ERROR: alpha not defined before if!
+    strength = 150.0 # ERROR: strength not defined before if!
+else:
+    alpha = 0.0      # ERROR: these will cause compilation failure!
+    strength = 50.0  # ERROR: variables must exist before conditionals!
+# Using variables here will CRASH
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # CRASH: alpha not defined
+force = direction * strength  # CRASH: strength not defined
+```
+
+✅ CORRECT - ALWAYS declare variables with defaults FIRST:
+```python
+# ALWAYS declare ALL variables with default values BEFORE any conditionals
+alpha = 0.0      # Default value declared FIRST
+strength = 50.0  # Default value declared FIRST
+visibility = 1.0 # Default value declared FIRST
+
+# Now you can modify them in conditionals
+if species == 0:
+    alpha = 1.0       # Now we can modify existing variable
+    strength = 150.0  # Now we can modify existing variable
+    visibility = 0.0  # Now we can modify existing variable
+
+# Safe to use - variables are always defined
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # OK: alpha always defined
+force = direction * strength  # OK: strength always defined
+```
+
+3. DEFINE ALL VARIABLES BEFORE USE:
 ❌ NEVER use undefined variables like:
 if distance < undefined_radius:  # ERROR: undefined_radius not defined
 
@@ -639,6 +749,42 @@ if distance < detection_radius:  # Now safe to use
                 system_prompt += "\n- DO NOT include '-> ti.math.vec2' in the function signature"
                 system_prompt += "\n- Just perform drawing operations and end the function"
                 system_prompt += "\n- Use 'if particle_idx == 0:' to draw only once per frame"
+                
+                # Add correct drawing API reference
+                from ..context.drawing_patterns import DRAWING_API_REFERENCE
+                system_prompt += "\n\nCORRECT TÖLVERA PIXELS API SIGNATURES:"
+                system_prompt += "\n" + DRAWING_API_REFERENCE
+                system_prompt += "\n\nIMPORTANT: Use EXACT function signatures shown above!"
+                system_prompt += "\nDO NOT use incorrect signatures like tv.px.triangle(x1, y1, x2, y2, x3, y3, color)"
+                system_prompt += "\nUSE CORRECT signatures like tv.px.triangle(a: vec2, b: vec2, c: vec2, rgba: vec4)"
+                
+                # CRITICAL: Add available states information for visual experts
+                system_prompt += "\n\n## AVAILABLE STATES FOR VISUAL EXPERTS"
+                system_prompt += "\nVisual experts can access these states for dynamic drawing effects:"
+                
+                # IMPORTANT: Order matters - check temporal first for animation states
+                if available_states.get('temporal'):
+                    # Temporal states are now mapped to global
+                    # (Already handled in global states above)
+                    system_prompt += "\nUSE THESE for time-based animations (phase, day_phase, time, etc.)"
+                    system_prompt += "\nCRITICAL: For ANY oscillating/blinking/appearing/disappearing effects, use temporal states!"
+                
+                if available_states.get('global'):
+                    system_prompt += f"\n\nGlobal states: {', '.join(available_states['global'])}"
+                    system_prompt += "\nAccess with: tv.s.llm_global.field[0].state_name"
+                    system_prompt += "\nNOTE: These are for global parameters, NOT for animation timing!"
+                
+                if available_states.get('particle'):
+                    system_prompt += f"\n\nParticle states: {', '.join(available_states['particle'])}"
+                    system_prompt += "\nAccess with: tv.s.llm_particle.field[particle_idx].state_name"
+                    system_prompt += "\nNOTE: For drawing, you may want to loop through particles or use specific indices"
+                
+                if not any(available_states.values()):
+                    system_prompt += "\n\nNO CUSTOM STATES AVAILABLE - use frame counter for animations:"
+                    system_prompt += "\n  frame = tv.ctx.i[None]"
+                    system_prompt += "\n  phase = (frame % period) / period  # For oscillations"
+                else:
+                    system_prompt += "\n\nIMPORTANT: Only use the states listed above! If a state doesn't exist, use frame counter instead."
         
         # If context indicates this expert is for a specific species, tell synthesizer not to check species
         if context and context.get('component') and hasattr(context['component'], 'applies_to_species'):
@@ -734,6 +880,7 @@ The following states are available and MUST be used in your implementation:
             if available_states.get('species'):
                 system_prompt += f"\nSpecies states: {', '.join(available_states['species'])}"
                 system_prompt += "\nAccess with: tv.s.llm_species.field[species].state_name"
+            # Temporal states are now part of global states (removed temporal category)
             
             system_prompt += "\n\nYour implementation MUST use these states to implement the requested behavior."
         
@@ -977,6 +1124,7 @@ The function should be named 'init_particles' or similar.
 
 IMPORTANT:
 - Set tv.p.field[i].active = 1.0 for active particles
+- ALWAYS set tv.p.field[i].speed = 20.0 for movement scaling
 - Particle size should be 5.0-10.0 for visibility
 - Species ID must be within range [0, tv.sn-1]
 - Use ti.random() for randomness, not Python's random
@@ -1014,8 +1162,8 @@ IMPORTANT:
         prompt_builder = ContextAwarePromptBuilder()
         contexts = prompt_builder.detect_needed_contexts(description)
         
-        # Always include temporal patterns
-        contexts.add('temporal_dynamics')  # Use the new temporal_dynamics context
+        # Always include temporal patterns (even though states are global now)
+        contexts.add('temporal_dynamics')  # Use the temporal_dynamics context
         contexts.add('temporal_patterns_extended')  # Include extended patterns
         
         prompt = prompt_builder.build_prompt(
@@ -1040,6 +1188,11 @@ IMPORTANT:
         
         if 'species' in available_states:
             state_info += f"Species states: {', '.join(available_states['species'])}\n"
+        
+        # Temporal states are now part of global states
+        # (Already included in global states above)
+            # All temporal states should be included
+            temporal_states.extend(available_states['temporal'])
         
         if temporal_states:
             state_info += f"\nTemporal states detected: {', '.join(temporal_states)}\n"
@@ -1167,5 +1320,201 @@ Consider:
         
         # Synthesize configuration
         result = await agent.run(description)
+        
+        return result.output
+    
+    async def synthesize_utility_expert(
+        self,
+        description: str,
+        available_states: Dict[str, List[str]],
+        context: Optional[Dict[str, Any]] = None,
+        expert_type: str = 'utility'
+    ) -> UtilityExpertResponse:
+        """Synthesize a utility expert function that doesn't take particle parameters."""
+        
+        logger.info(f"Synthesizing utility expert ({expert_type}): {description}")
+        
+        # States should already be created by BehaviorAgent before we get here
+        # Just use the available_states that were passed in
+        logger.info(f"Using pre-created states: {available_states}")
+        
+        # Build utility-specific prompt
+        prompt_builder = ContextAwarePromptBuilder()
+        contexts = prompt_builder.detect_needed_contexts(description)
+        
+        # Add utility-specific contexts
+        if 'temporal' in description.lower() or 'time' in description.lower():
+            contexts.add('temporal_dynamics')
+            contexts.add('temporal_patterns_extended')
+        
+        prompt = prompt_builder.build_prompt(
+            description=description,
+            expert_type=expert_type,  # Use the specific expert type
+            contexts=contexts
+        )
+        
+        # Format available states
+        state_info = "Available States:\n"
+        if 'particle' in available_states:
+            state_info += f"Particle states: {', '.join(available_states['particle'])}\n"
+        if 'global' in available_states:
+            state_info += f"Global states: {', '.join(available_states['global'])}\n"
+        if 'species' in available_states:
+            state_info += f"Species states: {', '.join(available_states['species'])}\n"
+        # Temporal states are now part of global states
+        # (Already included in global states above)
+        
+        # Build expert-type specific guidance
+        expert_guidance = ""
+        if expert_type == 'temporal_update':
+            expert_guidance = f"""
+TEMPORAL UPDATE SPECIFIC RULES:
+- This is a TEMPORAL UPDATE function - it updates states over time
+- ABSOLUTELY NO particle parameters: @ti.func def expert_name():
+- ABSOLUTELY NO return statement - this is a void function
+- Access time-based states from global: tv.s.llm_global.field[0].state_name  # (day_phase, time, etc.)
+- Common pattern: increment/decrement state values over time
+- Example: day_phase = (day_phase + 0.001) % 1.0
+
+WRONG TEMPORAL UPDATE (DO NOT GENERATE):
+@ti.func
+def expert_name(pos, vel, mass, species, particle_idx) -> ti.math.vec2:
+    # This is COMPLETELY WRONG for temporal updates!
+
+CORRECT TEMPORAL UPDATE (GENERATE THIS):
+@ti.func
+def expert_name():
+    # Update time-based state - NO parameters, NO return
+    tv.s.llm_global.field[0].day_phase += 0.001
+    if tv.s.llm_global.field[0].day_phase > 1.0:
+        tv.s.llm_global.field[0].day_phase = 0.0"""
+        
+        elif expert_type == 'state_update':
+            expert_guidance = f"""
+STATE UPDATE SPECIFIC RULES:
+- This is a STATE UPDATE function - it modifies particle or global states
+- ABSOLUTELY NO particle parameters: @ti.func def expert_name():
+- ABSOLUTELY NO return statement - this is a void function
+- Loop over particles internally if needed: for i in range(tv.pn):
+- Access particle states: tv.s.llm_particle.field[i].state_name
+
+CORRECT STATE UPDATE (GENERATE THIS):
+@ti.func
+def expert_name():
+    # Update states - NO parameters, NO return
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            tv.s.llm_particle.field[i].energy -= 0.1"""
+            
+        elif expert_type == 'visual':
+            expert_guidance = f"""
+VISUAL/DRAWING EXPERT SPECIFIC RULES:
+- This is a VISUAL/DRAWING function - it creates visual effects
+- ABSOLUTELY NO particle parameters: @ti.func def expert_name():
+- ABSOLUTELY NO return statement - this is a void function
+- DO NOT IMPORT TAICHI - it's already imported at the top of the file
+- Use Pixels API: tv.px.rect(), tv.px.circle(), tv.px.line()
+- Colors are ti.math.vec4(r, g, b, a) with values 0.0-1.0
+
+CRITICAL STATE ACCESS RULES:
+{state_info}
+
+IMPORTANT: You can ONLY use the states listed above! Access patterns:
+- Time-based states: tv.s.llm_global.field[0].state_name (for animations/time like day_phase, time, etc.)
+- Global states: tv.s.llm_global.field[0].state_name (for global parameters)
+- Particle states: tv.s.llm_particle.field[i].state_name (per-particle data)
+- NEVER use tv.s.time[None] or any other made-up state access
+- NEVER use llm_global for temporal/animation states!
+
+For time-based visual effects (appearing/disappearing, pulsing, oscillating):
+1. FIRST check what temporal states are ACTUALLY available from the list above
+   - If 'temporal' states exist in the list, use ONLY those exact state names
+   - Example: If 'phase' is listed in global states, use: tv.s.llm_global.field[0].phase
+   - CRITICAL: ALL time-based states are now in llm_global!
+2. If NO temporal states are available, use frame counter:
+   - Access with: tv.ctx.i[None]
+   - Example: visibility = ti.sin(ti.cast(tv.ctx.i[None], ti.f32) / period * 2 * ti.math.pi) > 0.0
+
+CORRECT VISUAL EXPERT (WITH TEMPORAL STATE):
+@ti.func
+def expert_blinking_rectangle():
+    # Use time-based state from global states
+    time = tv.s.llm_global.field[0].time  # If 'time' is in global states list
+    period = 2.5  # seconds
+    visibility = ti.sin(2 * ti.math.pi * time / period) > 0.0
+    if visibility:
+        tv.px.rect(tv.x//2-50, tv.y//2-25, 100, 50, ti.math.vec4(1.0, 0.0, 0.0, 1.0))
+
+CORRECT VISUAL EXPERT (WITHOUT TEMPORAL STATE):
+@ti.func
+def expert_blinking_rectangle():
+    # Use frame counter as fallback
+    frame = tv.ctx.i[None]
+    period = 2.5 * 60  # 2.5 seconds at 60 FPS
+    visibility = ti.sin(ti.cast(frame, ti.f32) / period * 2 * ti.math.pi) > 0.0
+    if visibility:
+        tv.px.rect(tv.x//2-50, tv.y//2-25, 100, 50, ti.math.vec4(1.0, 0.0, 0.0, 1.0))"""
+
+        # System prompt for utility experts
+        system_prompt = f"""You are a Taichi expert synthesizing {expert_type} functions for Tölvera.
+        
+{prompt}
+
+{state_info}
+
+Generate a @ti.func utility function based on the description.
+
+{expert_guidance}
+
+UNIVERSAL UTILITY FUNCTION RULES:
+1. The function should NOT take particle parameters (pos, vel, mass, species, particle_idx)
+2. Most utility functions take NO parameters at all: @ti.func def expert_name():
+3. If parameters are needed, use only what's necessary (e.g., dt for time-based updates)
+4. Access states directly via tv.s.llm_particle.field[i] or tv.s.llm_global.field[0]
+5. Do NOT return force vectors (ti.math.vec2 or ti.Vector)
+6. Most utility functions have NO return statement (void functions)
+7. Use @ti.func decorator
+
+CORRECT Examples:
+@ti.func
+def expert_day_phase_update():
+    # Update global day phase - NO parameters, NO return
+    tv.s.llm_global.field[0].day_phase += 0.001
+    if tv.s.llm_global.field[0].day_phase > 1.0:
+        tv.s.llm_global.field[0].day_phase = 0.0
+
+@ti.func  
+def expert_energy_depletion():
+    # Deplete energy for all particles - NO parameters, NO return
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            tv.s.llm_particle.field[i].energy -= 0.1
+            if tv.s.llm_particle.field[i].energy < 0:
+                tv.p.field[i].active = 0.0
+
+The function name should start with 'expert_' followed by a descriptive name.
+"""
+        
+        user_prompt = f"""Generate a utility expert function for: {description}
+
+CRITICAL: The function MUST have this EXACT signature pattern:
+@ti.func
+def expert_{{function_name}}():
+    # NO parameters in the function signature
+    # Access states directly: tv.s.llm_global.field[0].day_phase  # time-based states are global
+    # NO return statement (void function)
+    
+DO NOT include: pos, vel, mass, species, particle_idx parameters
+DO NOT include: return ti.math.vec2(...) or any force return"""
+        
+        # Create agent for utility expert synthesis
+        agent = Agent(
+            self.model,
+            output_type=UtilityExpertResponse,
+            system_prompt=system_prompt
+        )
+        
+        # Synthesize utility expert
+        result = await agent.run(user_prompt)
         
         return result.output

@@ -81,12 +81,12 @@ class TraceHTMLReporter:
         </div>
         
         <div class="timeline">
-            <h2>Execution Timeline</h2>
+            <h2>LLM Processing Timeline</h2>
             <div class="timeline-bar">
                 {timeline_segments}
             </div>
             <div style="margin-top: 10px; font-size: 12px; color: var(--text-secondary);">
-                Total duration: {total_duration}ms
+                Total processing time: {total_duration}ms (compact view - idle time removed)
             </div>
             
             <!-- Color Legend -->
@@ -102,16 +102,40 @@ class TraceHTMLReporter:
                         <span>State Analysis</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #00BCD4; border-radius: 2px;"></div>
+                        <span>State Initialization</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #FF5722; border-radius: 2px;"></div>
+                        <span>Color Resolution</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #2196F3; border-radius: 2px;"></div>
-                        <span>Single Expert Synthesis</span>
+                        <span>Force Expert Synthesis</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #FF9800; border-radius: 2px;"></div>
                         <span>Interaction Expert Synthesis</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #FFC107; border-radius: 2px;"></div>
+                        <span>Temporal Update Synthesis</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #795548; border-radius: 2px;"></div>
+                        <span>Utility Expert Synthesis</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #E91E63; border-radius: 2px;"></div>
                         <span>Drawing Expert Synthesis</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #7C4DFF; border-radius: 2px;"></div>
+                        <span>Refinement</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #F44336; border-radius: 2px;"></div>
+                        <span>Error Correction</span>
                     </div>
                 </div>
             </div>
@@ -760,61 +784,75 @@ class TraceHTMLReporter:
         """Identify the type of prompt based on content."""
         prompt_lower = prompt.lower()
         
+        # Check for specific prompt types in order of specificity
         if "decomposing complex behavior" in prompt_lower:
             return "Behavior Decomposition Prompt"
-        elif "drawing" in prompt_lower or "visual" in prompt_lower:
-            return "Drawing Synthesis Prompt"
+        elif "analyze what custom states" in prompt_lower or "analyzing particle behaviors and determining what states" in prompt_lower:
+            return "State Analysis Prompt"
+        elif "expert at analyzing particle behaviors" in prompt_lower and "states" in prompt_lower:
+            return "State Analysis Prompt"
+        elif "temporal updates" in prompt_lower and "states" in prompt_lower:
+            return "State Analysis Prompt"
+        elif "utility expert" in prompt_lower or "temporal update" in prompt_lower or "state update" in prompt_lower:
+            return "Utility Expert Synthesis Prompt"
         elif "kernel" in prompt_lower and "integrate" in prompt_lower:
             return "Kernel Integration Prompt"
-        elif "analyze what custom states" in prompt_lower or "temporal updates" in prompt_lower:
-            return "State Analysis Prompt"
-        elif "expert at analyzing particle behaviors" in prompt_lower:
-            return "State Analysis Prompt"
-        elif "tölvera core api" in prompt_lower:
+        elif "refining tölvera particle simulations" in prompt_lower or ("refine" in prompt_lower and "sketch" in prompt_lower):
+            return "Refinement Prompt"
+        # Check for drawing ONLY if it's explicitly about visual effects, not just if the word appears
+        elif ("drawing" in prompt_lower or "visual" in prompt_lower) and ("trail" in prompt_lower or "glow" in prompt_lower or "visual effect" in prompt_lower or "draw_" in prompt_lower):
+            return "Drawing Synthesis Prompt"
+        elif "tölvera core api" in prompt_lower and "expert" in prompt_lower:
+            # This is a force/interaction expert synthesis, not drawing
+            return "Force Expert Synthesis Prompt"
+        elif "expert function" in prompt_lower or "@ti.func" in prompt_lower:
             return "Expert Synthesis Prompt"
         else:
             return "System Prompt"
     
     def _generate_timeline(self, trace_data: Dict[str, Any]) -> str:
-        """Generate timeline visualization."""
+        """Generate compact timeline visualization showing only LLM processing periods."""
         llm_calls = self._collect_llm_calls(trace_data)
         if not llm_calls:
             return ""
         
-        # Find the earliest LLM call start time to eliminate initial gap
-        earliest_start = None
-        latest_end = None
+        # Sort calls by start time
+        llm_calls.sort(key=lambda x: x.get('start_time', 0))
         
-        for call in llm_calls:
-            call_start = call.get('start_time', 0)
-            call_duration = call.get('duration_ms', 0)
-            call_end = call_start + (call_duration / 1000.0)  # Convert ms to seconds
-            
-            if earliest_start is None or call_start < earliest_start:
-                earliest_start = call_start
-            if latest_end is None or call_end > latest_end:
-                latest_end = call_end
+        # Calculate total LLM processing time (sum of all durations, no gaps)
+        total_processing_time = sum(call.get('duration_ms', 0) for call in llm_calls)
         
-        # Calculate effective duration from first to last LLM call
-        effective_duration = ((latest_end - earliest_start) * 1000) if earliest_start is not None and latest_end is not None else (trace_data.get('duration_ms') or 0)
+        if total_processing_time == 0:
+            return ""
         
         segments = []
         # Define semantic colors for different types of operations
         color_scheme = {
             'decomposition': '#9C27B0',      # Purple - for decomposition/analysis
-            'state_analysis': '#4CAF50',     # Green - for state analysis  
-            'synthesis_single': '#2196F3',   # Blue - for single-particle expert synthesis
+            'state_analysis': '#4CAF50',     # Green - for state analysis
+            'state_initialization': '#00BCD4', # Cyan - for state initialization
+            'color_resolution': '#FF5722',   # Deep Orange - for color resolution
+            'synthesis_force': '#2196F3',    # Blue - for force expert synthesis
             'synthesis_interaction': '#FF9800',  # Orange - for interaction expert synthesis
+            'synthesis_temporal': '#FFC107', # Amber - for temporal update synthesis
+            'synthesis_utility': '#795548',  # Brown - for utility expert synthesis
             'synthesis_drawing': '#E91E63',  # Pink - for drawing expert synthesis
+            'refinement': '#7C4DFF',         # Deep purple - for refinements
+            'error_correction': '#F44336',   # Red - for error corrections
             'default': '#607D8B'             # Gray - fallback
         }
         
+        # Track cumulative position for compact timeline
+        cumulative_position = 0
+        
         for call in llm_calls:
-            # Calculate offset from the earliest LLM call (not trace start)
-            start_offset = ((call.get('start_time', 0) - earliest_start) * 1000) if earliest_start is not None else 0
             duration = call.get('duration_ms') or 0
-            width_percent = (duration / effective_duration) * 100 if effective_duration > 0 else 0
-            left_percent = (start_offset / effective_duration) * 100 if effective_duration > 0 else 0
+            
+            # Calculate width percentage based on this call's duration relative to total
+            width_percent = (duration / total_processing_time) * 100 if total_processing_time > 0 else 0
+            
+            # Position starts where the previous segment ended (no gaps)
+            left_percent = cumulative_position
             
             # Determine what to show in timeline based on call type
             input_data = call.get('input_data', {})
@@ -823,9 +861,20 @@ class TraceHTMLReporter:
             # Check if this is a decomposition call
             is_decomposition = call.get('name') == 'llm_decompose' or 'decompose' in call.get('name', '').lower()
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
+            is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
+            is_refinement = 'refinement' in call.get('name', '').lower() or call.get('parent', {}).get('type') == 'refinement'
+            is_error_correction = 'error_correction' in call.get('name', '').lower()
             
             # Determine call type and assign appropriate color
-            if is_decomposition:
+            if is_refinement:
+                # For refinement, show the type and request
+                if is_error_correction:
+                    timeline_label = "error_fix"
+                    color = color_scheme['error_correction']
+                else:
+                    timeline_label = "refinement"
+                    color = color_scheme['refinement']
+            elif is_decomposition:
                 # For decomposition, show "decomposition" as the label
                 timeline_label = "decomposition"
                 color = color_scheme['decomposition']
@@ -846,21 +895,44 @@ class TraceHTMLReporter:
                 else:
                     timeline_label = "state_analysis"
                 color = color_scheme['state_analysis']
+            elif is_color_resolution:
+                # For color resolution, show the color name being resolved
+                parsed = call.get('llm_call', {}).get('parsed_response', {})
+                color_name = parsed.get('color_name') if parsed else call.get('metadata', {}).get('color_name')
+                if color_name:
+                    timeline_label = f"color({color_name})"
+                else:
+                    timeline_label = "color_resolution"
+                color = color_scheme['color_resolution']
             else:
                 # For synthesis, determine type and assign appropriate color
                 parsed = call.get('llm_call', {}).get('parsed_response', {})
                 description = input_data.get('description', '').lower()
+                expert_type = input_data.get('expert_type') or call.get('metadata', {}).get('expert_type', '')
+                
+                # Check for state initialization
+                is_state_init = 'init_' in call.get('name', '').lower() or 'initialize' in call.get('name', '').lower()
                 
                 # Detect synthesis type for appropriate coloring
                 is_interaction = parsed.get('is_interaction', False) if parsed else False
-                is_drawing = 'draw' in description or 'trail' in description or 'glow' in description or 'visual' in description
+                is_temporal = expert_type == 'temporal_update' or 'temporal' in expert_name.lower() or 'respawn' in expert_name.lower()
+                is_utility = expert_type in ['utility', 'state_update'] or 'utility' in call.get('name', '').lower()
+                is_drawing = ('draw' in description or 'trail' in description or 'glow' in description) and not is_temporal
                 
-                if is_drawing:
+                if is_state_init:
+                    color = color_scheme['state_initialization']
+                    timeline_label = f"init_{expert_name}" if expert_name else "state_init"
+                elif is_temporal:
+                    color = color_scheme['synthesis_temporal']
+                elif is_utility:
+                    color = color_scheme['synthesis_utility']
+                elif is_drawing:
                     color = color_scheme['synthesis_drawing']
                 elif is_interaction:
                     color = color_scheme['synthesis_interaction']  
                 else:
-                    color = color_scheme['synthesis_single']
+                    # Default to force synthesis for regular experts
+                    color = color_scheme['synthesis_force']
                 
                 # Set timeline label
                 if expert_name:
@@ -878,31 +950,19 @@ class TraceHTMLReporter:
                     {html.escape(timeline_label)}
                 </div>
             """)
+            
+            # Move to next position for the next segment (compact timeline)
+            cumulative_position += width_percent
         
         return "".join(segments)
     
     def _calculate_effective_duration(self, llm_calls: List[Dict[str, Any]]) -> float:
-        """Calculate effective duration from first to last LLM call."""
+        """Calculate effective duration as sum of all LLM processing time (no gaps)."""
         if not llm_calls:
             return 0.0
         
-        earliest_start = None
-        latest_end = None
-        
-        for call in llm_calls:
-            call_start = call.get('start_time', 0)
-            call_duration = call.get('duration_ms', 0)
-            call_end = call_start + (call_duration / 1000.0)  # Convert ms to seconds
-            
-            if earliest_start is None or call_start < earliest_start:
-                earliest_start = call_start
-            if latest_end is None or call_end > latest_end:
-                latest_end = call_end
-        
-        if earliest_start is not None and latest_end is not None:
-            return (latest_end - earliest_start) * 1000  # Return in milliseconds
-        
-        return 0.0
+        # Sum all LLM durations (compact timeline with no idle time)
+        return sum(call.get('duration_ms', 0) for call in llm_calls)
     
     def _generate_llm_sections(self, trace_data: Dict[str, Any]) -> str:
         """Generate LLM call sections with full transparency."""
@@ -924,18 +984,52 @@ class TraceHTMLReporter:
             # Handle different types of LLM calls
             is_decomposition = call.get('name') == 'llm_decompose' or 'decompose' in call.get('name', '').lower()
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
+            is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
+            is_refinement = 'refinement' in call.get('name', '').lower()
+            
+            # Check for utility/temporal expert synthesis
+            expert_type = input_data.get('expert_type') or call.get('metadata', {}).get('expert_type', '')
+            is_temporal = expert_type == 'temporal_update' or 'temporal' in synthesis_expert_name.lower()
+            is_utility = expert_type in ['utility', 'state_update']
+            is_state_init = 'init_' in call.get('name', '').lower() or 'initialize' in call.get('name', '').lower()
+            is_drawing = ('draw' in input_data.get('description', '').lower() or 
+                         'trail' in input_data.get('description', '').lower() or 
+                         'glow' in input_data.get('description', '').lower() or
+                         'visual' in input_data.get('description', '').lower()) and not is_temporal
             
             if is_decomposition:
                 # This is a decomposition call
                 code = ''  # Decomposition doesn't generate code
                 if parsed_response and parsed_response.get('components'):
                     components = parsed_response.get('components', [])
-                    expert_name = f"decompose → {len(components)} experts"
+                    
+                    # Show expert types breakdown
+                    expert_types = {}
+                    for comp in components:
+                        expert_type = comp.get("expert_type", "unknown")
+                        expert_types[expert_type] = expert_types.get(expert_type, 0) + 1
+                    
+                    if expert_types:
+                        type_summary = []
+                        for etype, count in expert_types.items():
+                            type_summary.append(f"{count}×{etype}")
+                        expert_name = f"decompose → {len(components)} experts ({', '.join(type_summary)})"
+                    else:
+                        expert_name = f"decompose → {len(components)} experts"
                 else:
                     expert_name = 'decompose'
             elif is_state_analysis:
                 # This is a state analysis call
                 code = ''  # State analysis doesn't generate code
+                
+                # Check if this is component-level analysis
+                component_prefix = ""
+                if input_data and input_data.get('description'):
+                    desc = input_data.get('description', '')
+                    # Check if this looks like a component description (usually shorter and specific)
+                    if len(desc) < 150 and ('.' in desc or 'implementation' in desc.lower()):
+                        component_prefix = "component: "
+                
                 if parsed_response:
                     # Count actual states from lists
                     global_states = parsed_response.get('global_states', [])
@@ -959,11 +1053,52 @@ class TraceHTMLReporter:
                             parts.append(f"{species_count}S")
                         if temporal_count > 0:
                             parts.append(f"{temporal_count}T")
-                        expert_name = f"state_analysis → {'+'.join(parts)}"
+                        expert_name = f"{component_prefix}state_analysis → {'+'.join(parts)}"
                     else:
-                        expert_name = "state_analysis → no states"
+                        expert_name = f"{component_prefix}state_analysis → no states"
                 else:
-                    expert_name = 'state_analysis'
+                    expert_name = f'{component_prefix}state_analysis'
+            elif is_color_resolution:
+                # This is a color resolution call
+                code = ''  # Color resolution doesn't generate code
+                if parsed_response:
+                    color_name = parsed_response.get('color_name', 'unknown')
+                    rgba_list = parsed_response.get('rgba_list', [])
+                    if rgba_list and len(rgba_list) >= 3:
+                        r, g, b = rgba_list[:3]
+                        expert_name = f"color_resolution → '{color_name}' = rgb({r:.2f}, {g:.2f}, {b:.2f})"
+                    else:
+                        expert_name = f"color_resolution → '{color_name}'"
+                else:
+                    color_name = input_data.get('color_name', call.get('metadata', {}).get('color_name', 'unknown'))
+                    expert_name = f"color_resolution → '{color_name}'"
+            elif is_refinement:
+                # This is a refinement call
+                code = parsed_response.get('refined_code', '') if parsed_response else ''
+                changes = parsed_response.get('changes_made', '') if parsed_response else ''
+                warnings = parsed_response.get('warnings', '') if parsed_response else ''
+                
+                # Determine refinement type
+                if 'error_correction' in call.get('name', ''):
+                    expert_name = f"error_correction → {changes[:50]}..." if changes else "error_correction"
+                else:
+                    expert_name = f"refinement → {changes[:50]}..." if changes else "refinement"
+            elif is_state_init:
+                # This is a state initialization call
+                code = parsed_response.get('code', '') if parsed_response else ''
+                expert_name = f"state_init → {synthesis_expert_name}" if synthesis_expert_name else "state_init"
+            elif is_temporal:
+                # This is a temporal update expert synthesis
+                code = parsed_response.get('code', '') if parsed_response else ''
+                expert_name = synthesis_expert_name or 'temporal_update'
+                if not expert_name.startswith('temporal'):
+                    expert_name = f"{expert_name} (temporal)"
+            elif is_utility:
+                # This is a utility expert synthesis
+                code = parsed_response.get('code', '') if parsed_response else ''
+                expert_name = synthesis_expert_name or 'utility_expert'
+                if expert_type and expert_type not in expert_name:
+                    expert_name = f"{expert_name} ({expert_type})"
             elif parsed_response is None:
                 # Handle other LLM calls without parsed_response
                 expert_name = 'processing'
@@ -977,6 +1112,11 @@ class TraceHTMLReporter:
                 else:
                     # If no expert name found, default to 'synthesis'
                     expert_name = 'synthesis'
+                
+                # Add expert type information if available and not already included
+                if expert_type and expert_type not in expert_name:
+                    expert_name += f" ({expert_type})"
+                
                 code = parsed_response.get('code', '') or ''
             duration = call.get('duration_ms', 0) or 0  # Ensure duration is never None
             model = llm_data.get('model', 'Unknown') or 'Unknown'
@@ -995,10 +1135,9 @@ class TraceHTMLReporter:
                 <div class="llm-header">
                     <div class="llm-title">
                         <span class="llm-icon">🤖</span>
-                        <span class="llm-description">{html.escape(expert_name)}{'' if is_decomposition else '()'}</span>
+                        <span class="llm-description">{html.escape(expert_name)}{'' if is_decomposition or is_state_analysis else '()'}</span>
                         <span class="llm-arrow">→</span>
                         <span class="llm-result"></span>
-                        <span style="margin-left: 10px; padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 4px; font-size: 11px;">{prompt_type}</span>
                     </div>
                     <div>
                         <span class="llm-duration">{duration:.0f}ms</span>
@@ -1007,6 +1146,13 @@ class TraceHTMLReporter:
                 </div>
                 
                 <div class="llm-content">
+                    <!-- Prompt Type Badge -->
+                    <div style="margin-bottom: 15px;">
+                        <span style="padding: 4px 10px; background: #e3f2fd; color: #1976d2; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                            {prompt_type}
+                        </span>
+                    </div>
+                    
                     <!-- User Prompt -->
                     <div class="collapsible-section">
                         <div class="collapsible-header">
@@ -1025,7 +1171,7 @@ class TraceHTMLReporter:
                             <span class="expand-icon">▶</span>
                         </div>
                         <div class="collapsible-content">
-                            <pre>{html.escape(llm_data.get('full_prompt', '') or '')}</pre>
+                            <pre>{html.escape(llm_data.get('full_prompt', '') or (llm_data.get('system_prompt', '') + chr(10) + chr(10) + llm_data.get('user_prompt', '')) if llm_data.get('system_prompt') or llm_data.get('user_prompt') else 'No prompt data available')}</pre>
                         </div>
                     </div>
                     
@@ -1041,28 +1187,37 @@ class TraceHTMLReporter:
                     </div>
                     
                     <!-- Parsed Response -->
-                    {f'''<div class="collapsible-section">
+                    {'''<div class="collapsible-section">
                         <div class="collapsible-header">
                             <span>🔍 Parsed Response (JSON)</span>
                             <span class="expand-icon">▶</span>
                         </div>
                         <div class="collapsible-content json-content">
-                            <pre>{json.dumps(parsed_response, indent=2) if parsed_response else "No parsed response available"}</pre>
+                            <pre>''' + (json.dumps(parsed_response, indent=2) if parsed_response else "No parsed response available") + '''</pre>
                         </div>
                     </div>''' if parsed_response else ''}
                     
                     <!-- State Analysis Details (if this is a state analysis call) -->
-                    {self._generate_state_analysis_details(parsed_response, is_state_analysis) if is_state_analysis else ''}
+                    {self._generate_state_analysis_details(parsed_response, is_state_analysis, input_data) if is_state_analysis else ''}
+                    
+                    <!-- State Initialization Details (if this is a state init call) -->
+                    {self._generate_state_init_details(parsed_response, input_data, is_state_init) if is_state_init else ''}
+                    
+                    <!-- Temporal/Utility Expert Details (if this is a temporal/utility synthesis) -->
+                    {self._generate_temporal_utility_details(parsed_response, input_data, expert_type, is_temporal or is_utility) if (is_temporal or is_utility) else ''}
+                    
+                    <!-- Refinement Details (if this is a refinement call) -->
+                    {self._generate_refinement_details(parsed_response, input_data, is_refinement) if is_refinement else ''}
                     
                     <!-- Decomposition Components (if applicable) -->
                     {self._generate_decomposition_section(parsed_response) if parsed_response and 'components' in parsed_response else ''}
                     
                     <!-- Generated Code (expanded by default) -->
-                    {f'''<div class="code-section">
+                    {'''<div class="code-section">
                         <div class="section-title">✨ Generated Code</div>
                         <div class="code-box">
                             <button class="copy-button">Copy</button>
-                            <pre>{formatted_code}</pre>
+                            <pre>''' + formatted_code + '''</pre>
                         </div>
                     </div>''' if not is_decomposition and not is_state_analysis and code else ''}
                     
@@ -1084,7 +1239,19 @@ class TraceHTMLReporter:
                             </div>
                             <div class="metadata-item">
                                 <span class="metadata-label">Type</span>
-                                <span class="metadata-value">{'Interaction' if parsed_response and parsed_response.get('is_interaction') else 'Single' if parsed_response else 'Decomposition'}</span>
+                                <span class="metadata-value">{
+                                    'Temporal Update' if is_temporal else
+                                    'Utility Expert' if is_utility else
+                                    'State Init' if is_state_init else
+                                    'Decomposition' if is_decomposition else
+                                    'State Analysis' if is_state_analysis else
+                                    'Color Resolution' if is_color_resolution else
+                                    'Refinement' if is_refinement else
+                                    'Interaction' if parsed_response and parsed_response.get('is_interaction') else
+                                    'Force' if not (is_drawing or is_temporal or is_utility) else
+                                    'Drawing' if 'draw' in expert_name.lower() or 'trail' in expert_name.lower() else
+                                    'Single'
+                                }</span>
                             </div>
                             <div class="metadata-item">
                                 <span class="metadata-label">Status</span>
@@ -1189,7 +1356,7 @@ class TraceHTMLReporter:
         section += '</div></div>'
         return section
     
-    def _generate_state_analysis_details(self, parsed_response: Dict[str, Any], is_state_analysis: bool) -> str:
+    def _generate_state_analysis_details(self, parsed_response: Dict[str, Any], is_state_analysis: bool, input_data: Dict[str, Any] = None) -> str:
         """Generate detailed HTML section for state analysis responses."""
         if not is_state_analysis or not parsed_response:
             return ''
@@ -1199,6 +1366,15 @@ class TraceHTMLReporter:
             <div class="section-title">🧬 State Analysis Details</div>
             <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
         '''
+        
+        # Show what we're analyzing if available
+        if input_data and input_data.get('description'):
+            description = input_data.get('description', '')
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: var(--bg-secondary); border-radius: 4px;">
+                    <strong>Analyzing for:</strong> {html.escape(description[:200])}{'...' if len(description) > 200 else ''}
+                </div>
+            '''
         
         # Show needs_states
         needs_states = parsed_response.get('needs_states', False)
@@ -1284,6 +1460,153 @@ class TraceHTMLReporter:
                         '''
                 
                 section += '</div></div>'
+        
+        section += '</div></div>'
+        return section
+    
+    def _generate_state_init_details(self, parsed_response: Dict[str, Any], input_data: Dict[str, Any], is_state_init: bool) -> str:
+        """Generate detailed HTML section for state initialization."""
+        if not is_state_init:
+            return ''
+        
+        section = '''
+        <div class="state-init-section">
+            <div class="section-title">🔧 State Initialization Details</div>
+            <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+        '''
+        
+        # Show what states are being initialized
+        if input_data.get('states_to_init'):
+            states = input_data['states_to_init']
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>States Being Initialized:</strong> 
+                    <span style="color: #00BCD4;">{len(states)} states</span>
+                </div>
+                <ul style="margin-left: 20px;">
+            '''
+            for state in states:
+                section += f'<li>{html.escape(str(state))}</li>'
+            section += '</ul>'
+        
+        # Show initialization code if available
+        if parsed_response and parsed_response.get('code'):
+            section += f'''
+                <div style="margin-top: 15px;">
+                    <strong>Initialization Code:</strong>
+                    <pre style="background-color: var(--bg-secondary); padding: 10px; border-radius: 4px; overflow-x: auto;">
+{html.escape(parsed_response['code'][:500])}{'...' if len(parsed_response['code']) > 500 else ''}
+                    </pre>
+                </div>
+            '''
+        
+        section += '</div></div>'
+        return section
+    
+    def _generate_temporal_utility_details(self, parsed_response: Dict[str, Any], input_data: Dict[str, Any], expert_type: str, is_temporal_utility: bool) -> str:
+        """Generate detailed HTML section for temporal/utility expert synthesis."""
+        if not is_temporal_utility:
+            return ''
+        
+        section = '''
+        <div class="temporal-utility-section">
+            <div class="section-title">⏰ Temporal/Utility Expert Details</div>
+            <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+        '''
+        
+        # Show expert type
+        section += f'''
+            <div style="margin-bottom: 15px;">
+                <strong>Expert Type:</strong> 
+                <span style="color: #FFC107;">{html.escape(expert_type or 'Unknown')}</span>
+            </div>
+        '''
+        
+        # Show description
+        if input_data.get('description'):
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Behavior Description:</strong><br>
+                    <span style="font-style: italic; color: var(--text-secondary);">"{html.escape(input_data['description'])}"</span>
+                </div>
+            '''
+        
+        # Show which states this affects
+        if input_data.get('affected_states'):
+            states = input_data['affected_states']
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Affected States:</strong>
+                    <ul style="margin-left: 20px;">
+            '''
+            for state in states:
+                section += f'<li>{html.escape(str(state))}</li>'
+            section += '</ul></div>'
+        
+        # Show update expression if temporal
+        if expert_type == 'temporal_update' and input_data.get('update_expression'):
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #FFF8E1; border-left: 3px solid #FFC107; border-radius: 4px;">
+                    <strong>Update Expression:</strong><br>
+                    <code style="font-family: monospace; color: #FF6F00;">
+                        {html.escape(input_data['update_expression'])}
+                    </code>
+                </div>
+            '''
+        
+        section += '</div></div>'
+        return section
+    
+    def _generate_refinement_details(self, parsed_response: Dict[str, Any], input_data: Dict[str, Any], is_refinement: bool) -> str:
+        """Generate detailed HTML section for refinement responses."""
+        if not is_refinement or not parsed_response:
+            return ''
+        
+        section = '''
+        <div class="refinement-section">
+            <div class="section-title">🔧 Refinement Details</div>
+            <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+        '''
+        
+        # Show changes made
+        changes_made = parsed_response.get('changes_made', '')
+        if changes_made:
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Changes Applied:</strong> 
+                    <span style="color: #4CAF50;">{html.escape(changes_made)}</span>
+                </div>
+            '''
+        
+        # Show warnings
+        warnings = parsed_response.get('warnings', '')
+        if warnings:
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #FFF8E1; border-left: 3px solid #FF9800; border-radius: 4px;">
+                    <strong style="color: #FF9800;">⚠️ Warnings:</strong><br>
+                    {html.escape(warnings)}
+                </div>
+            '''
+        
+        # Show refinement request
+        refinement_request = input_data.get('refinement_request', '')
+        if refinement_request:
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Original Request:</strong><br>
+                    <span style="font-style: italic; color: var(--text-secondary);">"{html.escape(refinement_request)}"</span>
+                </div>
+            '''
+        
+        # Show error info if this was an error correction
+        has_error = input_data.get('has_error', False)
+        if has_error:
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #FFEBEE; border-left: 3px solid #F44336; border-radius: 4px;">
+                    <strong style="color: #F44336;">Error Fixed:</strong><br>
+                    This refinement was triggered by an error in the sketch execution.
+                </div>
+            '''
         
         section += '</div></div>'
         return section

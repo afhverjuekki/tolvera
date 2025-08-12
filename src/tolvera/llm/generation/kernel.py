@@ -205,41 +205,7 @@ class IntegrationKernelGenerator:
             tolvera_instance=tolvera_instance
         )
     
-    def generate_temporal_kernel(
-        self,
-        temporal_req: Optional[TemporalRequirement],
-        available_states: Dict[str, List[str]],
-        pattern_type: str = "particle_system"
-    ) -> str:
-        """
-        Generate a temporal update kernel for discrete state updates.
-        
-        Args:
-            temporal_req: Temporal requirements from behavior analysis
-            available_states: Available state fields
-            pattern_type: Pattern type for specialized updates
-            
-        Returns:
-            Generated temporal kernel code
-        """
-        if not temporal_req:
-            return ""
-        
-        lines = ["@ti.kernel", "def update_temporal_states():"]
-        lines.append('    """Update states that change over time."""')
-        
-        # Pattern-specific temporal updates
-        if pattern_type == "cellular_automaton":
-            lines.extend(self._generate_ca_temporal_update(available_states))
-        elif "energy" in str(temporal_req.states_to_update):
-            lines.extend(self._generate_energy_temporal_update(available_states))
-        elif "day" in str(temporal_req.states_to_update) or "phase" in str(temporal_req.states_to_update):
-            lines.extend(self._generate_phase_temporal_update(available_states))
-        else:
-            # Generic temporal update
-            lines.extend(self._generate_generic_temporal_update(temporal_req, available_states))
-        
-        return "\n".join(lines)
+    # Legacy generate_temporal_kernel method removed - utility experts now handle temporal updates
     
     def _generate_ca_temporal_update(self, available_states: Dict[str, List[str]]) -> List[str]:
         """Generate cellular automaton temporal update."""
@@ -404,6 +370,37 @@ class IntegrationKernelGenerator:
         # Pure drawing functions don't need particle data
         for expert_name in visual_expert_names:
             lines.append(f"    {expert_name}()  # Execute drawing function")
+        
+        return "\n".join(lines)
+    
+    def generate_utility_kernel(
+        self,
+        utility_expert_names: List[str],
+        function_name: str = "update_utilities"
+    ) -> str:
+        """
+        Generate a kernel that calls utility expert functions.
+        
+        Args:
+            utility_expert_names: Names of utility expert functions
+            function_name: Name of the utility kernel
+            
+        Returns:
+            Generated utility kernel code
+        """
+        if not utility_expert_names:
+            return ""
+        
+        lines = [
+            "@ti.kernel",
+            f"def {function_name}():",
+            '    """Utility kernel that executes utility functions (temporal updates, state updates, etc.)."""'
+        ]
+        
+        # Call each utility expert directly
+        # Utility functions don't take particle parameters
+        for expert_name in utility_expert_names:
+            lines.append(f"    {expert_name}()  # Execute utility function")
         
         return "\n".join(lines)
     

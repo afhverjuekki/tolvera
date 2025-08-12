@@ -54,7 +54,7 @@ class LLMClient:
         prompt: str,
         response_model: BaseModel,
         temperature: float = 0.1,
-        max_tokens: int = 4000,
+        max_tokens: int = 30000,
         reasoning_effort: Optional[str] = None
     ) -> BaseModel:
         messages = [
@@ -85,11 +85,11 @@ class LLMClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 4000,
+        max_tokens: int = 30000,
         reasoning_effort: Optional[str] = None
     ) -> str:
         messages = [
-            {"role": "system", "content": "You are an expert at generating Taichi code for particle simulations."},
+            {"role": "system", "content": "You are an expert at generating Taichi and Tölvera code for particle simulations."},
             {"role": "user", "content": prompt}
         ]
         

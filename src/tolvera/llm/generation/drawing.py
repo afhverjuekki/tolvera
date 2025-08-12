@@ -235,8 +235,69 @@ class DrawingSynthesizer:
     def _get_drawing_instructions(self, classification: Dict[str, Any]) -> str:
         """Get drawing-specific instructions based on classification"""
         
+        # Common state access instructions
+        state_instructions = """
+### STATE ACCESS PATTERNS
+When using available states, follow these exact access patterns:
+
+**Global States** (system-wide parameters INCLUDING time-based animations):
+- `tv.s.llm_global.field[0].state_name`
+- Example: `gravity = tv.s.llm_global.field[0].gravity_strength`
+- Example: `phase = tv.s.llm_global.field[0].phase`
+- Example: `day_phase = tv.s.llm_global.field[0].day_phase`
+- NOTE: Global states include both physics parameters AND time-based/animation states
+
+**Particle States** (per-particle data):
+- `tv.s.llm_particle.field[particle_idx].state_name`
+- Example: `energy = tv.s.llm_particle.field[i].energy`
+
+**Species States** (per-species configuration):
+- `tv.s.llm_species.field[species_id].state_name`
+- Example: `color = tv.s.llm_species.field[p.species].color`
+
+CRITICAL: Use the EXACT namespace names listed in Available States section above!
+IMPORTANT: For blinking/oscillating/appearing/disappearing effects, use time-based global states (e.g., phase, blink_timer)!
+
+### VARIABLE DECLARATION RULES
+**CRITICAL FOR TAICHI COMPILATION:**
+
+1. **ALL variables must be declared BEFORE conditionals:**
+```python
+# ✅ CORRECT:
+alpha = 0.0  # Default value declared first
+if condition:
+    alpha = 1.0
+else:
+    alpha = 0.5
+
+# ❌ WRONG - COMPILATION ERROR:
+if condition:
+    alpha = 1.0  # ERROR! alpha not defined before if
+else:
+    alpha = 0.5
+```
+
+2. **Initialize with default values:**
+```python
+# ✅ CORRECT pattern:
+force = ti.math.vec2(0.0, 0.0)  # Default
+color = ti.math.vec4(1.0, 1.0, 1.0, 1.0)  # Default
+visibility = 1.0  # Default
+
+if some_condition:
+    force = calculated_force
+    color = ti.math.vec4(1.0, 0.0, 0.0, 0.5)  # Red
+    visibility = 0.0
+```
+
+3. **This applies to ALL variable types:**
+- Scalars: `alpha = 0.0`
+- Vectors: `force = ti.math.vec2(0.0, 0.0)`
+- Colors: `color = ti.math.vec4(1.0, 1.0, 1.0, 1.0)`
+"""
+        
         if classification["requires_interaction"]:
-            return """## DRAWING KERNEL REQUIREMENTS (Particle-Particle)
+            return f"""## DRAWING KERNEL REQUIREMENTS (Particle-Particle)
 Generate a Taichi kernel for particle-particle visualizations.
 
 Function signature:
@@ -262,7 +323,9 @@ IMPORTANT:
   x = ti.cast(tv.p.field[i].pos[0], ti.i32)
 - Handle boundaries with modulo: x % tv.x
 - Example:
-  tv.px.line(p1.pos[0], p1.pos[1], p2.pos[0], p2.pos[1], ti.math.vec4(1, 0, 0, 0.5))"""
+  tv.px.line(p1.pos[0], p1.pos[1], p2.pos[0], p2.pos[1], ti.math.vec4(1, 0, 0, 0.5))
+
+{state_instructions}"""
         else:
             return f"""## DRAWING KERNEL REQUIREMENTS (Single Particle)
 Generate a Taichi kernel for single-particle visualization.
@@ -291,7 +354,9 @@ IMPORTANT:
 - Example for trails:
   tv.px.line(p.pos[0], p.pos[1], p.pos[0] - p.vel[0]*10, p.pos[1] - p.vel[1]*10, color)
 - Example for glow:
-  tv.px.circle(p.pos[0], p.pos[1], 10, ti.math.vec4(1, 1, 0, 0.3))"""
+  tv.px.circle(p.pos[0], p.pos[1], 10, ti.math.vec4(1, 1, 0, 0.3))
+
+{state_instructions}"""
     
     def _extract_code(self, response: str) -> str:
         """Extract the function code from LLM response"""

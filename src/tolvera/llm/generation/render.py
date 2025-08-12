@@ -19,7 +19,7 @@ class RenderLoopGenerator:
     PATTERN_SEQUENCES = {
         "cellular_automaton": [
             "clear_inactive",
-            "update_temporal_states",
+            "update_utilities",
             "apply_all_experts",
             "update_visuals",
             "render_particles"
@@ -118,14 +118,9 @@ class RenderLoopGenerator:
             if requirements.pixel_field.needs_diffusion and "diffuse_pheromones" in available_kernels:
                 lines.append("    diffuse_pheromones()")
         
-        # Add temporal updates
-        if requirements.temporal and "update_temporal_states" in available_kernels:
-            # Add conditional temporal updates based on frequency
-            if requirements.temporal.update_frequency == "every_n_frames":
-                lines.append("    if tv.ctx.i[None] % 10 == 0:")
-                lines.append("        update_temporal_states()")
-            else:
-                lines.append("    update_temporal_states()")
+        # Add utility updates (includes temporal updates)
+        if "update_utilities" in available_kernels:
+            lines.append("    update_utilities()  # Execute utility functions")
         
         # Apply expert behaviors (includes force calculation and position updates)
         if "apply_all_experts" in available_kernels:
@@ -183,7 +178,7 @@ class RenderLoopGenerator:
         # Map operations to kernel names
         operation_map = {
             "clear_inactive": None,  # Built-in
-            "update_temporal_states": "update_temporal_states",
+            "update_utilities": "update_utilities",
             "apply_all_experts": "apply_all_experts",
             "update_visuals": None,  # Built-in
             "render_particles": None,  # Built-in
@@ -228,8 +223,8 @@ class RenderLoopGenerator:
             if op == "apply_all_experts":
                 calls.append("apply_all_experts()")
                 calls.append("tv.p()")  # After experts, for boundaries
-            elif op == "update_temporal_states":
-                calls.append("update_temporal_states()")
+            elif op == "update_utilities":
+                calls.append("update_utilities()")
             elif op in ["decay_pheromones", "diffuse_pheromones", "deposit_trails"]:
                 calls.append(f"{op}()")
             elif op == "render_particles":

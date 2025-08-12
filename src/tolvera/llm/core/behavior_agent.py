@@ -1,9 +1,10 @@
 
 import logging
+import asyncio
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
-from .synthesizer import Synthesizer
+from .synthesizer import Synthesizer, Expert
 from .state_manager import StateManager
 from .decomposer import BehaviorDecomposer
 from .behavior_requirements import BehaviorRequirementsAnalyzer, BehaviorRequirements
@@ -20,7 +21,7 @@ class ExpertInfo:
     name: str
     description: str
     weight: float
-    expert_type: str  # 'single', 'interaction', 'drawing', 'drawing_interaction'
+    expert_type: str  # 'single', 'interaction', 'drawing', 'drawing_interaction', 'utility'
     code: str
     draw_order: Optional[str] = None  # 'pre' or 'post' for drawing experts
     applies_to_species: Optional[List[int]] = None  # Species IDs this expert applies to
@@ -55,6 +56,11 @@ class BehaviorAgent:
         self.tv = tolvera_instance
         self.model_name = model_name
         
+        # Use model factory to determine provider
+        from .model_factory import ModelFactory
+        self.provider = ModelFactory.get_provider_for_model(model_name)
+        logger.info(f"BehaviorAgent using provider '{self.provider}' with model '{model_name}'")
+        
         self.synthesizer = Synthesizer(model_name, tolvera_instance, api_key)
         self.state_manager = StateManager(tolvera_instance)
         self.species_manager = SpeciesManager(tolvera_instance)
@@ -84,6 +90,95 @@ class BehaviorAgent:
         self.synthesized_temporal_update = None
         self.synthesized_configuration = None
         
+    async def _analyze_states_for_component(self, component) -> List[Dict[str, Any]]:
+        """
+        Analyze what states a component needs before synthesis.
+        
+        Args:
+            component: BehaviorComponent to analyze
+            
+        Returns:
+            List of state specifications
+        """
+        # Build a description that captures what this component does
+        description = f"{component.description}. {component.implementation}"
+        
+        # Pass expert type for context-aware state analysis
+        # This helps the LLM understand what kind of states are appropriate
+        states_analysis = await self.synthesizer.analyze_states_needed(
+            description, 
+            expert_type=component.expert_type
+        )
+        
+        state_specs = []
+        
+        # Convert the analysis to state specs
+        for category in ['global', 'particle', 'species']:
+            if category in states_analysis and states_analysis[category]:
+                for state_name, state_def in states_analysis[category].items():
+                    spec = {category: {state_name: state_def}}
+                    state_specs.append(spec)
+                    
+                    # Handle temporal updates (now all go to their original category)
+                    if hasattr(state_def, 'temporal_update') and state_def.temporal_update:
+                        # Register temporal update in the state's own category
+                        self.state_manager.register_temporal_update(
+                            category,
+                            state_name,
+                            state_def.temporal_update
+                        )
+        
+        # Process temporal_updates from the analysis
+        # Important: Temporal updates are applied to existing states, NOT creating new ones
+        if 'temporal_updates' in states_analysis and states_analysis['temporal_updates']:
+            for temporal_update in states_analysis['temporal_updates']:
+                state_name = temporal_update.state_name
+                # Find which category this state belongs to
+                found_state = False
+                for category in ['global', 'particle', 'species']:
+                    if category in states_analysis and state_name in states_analysis[category]:
+                        # Register the temporal update for this state in its original category
+                        # DO NOT create a duplicate state in temporal category!
+                        self.state_manager.register_temporal_update(
+                            category,  # Keep in original category
+                            state_name,
+                            temporal_update.update_expression
+                        )
+                        found_state = True
+                        break
+                
+                # Check if it's already in temporal (for states that are truly temporal-only)
+                if not found_state and 'temporal' in states_analysis and state_name in states_analysis['temporal']:
+                    self.state_manager.register_temporal_update(
+                        'temporal',
+                        state_name,
+                        temporal_update.update_expression
+                    )
+                    found_state = True
+                
+                if not found_state:
+                    # Only create a new temporal state if the state doesn't exist anywhere else
+                    # This would be for temporal-only states like counters or timers
+                    from ..core.behavior_requirements import StateRequirement
+                    temporal_state = StateRequirement(
+                        name=state_name,
+                        category='temporal',
+                        type='ti.f32',
+                        min=0.0,
+                        max=1.0,
+                        description=temporal_update.description,
+                        temporal_update={'expression': temporal_update.update_expression} if temporal_update.update_expression else None
+                    )
+                    spec = {'temporal': {state_name: temporal_state}}
+                    state_specs.append(spec)
+                    self.state_manager.register_temporal_update(
+                        'temporal',
+                        state_name,
+                        temporal_update.update_expression
+                    )
+        
+        return state_specs
+    
     async def synthesize_complete_behavior(self, description: str, weight: float = 1.0, decomposition=None) -> Dict[str, Any]:
         """
         Holistic synthesis method that analyzes requirements upfront and synthesizes with shared context.
@@ -138,7 +233,8 @@ class BehaviorAgent:
                                     resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
                         elif species_info.species_colors:
                             # Use directly provided RGBA colors if available
-                            resolved_colors = species_info.species_colors
+                            for color_mapping in species_info.species_colors:
+                                resolved_colors[color_mapping.species_id] = color_mapping.rgba_values
                         else:
                             # Generate default colors
                             color_resolver = ColorResolver()
@@ -182,11 +278,12 @@ class BehaviorAgent:
                 self.current_behavior_requirements = self.requirements_analyzer.analyze(description)
             logger.info(f"Pattern detected: {self.current_behavior_requirements.pattern_type}")
             
-            # 3. Create ALL states upfront
+            # 3. Create ALL states upfront (from requirements, decomposer, AND component analysis)
+            all_states_specs = []
+            temporal_count = 0
+            
+            # Collect states from requirements analyzer
             if self.current_behavior_requirements.state_requirements:
-                all_states_specs = []
-                temporal_count = 0
-                
                 for state_req in self.current_behavior_requirements.state_requirements:
                     # Create state spec
                     spec = {state_req.category: {state_req.name: state_req}}
@@ -201,10 +298,61 @@ class BehaviorAgent:
                         )
                         temporal_count += 1
                         logger.info(f"Registered temporal update for {state_req.category}.{state_req.name}")
-                
-                # Use the new collect_and_create_states method
+            
+            # Collect states from decomposer's suggested_states
+            if decomposed and hasattr(decomposed, 'suggested_states') and decomposed.suggested_states:
+                logger.info(f"Processing {len(decomposed.suggested_states)} states from decomposer")
+                for state_tuple in decomposed.suggested_states:
+                    # Each state is (name, category, type, min, max)
+                    if len(state_tuple) >= 5:
+                        name, category, type_str, min_val, max_val = state_tuple[:5]
+                        # Create a StateRequirement-like object
+                        from ..core.behavior_requirements import StateRequirement
+                        state_req = StateRequirement(
+                            name=name,
+                            category=category,
+                            type=type_str,
+                            min=min_val,
+                            max=max_val,
+                            description=f"State from decomposer: {name}"
+                        )
+                        spec = {category: {name: state_req}}
+                        all_states_specs.append(spec)
+                        logger.info(f"Added state from decomposer: {category}.{name} ({type_str}, {min_val}-{max_val})")
+            
+            # Analyze states needed for individual components BEFORE synthesis
+            if decomposed and hasattr(decomposed, 'components'):
+                logger.info(f"Analyzing states for {len(decomposed.components)} components upfront")
+                for component in decomposed.components:
+                    # First, add states from component.required_states
+                    if component.required_states:
+                        for state_tuple in component.required_states:
+                            if len(state_tuple) >= 5:
+                                name, category, type_str, min_val, max_val = state_tuple[:5]
+                                from ..core.behavior_requirements import StateRequirement
+                                state_req = StateRequirement(
+                                    name=name,
+                                    category=category,
+                                    type=type_str,
+                                    min=min_val,
+                                    max=max_val,
+                                    description=f"State for {component.expert_name}"
+                                )
+                                spec = {category: {name: state_req}}
+                                all_states_specs.append(spec)
+                                logger.info(f"Added required state from {component.expert_name}: {category}.{name}")
+                    
+                    # Analyze the component description for extra states
+                    # Do this for ALL expert types to get comprehensive state requirements
+                    component_states = await self._analyze_states_for_component(component)
+                    if component_states:
+                        all_states_specs.extend(component_states)
+                        logger.info(f"Added {len(component_states)} analyzed states for {component.expert_name} ({component.expert_type})")
+            
+            # Create all states
+            if all_states_specs:
                 self.state_manager.collect_and_create_states(all_states_specs)
-                logger.info(f"Created {len(self.current_behavior_requirements.state_requirements)} states upfront")
+                logger.info(f"Created {len(all_states_specs)} state specs upfront")
                 if temporal_count > 0:
                     logger.info(f"Registered {temporal_count} temporal updates")
             
@@ -256,16 +404,7 @@ class BehaviorAgent:
                     if r.get('result') and isinstance(r['result'], dict):
                         total_experts += r['result'].get('experts_added', 0)
                 
-                # Generate temporal kernel if needed
-                if self.current_behavior_requirements.temporal:
-                    # First try to use StateManager's temporal updates
-                    temporal_kernel_code = self.state_manager.generate_temporal_update_kernel()
-                    if not temporal_kernel_code:
-                        # Fallback to template-based generation
-                        temporal_kernel_code = self._generate_temporal_update_kernel()
-                    if temporal_kernel_code:
-                        self.temporal_kernel = temporal_kernel_code
-                        logger.info("Generated temporal update kernel")
+                # Temporal updates are now handled by utility experts - no legacy kernel generation needed
                 
                 # Generate pixel kernels if needed
                 if self.current_behavior_requirements.pixel_field:
@@ -297,6 +436,50 @@ class BehaviorAgent:
                     'requirements': self.current_behavior_requirements
                 }
     
+    async def _synthesize_drawing_function(
+        self,
+        function_name: str,
+        description: str, 
+        implementation: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """
+        Synthesize a drawing function for visual components.
+        
+        Args:
+            function_name: Name for the drawing function
+            description: What to draw
+            implementation: Implementation guidance
+            context: Synthesis context
+            
+        Returns:
+            Taichi drawing function code
+        """
+        # Use the synthesizer's utility expert capability for drawing
+        # This generates @ti.func code suitable for drawing
+        drawing_response = await self.synthesizer.synthesize_utility_expert(
+            f"{description}. Implementation: {implementation}",
+            available_states=context.get('available_states', {}),
+            context=context,
+            expert_type='drawing'  # Mark as drawing type
+        )
+        
+        if drawing_response and hasattr(drawing_response, 'code'):
+            # Ensure the function name matches what we expect
+            code = drawing_response.code
+            # Replace the function name if needed
+            import re
+            code = re.sub(r'@ti\.func\s+def\s+\w+\(', f'@ti.func\ndef {function_name}(', code)
+            return code
+        
+        # Fallback: generate simple drawing function
+        return f"""@ti.func
+def {function_name}():
+    \"\"\"Drawing function: {description}\"\"\"
+    # Drawing implementation for: {implementation}
+    pass  # Placeholder - actual drawing code would go here
+"""
+    
     async def _synthesize_component_with_context(
         self, 
         component: Any, 
@@ -320,14 +503,123 @@ class BehaviorAgent:
                 for e in self.experts
             ]
         
-        # Synthesize with full context, skip state analysis since done upfront
-        response = await self.synthesizer.synthesize_behavior(
-            enhanced_description,  # Use enhanced description with implementation guidance
-            shared_context['available_states'],
-            context=synthesis_context,
-            expert_name=component.expert_name,
-            skip_state_analysis=True  # States already created
-        )
+        # Route to appropriate synthesizer method based on expert type
+        if component.expert_type == 'visual':
+            # Visual components need special handling - generate drawing functions
+            from .models import BehaviorSynthesisResponse, ExpertFunction, ForceComputation, VectorExpression, IntegrationKernel, SpeciesConfiguration
+            
+            # Create drawing function code directly
+            drawing_code = await self._synthesize_drawing_function(
+                component.expert_name,
+                component.description,
+                component.implementation,
+                synthesis_context
+            )
+            
+            # Create wrapper for drawing function as an expert
+            class DrawingExpert:
+                def __init__(self, name, description, code):
+                    self.name = name
+                    self.description = description
+                    self.code = code
+                    self.is_interaction = False
+                    self.weight = 1.0
+                
+                def to_code(self) -> str:
+                    return self.code
+            
+            drawing_expert = DrawingExpert(
+                component.expert_name,
+                component.description,
+                drawing_code
+            )
+            
+            # Create response structure compatible with expert registration
+            force_expr = VectorExpression(x="0.0", y="0.0")
+            computation = ForceComputation(base_force=force_expr, description=drawing_expert.description)
+            
+            class CustomExpertFunction(ExpertFunction):
+                def __init__(self, expert):
+                    super().__init__(
+                        name=expert.name,
+                        description=expert.description,
+                        is_interaction=expert.is_interaction,
+                        computation=computation,
+                        weight=expert.weight
+                    )
+                    self._expert = expert
+                
+                def to_code(self) -> str:
+                    return self._expert.code
+            
+            response = BehaviorSynthesisResponse(
+                experts=[CustomExpertFunction(drawing_expert)],
+                states_needed=[],
+                species_config=SpeciesConfiguration(species_ids=[0]),
+                integration_kernel=IntegrationKernel(single_experts=[], interaction_experts=[])
+            )
+            
+        elif component.expert_type in ['temporal_update', 'state_update', 'utility']:
+            # Use utility expert synthesis for temporal/state updates
+            utility_response = await self.synthesizer.synthesize_utility_expert(
+                component.implementation,  # Use implementation directly for utility experts
+                available_states=shared_context['available_states'],
+                context=synthesis_context,
+                expert_type=component.expert_type  # Pass the specific expert type!
+            )
+            
+            # States for utility experts are created upfront by decomposer
+            
+            # Convert utility response to behavior synthesis response format
+            from .models import BehaviorSynthesisResponse, ExpertFunction, ForceComputation, VectorExpression, IntegrationKernel, SpeciesConfiguration
+            
+            # Create minimal expert wrapper for utility response
+            class UtilityExpert:
+                def __init__(self, utility_resp):
+                    self.name = utility_resp.name
+                    self.description = utility_resp.description
+                    self.code = utility_resp.code
+                    self.is_interaction = False
+                    self.weight = 1.0
+                
+                def to_code(self) -> str:
+                    return self.code
+            
+            utility_expert = UtilityExpert(utility_response)
+            
+            # Create minimal response structure
+            force_expr = VectorExpression(x="0.0", y="0.0")
+            computation = ForceComputation(base_force=force_expr, description=utility_expert.description)
+            
+            class CustomExpertFunction(ExpertFunction):
+                def __init__(self, expert):
+                    super().__init__(
+                        name=expert.name,
+                        description=expert.description,
+                        is_interaction=expert.is_interaction,
+                        computation=computation,
+                        weight=expert.weight
+                    )
+                    self._expert = expert
+                
+                def to_code(self) -> str:
+                    return self._expert.code
+            
+            response = BehaviorSynthesisResponse(
+                experts=[CustomExpertFunction(utility_expert)],
+                states_needed=[],
+                species_config=SpeciesConfiguration(species_ids=[0]),
+                integration_kernel=IntegrationKernel(single_experts=[], interaction_experts=[])
+            )
+        else:
+            # Use regular behavior synthesis for force/interaction experts
+            response = await self.synthesizer.synthesize_behavior(
+                enhanced_description,  # Use enhanced description with implementation guidance
+                shared_context['available_states'],
+                context=synthesis_context,
+                expert_name=component.expert_name,
+                skip_state_analysis=True  # States already created
+            )
         
         # Check if synthesis succeeded
         if response is None:
@@ -360,7 +652,9 @@ class BehaviorAgent:
             
             # Determine expert type based on component
             if component.expert_type == 'visual':
-                expert_type = 'visual'
+                expert_type = 'drawing'  # Use 'drawing' for consistency with kernel generator
+            elif component.expert_type in ['temporal_update', 'state_update', 'utility']:
+                expert_type = 'utility'
             elif expert.is_interaction:
                 expert_type = 'interaction'
             else:
@@ -372,11 +666,17 @@ class BehaviorAgent:
                 weight=weight,
                 expert_type=expert_type,
                 code=code,
-                applies_to_species=component.applies_to_species
+                applies_to_species=component.applies_to_species,
+                draw_order='post' if expert_type == 'drawing' else None  # Default draw_order for visual experts
             )
             self.experts.append(expert_info)
             self.expert_weights[component.expert_name] = weight
             experts_added.append(component.expert_name)
+        
+        # Regenerate drawing kernel if we just added a drawing expert
+        if expert_type == 'drawing':
+            await self._regenerate_drawing_kernel()
+            logger.info(f"Regenerated drawing kernel after adding visual component: {component.expert_name}")
         
         return {
             'success': True,
@@ -551,7 +851,9 @@ class BehaviorAgent:
             
             # Determine expert type based on component
             if component.expert_type == 'visual':
-                expert_type = 'visual'
+                expert_type = 'drawing'  # Use 'drawing' for consistency with kernel generator
+            elif component.expert_type in ['temporal_update', 'state_update', 'utility']:
+                expert_type = 'utility'
             elif expert.is_interaction:
                 expert_type = 'interaction'
             else:
@@ -563,7 +865,8 @@ class BehaviorAgent:
                 weight=weight,
                 expert_type=expert_type,
                 code=code,
-                applies_to_species=component.applies_to_species
+                applies_to_species=component.applies_to_species,
+                draw_order='post' if expert_type == 'drawing' else None  # Default draw_order for visual experts
             )
             self.experts.append(expert_info)
             self.expert_weights[component.expert_name] = weight
@@ -637,7 +940,8 @@ class BehaviorAgent:
                                     resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
                         elif species_info.species_colors:
                             # Use directly provided RGBA colors if available
-                            resolved_colors = species_info.species_colors
+                            for color_mapping in species_info.species_colors:
+                                resolved_colors[color_mapping.species_id] = color_mapping.rgba_values
                         else:
                             # Generate default colors
                             color_resolver = ColorResolver()
@@ -715,6 +1019,7 @@ class BehaviorAgent:
         single_experts = [e for e in self.experts if e.expert_type == 'single']
         interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
         visual_experts = [e for e in self.experts if e.expert_type == 'visual']
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility']
         
         # Build species conditions mapping from expert info
         species_conditions = {}
@@ -741,8 +1046,9 @@ class BehaviorAgent:
         from ..generation.drawing import DrawingKernelGenerator
         
         # Separate drawing experts by type and order
-        pre_draw = [e for e in self.experts if e.expert_type == 'drawing' and hasattr(e, 'draw_order') and e.draw_order == 'pre']
-        post_draw = [e for e in self.experts if e.expert_type == 'drawing' and (not hasattr(e, 'draw_order') or e.draw_order == 'post')]
+        # Include both 'drawing' and 'visual' expert types
+        pre_draw = [e for e in self.experts if e.expert_type in ['drawing', 'visual'] and getattr(e, 'draw_order', None) == 'pre']
+        post_draw = [e for e in self.experts if e.expert_type in ['drawing', 'visual'] and getattr(e, 'draw_order', 'post') == 'post']
         interaction_draw = [e for e in self.experts if e.expert_type == 'drawing_interaction']
         
         # Generate drawing kernel code
@@ -755,8 +1061,30 @@ class BehaviorAgent:
             tolvera_instance=self.tv
         )
         
+        # Store the generated kernel code for later use in sketch generation
+        self.drawing_kernel_code = kernel_code
+        
         # Compile and register the drawing kernel
         logger.info("Regenerated drawing kernel with all drawing experts")
+    
+    async def _regenerate_utility_kernel(self):
+        """Regenerate the utility kernel with all utility experts."""
+        # Get all utility experts
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility']
+        
+        if not utility_experts:
+            return
+        
+        # Generate utility kernel code
+        kernel_code = self.kernel_generator.generate_utility_kernel(
+            utility_expert_names=[e.name for e in utility_experts],
+            function_name="update_utilities"
+        )
+        
+        # Store the generated kernel code (will be included in sketch generation)
+        self.utility_kernel_code = kernel_code
+        
+        logger.info(f"Regenerated utility kernel with {len(utility_experts)} utility experts")
     
     async def _create_states_for_component(
         self, 
@@ -912,34 +1240,7 @@ class BehaviorAgent:
             self.state_manager.create_states_from_spec(states_to_create)
             logger.info(f"Created states for {component_type}: {states_needed}")
     
-    def _generate_temporal_update_kernel(self) -> str:
-        available_states = self.state_manager.get_available_states()
-        
-        has_grid_states = self._has_grid_states(available_states)
-        has_oscillator_states = self._has_oscillator_states(available_states)
-        has_growth_states = self._has_growth_states(available_states)
-        
-        kernel_parts = self._create_temporal_kernel_header()
-        
-        if has_grid_states:
-            kernel_parts.extend(self._generate_grid_update_code(available_states))
-        
-        if has_oscillator_states:
-            kernel_parts.extend(self._generate_oscillator_update_code(available_states))
-        
-        if has_growth_states:
-            kernel_parts.extend(self._generate_growth_update_code(available_states))
-        
-        if 'energy' in available_states.get('particle', []):
-            kernel_parts.extend(self._generate_energy_update_code())
-        
-        if self.temporal_updates:
-            kernel_parts.extend(self._generate_synthesis_temporal_updates(available_states))
-        
-        if len(kernel_parts) <= 6:
-            return ""
-        
-        return "\n".join(kernel_parts)
+    # Legacy _generate_temporal_update_kernel method removed - utility experts now handle temporal updates
     
     def _has_grid_states(self, available_states: Dict[str, List[str]]) -> bool:
         return any(s in available_states.get('particle', []) 
@@ -953,16 +1254,7 @@ class BehaviorAgent:
         return any(s in available_states.get('particle', []) 
                   for s in ['age', 'cell_type'])
     
-    def _create_temporal_kernel_header(self) -> List[str]:
-        return [
-            "@ti.kernel", 
-            "def update_temporal_states():",
-            "    frame = tv.ctx.i[None]",
-            "    fps = 60.0",
-            "    time = ti.cast(frame, ti.f32) / fps",
-            "    dt = 1.0 / fps",
-            ""
-        ]
+    # Legacy temporal kernel headers removed - utility experts now handle temporal updates
     
     def _generate_grid_update_code(self, available_states: Dict[str, List[str]]) -> List[str]:
         particle_states = available_states.get('particle', [])
@@ -1362,22 +1654,50 @@ def deposit_trails():
                 'description': init_response.description
             }
             
-        elif component.expert_type == 'temporal_update':
-            # Synthesize temporal update kernel
+        elif component.expert_type in ['temporal_update', 'state_update', 'utility']:
+            # Synthesize utility expert (temporal updates, state updates, etc.)
             available_states = self.state_manager.get_available_states()
-            temporal_response = await self.synthesizer.synthesize_temporal_update(
+            utility_response = await self.synthesizer.synthesize_utility_expert(
                 component.implementation,
                 available_states=available_states,
-                context=context
+                context=context,
+                expert_type=component.expert_type  # Pass the specific expert type!
             )
             
-            # Store temporal update code
-            self.synthesized_temporal_update = temporal_response.code
+            # States for utility experts are created upfront by decomposer
+            states_created = 0
+            
+            # Create Expert object from utility response
+            expert = Expert(
+                name=utility_response.name,
+                description=utility_response.description,
+                code=utility_response.code,
+                is_interaction=False,
+                weight=weight
+            )
+            
+            # Register as utility expert
+            expert_info = ExpertInfo(
+                name=expert.name,
+                description=expert.description,
+                weight=weight,
+                expert_type='utility',
+                code=expert.code
+            )
+            self.experts.append(expert_info)
+            self.expert_weights[expert.name] = weight
+            logger.info(f"Registered utility expert: {expert.name}")
+            
+            # Regenerate utility kernel
+            await self._regenerate_utility_kernel()
             
             return {
-                'type': 'temporal_update',
-                'code': temporal_response.code,
-                'description': temporal_response.description
+                'type': 'utility',
+                'expert_name': expert.name,
+                'code': utility_response.code,
+                'description': utility_response.description,
+                'experts_added': 1,
+                'states_created': states_created
             }
             
         elif component.expert_type == 'configuration':
@@ -1458,11 +1778,13 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                 'error': str(e)
             }
     
-    def generate_sketch(
+    async def generate_sketch_async(
         self, 
         description: str,
         filename: Optional[str] = None,
-        use_timestamp: bool = True
+        use_timestamp: bool = True,
+        validate: bool = True,
+        auto_fix: bool = True
     ) -> tuple[str, str]:
         # Check if this is a pure drawing behavior
         if hasattr(self, 'is_pure_drawing') and self.is_pure_drawing:
@@ -1496,6 +1818,22 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                     f.write(sketch)
                 logger.info(f"Saved pure drawing sketch to: {file_path}")
                 
+                # Validate if requested
+                if validate:
+                    from .sketch_validator import SketchValidator
+                    validator = SketchValidator()
+                    success, fixed_sketch, error = await validator.validate_sketch(
+                        sketch, auto_fix=auto_fix, verbose=False
+                    )
+                    if success and fixed_sketch != sketch:
+                        # Update the saved file with the fixed version
+                        with open(file_path, 'w') as f:
+                            f.write(fixed_sketch)
+                        logger.info(f"Sketch validated and fixed: {file_path}")
+                        return fixed_sketch, str(file_path)
+                    elif not success:
+                        logger.warning(f"Sketch validation failed: {error}")
+                
                 return sketch, str(file_path)
             return sketch, ""
         
@@ -1508,10 +1846,11 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                 helper_parts.append(f"\n{code}\n")
             helper_code = "\n".join(helper_parts)
         
-        # Collect all expert code
-        expert_code = "\n\n".join(e.code for e in self.experts)
+        # Separate expert code by type - only particle force experts go in expert_code
+        force_experts = [e for e in self.experts if e.expert_type in ['single', 'interaction']]
+        expert_code = "\n\n".join(e.code for e in force_experts)
         
-        # Combine helper functions and experts
+        # Combine helper functions and force experts only
         if helper_code:
             combined_expert_code = f"{helper_code}\n\n{expert_code}"
         else:
@@ -1529,11 +1868,8 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
         # Generate kernel (simplified for now)
         kernel_code = self._generate_simple_kernel()
         
-        # Use synthesized temporal update if available, otherwise fall back to template
-        if hasattr(self, 'synthesized_temporal_update') and self.synthesized_temporal_update:
-            temporal_kernel_code = self.synthesized_temporal_update
-        else:
-            temporal_kernel_code = self._generate_temporal_update_kernel()
+        # Temporal updates are now handled by utility experts - no legacy kernel code needed
+        temporal_kernel_code = ""
         
         # Add pixel kernels if generated
         if hasattr(self, 'pixel_kernels') and self.pixel_kernels:
@@ -1562,19 +1898,37 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
         else:
             config_code = ""
         
-        # Generate drawing kernel if we have visual experts
-        visual_experts = [e for e in self.experts if e.expert_type == 'visual']
+        # Generate drawing kernel and code if we have visual experts
+        # Include both 'visual' and 'drawing' types as they're the same concept
+        visual_experts = [e for e in self.experts if e.expert_type in ['visual', 'drawing', 'drawing_interaction']]
         drawing_kernel_code = ""
+        drawing_expert_code = ""
         if visual_experts:
-            drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
-                visual_expert_names=[e.name for e in visual_experts],
-                function_name="draw"
-            )
+            # Use the stored drawing kernel if available, otherwise generate a new one
+            if hasattr(self, 'drawing_kernel_code') and self.drawing_kernel_code:
+                drawing_kernel_code = self.drawing_kernel_code
+            else:
+                drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
+                    visual_expert_names=[e.name for e in visual_experts],
+                    function_name="draw"
+                )
+            # Include the actual visual expert function code
+            drawing_expert_code = "\n\n".join(e.code for e in visual_experts)
         
         # Check if we have non-visual experts (for particle physics)
         single_experts = [e for e in self.experts if e.expert_type == 'single']
         interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility']
         has_non_visual_experts = len(single_experts) > 0 or len(interaction_experts) > 0
+        
+        # Get utility expert code and kernel
+        utility_expert_code = "\n\n".join([e.code for e in utility_experts])
+        utility_kernel_code = ""
+        if utility_experts:
+            utility_kernel_code = self.kernel_generator.generate_utility_kernel(
+                utility_expert_names=[e.name for e in utility_experts],
+                function_name="update_utilities"
+            )
         
         # Generate complete sketch
         sketch = self.sketch_generator.generate(
@@ -1585,7 +1939,9 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
             state_code=state_code,
             temporal_code=temporal_kernel_code,
             config_code=config_code,
-            drawing_code="",  # Individual drawing functions are in experts
+            utility_code=utility_expert_code,
+            utility_kernel=utility_kernel_code,
+            drawing_code=drawing_expert_code,  # Include visual expert function code
             drawing_kernel=drawing_kernel_code,
             has_non_visual_experts=has_non_visual_experts
         )
@@ -1608,6 +1964,217 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                 # Generate filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 base_name = filename.replace('.py', '') if filename else 'generated_sketch'
+                file_path = sketch_dir / f"{base_name}_{timestamp}.py"
+            
+            with open(file_path, 'w') as f:
+                f.write(sketch)
+            logger.info(f"Saved sketch to: {file_path}")
+            
+            # Validate if requested
+            if validate:
+                from .sketch_validator import SketchValidator
+                validator = SketchValidator()
+                success, fixed_sketch, error = await validator.validate_sketch(
+                    sketch, auto_fix=auto_fix, verbose=False
+                )
+                if success and fixed_sketch != sketch:
+                    # Update the saved file with the fixed version
+                    with open(file_path, 'w') as f:
+                        f.write(fixed_sketch)
+                    logger.info(f"Sketch validated and fixed: {file_path}")
+                    return fixed_sketch, str(file_path)
+                elif not success:
+                    logger.warning(f"Sketch validation failed: {error}")
+            
+            return sketch, str(file_path)
+        
+        return sketch, ""
+    
+    def generate_sketch(
+        self, 
+        description: str,
+        filename: Optional[str] = None,
+        use_timestamp: bool = True,
+        validate: bool = True,
+        auto_fix: bool = True
+    ) -> tuple[str, str]:
+        """
+        Synchronous wrapper for generate_sketch_async.
+        Generates and optionally validates a complete sketch.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're already in an async context, can't use run_until_complete
+                # Fall back to non-validated version
+                logger.debug("In async context - using sync generation")
+                return self._generate_sketch_sync(description, filename, use_timestamp)
+            else:
+                return loop.run_until_complete(
+                    self.generate_sketch_async(description, filename, use_timestamp, validate, auto_fix)
+                )
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(
+                self.generate_sketch_async(description, filename, use_timestamp, validate, auto_fix)
+            )
+    
+    def _generate_sketch_sync(self, description: str, filename: Optional[str] = None, use_timestamp: bool = True) -> tuple[str, str]:
+        """Synchronous sketch generation without validation (fallback)."""
+        # This is the original generate_sketch logic without validation
+        # Used when we can't run async validation
+        
+        # Check if this is a pure drawing behavior
+        if hasattr(self, 'is_pure_drawing') and self.is_pure_drawing:
+            logger.info("Generating pure drawing sketch")
+            sketch = self.sketch_generator.generate_pure_drawing(
+                description=description,
+                drawing_code=self.pure_drawing_code if hasattr(self, 'pure_drawing_code') else "# Drawing code placeholder"
+            )
+            
+            # Save if filename provided or use_timestamp is True
+            if filename or use_timestamp:
+                from pathlib import Path
+                from datetime import datetime
+                
+                # Create generated_sketches directory if it doesn't exist
+                sketch_dir = Path('examples/generated_sketches')
+                sketch_dir.mkdir(parents=True, exist_ok=True)
+                
+                if filename and not use_timestamp:
+                    # Use provided filename as-is
+                    file_path = Path(filename)
+                    if not file_path.parent.name or file_path.parent == Path('.'):
+                        file_path = sketch_dir / file_path.name
+                else:
+                    # Generate filename with timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    base_name = filename or "pure_drawing_sketch"
+                    file_path = sketch_dir / f"{base_name}_{timestamp}.py"
+                
+                with open(file_path, 'w') as f:
+                    f.write(sketch)
+                logger.info(f"Saved pure drawing sketch to: {file_path}")
+                
+                return sketch, str(file_path)
+            return sketch, ""
+        
+        # Regular particle system sketch generation
+        # Collect synthesized helper functions
+        helper_code = ""
+        if hasattr(self, 'synthesized_helpers'):
+            helper_parts = ["# Helper Functions"]
+            for name, code in self.synthesized_helpers.items():
+                helper_parts.append(f"\n{code}\n")
+            helper_code = "\n".join(helper_parts)
+        
+        # Separate expert code by type
+        force_experts = [e for e in self.experts if e.expert_type in ['single', 'interaction']] if hasattr(self, 'experts') else []
+        # Include both 'visual' and 'drawing' types as they're the same concept
+        visual_experts = [e for e in self.experts if e.expert_type in ['visual', 'drawing', 'drawing_interaction']] if hasattr(self, 'experts') else []
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility'] if hasattr(self, 'experts') else []
+        
+        expert_code = "\n\n".join(e.code for e in force_experts)
+        
+        # Combine helper functions and force experts
+        if helper_code:
+            combined_expert_code = f"{helper_code}\n\n{expert_code}"
+        else:
+            combined_expert_code = expert_code if expert_code else "# No experts defined"
+        
+        # Get drawing code from visual experts
+        drawing_expert_code = "\n\n".join(e.code for e in visual_experts) if visual_experts else ""
+        
+        # Generate drawing kernel if we have visual experts
+        drawing_kernel_code = ""
+        if visual_experts:
+            # Use kernel_generator to create an actual kernel that calls the drawing functions
+            drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
+                visual_expert_names=[e.name for e in visual_experts],
+                function_name="draw"
+            )
+        
+        # Generate utility kernel if we have utility experts
+        utility_expert_code = "\n\n".join(e.code for e in utility_experts) if utility_experts else ""
+        utility_kernel_code = ""
+        if utility_experts:
+            utility_kernel_code = self.kernel_generator.generate_utility_kernel(
+                utility_expert_names=[e.name for e in utility_experts],
+                function_name="update_utilities"
+            )
+        
+        # Get initialization code
+        if hasattr(self, 'synthesized_initialization') and self.synthesized_initialization:
+            init_code = self.synthesized_initialization
+        else:
+            init_code = self._generate_init_code()
+        
+        # Get state code
+        state_code = self._generate_state_code()
+        
+        # Generate kernel
+        kernel_code = self._generate_simple_kernel()
+        
+        # Config code
+        config_code = ""
+        if self.current_species_config or (hasattr(self, 'detected_particle_count') and self.detected_particle_count):
+            # Include species configuration
+            kwargs = self.tv.kwargs.copy() if hasattr(self.tv, 'kwargs') else {}
+            if self.current_species_config:
+                kwargs['species'] = len(self.current_species_config.species_ids)
+            if hasattr(self, 'detected_particle_count') and self.detected_particle_count:
+                kwargs['pn'] = self.detected_particle_count
+            
+            config_code = f"""# Override default Tölvera parameters
+    # Detected {len(self.current_species_config.species_ids) if self.current_species_config else 1} species from description
+    import sys
+    if 'species' not in kwargs:
+        kwargs['species'] = {kwargs.get('species', 1)}  # Use detected species count
+    if 'particles' not in kwargs:
+        kwargs['particles'] = {kwargs.get('pn', 1000)}  # Use detected particle count
+    if 'width' not in kwargs:
+        kwargs['width'] = 1920
+    if 'height' not in kwargs:
+        kwargs['height'] = 1080"""
+        
+        # Check if we have force experts (single/interaction) that actually affect particle movement
+        # Only render particles if we have experts that generate forces
+        has_non_visual_experts = bool(force_experts)
+        
+        # Generate complete sketch using the correct signature
+        sketch = self.sketch_generator.generate(
+            description=description,
+            experts=[combined_expert_code],  # List of expert code strings
+            kernel=kernel_code,
+            init_code=init_code,
+            state_code=state_code,
+            temporal_code="",  # Legacy, now handled by utility experts
+            config_code=config_code,
+            utility_code=utility_expert_code,
+            utility_kernel=utility_kernel_code,
+            drawing_code=drawing_expert_code,
+            drawing_kernel=drawing_kernel_code,
+            has_non_visual_experts=has_non_visual_experts
+        )
+        
+        # Save if filename provided or use_timestamp is True
+        if filename or use_timestamp:
+            from pathlib import Path
+            from datetime import datetime
+            
+            # Create generated_sketches directory if it doesn't exist
+            sketch_dir = Path('examples/generated_sketches')
+            sketch_dir.mkdir(parents=True, exist_ok=True)
+            
+            if filename and not use_timestamp:
+                # Use provided filename as-is
+                file_path = Path(filename)
+                if not file_path.parent.name or file_path.parent == Path('.'):
+                    file_path = sketch_dir / file_path.name
+            else:
+                # Generate filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_name = filename or "sketch"
                 file_path = sketch_dir / f"{base_name}_{timestamp}.py"
             
             with open(file_path, 'w') as f:
@@ -1752,6 +2319,7 @@ init_particles()
         single_experts = [e for e in self.experts if e.expert_type == 'single']
         interaction_experts = [e for e in self.experts if e.expert_type == 'interaction']
         visual_experts = [e for e in self.experts if e.expert_type == 'visual']
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility']
         
         # Build species conditions mapping from expert info
         species_conditions = {}

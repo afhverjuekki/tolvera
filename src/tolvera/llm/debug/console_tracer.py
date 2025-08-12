@@ -24,10 +24,23 @@ class ConsoleTracer:
         "parsing": "📝",
         "drawing": "🎨",
         "state_analysis": "🧬",
+        "color_resolution": "🌈",
         "temporal_update": "⏰",
         "error": "❌",
         "success": "✅",
         "running": "⏳",
+        # Refinement icons
+        "refinement": "🔧",
+        "error_correction": "⚡",
+        "behavior_modification": "✨",
+        # Expert type icons
+        "force": "⚡",
+        "interaction": "🔗", 
+        "state_update": "🔄",
+        "utility": "🛠️",
+        "visual": "👁️",
+        "temporal": "⏰",
+        "configuration": "⚙️",
     }
     
     def __init__(self, collector: Optional[TraceCollector] = None, colored: bool = True):
@@ -82,21 +95,58 @@ class ConsoleTracer:
         if node.type == "decomposition":
             name = self._color(f"Decomposing: {node.name}", "cyan")
         elif node.type == "synthesis":
-            name = self._color(f"Synthesizing: {node.name}", "blue")
+            # Check if we can extract expert type from the node metadata
+            expert_type = node.metadata.get("expert_type") or node.input_data.get("expert_type")
+            if expert_type:
+                expert_icon = self.ICONS.get(expert_type, "🎯")
+                type_color = {
+                    "force": "blue",
+                    "interaction": "cyan", 
+                    "temporal_update": "yellow",
+                    "state_update": "green",
+                    "utility": "magenta",
+                    "visual": "red"
+                }.get(expert_type, "blue")
+                name = self._color(f"Synthesizing {expert_type}: {node.name}", type_color)
+                icon = expert_icon
+            else:
+                name = self._color(f"Synthesizing: {node.name}", "blue")
         elif node.type == "llm_call":
             model = node.metadata.get("model") or node.input_data.get("model", "unknown")
             if 'decompose' in node.name.lower():
                 name = self._color(f"Decomposition LLM Call ({model})", "cyan")
             elif 'state_analysis' in node.name.lower():
-                name = self._color(f"State Analysis LLM Call ({model})", "green")
+                # Check if this is a component-level state analysis
+                parent = self._find_parent(node)
+                if parent and parent.name and "component:" in parent.name.lower():
+                    component_name = parent.name.split("component:")[-1].strip()
+                    name = self._color(f"Component State Analysis ({model}) for: {component_name}", "green")
+                else:
+                    name = self._color(f"State Analysis LLM Call ({model})", "green")
+            elif 'color_resolution' in node.name.lower():
+                color_name = node.metadata.get("color_name", "unknown")
+                name = self._color(f"Color Resolution LLM Call ({model}) → '{color_name}'", "yellow")
             else:
                 name = self._color(f"LLM Call ({model})", "magenta")
         elif node.type == "routing":
             name = self._color(f"Routing: {node.name}", "yellow")
         elif node.type == "state_analysis":
             name = self._color(f"Analyzing States: {node.name}", "green")
+        elif node.type == "color_resolution":
+            color_name = node.metadata.get("color_name", node.input_data.get("color_name", "unknown"))
+            name = self._color(f"Resolving Color: '{color_name}'", "yellow")
         elif node.type == "temporal_update":
             name = self._color(f"Temporal Update: {node.name}", "cyan")
+        elif node.type == "refinement":
+            # Check refinement subtype
+            if "error_correction" in node.name:
+                icon = self.ICONS.get("error_correction", "⚡")
+                name = self._color(f"Error Correction: {node.metadata.get('refinement_request', 'Fixing errors')}", "red")
+            elif "behavior_modification" in node.name:
+                icon = self.ICONS.get("behavior_modification", "✨")
+                name = self._color(f"Refining: {node.metadata.get('refinement_request', 'Modifying behavior')}", "magenta")
+            else:
+                name = self._color(f"Refinement: {node.name}", "magenta")
         
         print(f"{indent}{icon} {name}")
         
@@ -130,6 +180,15 @@ class ConsoleTracer:
                             extra = f" → {total_states} states, {temporal_count} temporal"
                         else:
                             extra = " → no states needed"
+                elif 'color_resolution' in node.name.lower() and node.llm_call.parsed_response:
+                    parsed = node.llm_call.parsed_response
+                    if isinstance(parsed, dict) and 'rgba_list' in parsed:
+                        rgba = parsed['rgba_list']
+                        if len(rgba) >= 3:
+                            r, g, b = rgba[:3]
+                            extra = f" → rgb({r:.2f}, {g:.2f}, {b:.2f})"
+                        else:
+                            extra = f" → {parsed.get('color_name', 'unknown')}"
             elif node.type == "decomposition" and "components" in node.output_data:
                 count = len(node.output_data.get("components", []))
                 extra = f" → {count} components"
@@ -142,6 +201,10 @@ class ConsoleTracer:
             self._show_routing_output(node, depth + 1)
         elif node.type == "state_analysis" and node.output_data:
             self._show_state_analysis_output(node, depth + 1)
+        elif node.type == "color_resolution" and node.output_data:
+            self._show_color_resolution_output(node, depth + 1)
+        elif node.type == "refinement" and node.output_data:
+            self._show_refinement_output(node, depth + 1)
     
     def _show_decomposition_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)
@@ -168,10 +231,22 @@ class ConsoleTracer:
                 implementation = comp.get("implementation", "")
                 
                 name_str = self._color(expert_name, "bold")
-                type_str = self._color(f"[{expert_type}]", "dim")
+                # Color-code expert types for better visibility
+                type_color = {
+                    "force": "blue",
+                    "interaction": "cyan", 
+                    "temporal_update": "yellow",
+                    "state_update": "green",
+                    "utility": "magenta",
+                    "visual": "red"
+                }.get(expert_type, "dim")
+                
+                # Get expert type icon
+                expert_icon = self.ICONS.get(expert_type, "📍")
+                type_str = self._color(f"[{expert_type}]", type_color)
                 weight_str = self._color(f"({priority})", "dim")
                 
-                print(f"{indent}  • {name_str} {type_str} {weight_str}")
+                print(f"{indent}  {expert_icon} {name_str} {type_str} {weight_str}")
                 print(f"{indent}    {desc}")
                 if implementation:
                     impl_preview = implementation.split('\n')[0][:60]
@@ -207,6 +282,13 @@ class ConsoleTracer:
     def _show_state_analysis_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)
         output = node.output_data
+        
+        # Check if this is component-level state analysis
+        description = node.input_data.get('description', '')
+        if description:
+            # Show what we're analyzing states for
+            desc_preview = description[:100] + "..." if len(description) > 100 else description
+            print(f"{indent}{self._color('Analyzing for:', 'dim')} {desc_preview}")
         
         if node.llm_call and node.llm_call.parsed_response:
             parsed = node.llm_call.parsed_response
@@ -286,6 +368,68 @@ class ConsoleTracer:
                         print(f"{indent}    {self._color(update['description'], 'dim')}")
         else:
             print(f"{indent}{self._color('No custom states needed', 'green')}")
+    
+    def _show_color_resolution_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        output = node.output_data
+        
+        if output.get("resolved_color"):
+            rgba = output["resolved_color"]
+            color_name = output.get("color_name", "unknown")
+            
+            if len(rgba) >= 3:
+                r, g, b = rgba[:3]
+                alpha = rgba[3] if len(rgba) > 3 else 1.0
+                
+                # Create a visual representation with color name
+                color_str = self._color(f"'{color_name}'", "bold")
+                rgba_str = self._color(f"rgb({r:.3f}, {g:.3f}, {b:.3f})", "yellow")
+                if alpha < 1.0:
+                    rgba_str = self._color(f"rgba({r:.3f}, {g:.3f}, {b:.3f}, {alpha:.3f})", "yellow")
+                
+                print(f"{indent}Resolved: {color_str} → {rgba_str}")
+                
+                # Show hex approximation for convenience
+                hex_r = int(r * 255)
+                hex_g = int(g * 255)
+                hex_b = int(b * 255)
+                hex_str = self._color(f"#{hex_r:02x}{hex_g:02x}{hex_b:02x}", "dim")
+                print(f"{indent}Hex approx: {hex_str}")
+            else:
+                print(f"{indent}Resolved: {self._color(color_name, 'yellow')} → {rgba}")
+        elif node.llm_call and node.llm_call.parsed_response:
+            parsed = node.llm_call.parsed_response
+            if isinstance(parsed, dict):
+                color_name = parsed.get('color_name', 'unknown')
+                rgba_list = parsed.get('rgba_list', [])
+                if rgba_list and len(rgba_list) >= 3:
+                    r, g, b = rgba_list[:3]
+                    color_str = self._color(f"'{color_name}'", "bold")
+                    rgba_str = self._color(f"rgb({r:.3f}, {g:.3f}, {b:.3f})", "yellow")
+                    print(f"{indent}LLM resolved: {color_str} → {rgba_str}")
+        else:
+            color_name = node.metadata.get("color_name", "unknown")
+            print(f"{indent}{self._color(f'Resolving: {color_name}', 'yellow')}")
+    
+    def _show_refinement_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        output = node.output_data
+        
+        if output.get("changes_made"):
+            changes = output["changes_made"]
+            print(f"{indent}{self._color('Changes:', 'bold')} {self._color(changes, 'green')}")
+        
+        if output.get("warnings"):
+            warnings = output["warnings"]
+            print(f"{indent}{self._color('⚠️  Warnings:', 'yellow')} {warnings}")
+        
+        if output.get("validation_issues"):
+            issues = output["validation_issues"]
+            print(f"{indent}{self._color('⚠️  Validation:', 'yellow')} {issues}")
+        
+        if output.get("code_length"):
+            length = output["code_length"]
+            print(f"{indent}{self._color('Code size:', 'dim')} {length} chars")
     
     def _print_details(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)

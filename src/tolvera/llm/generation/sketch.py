@@ -33,14 +33,25 @@ def main(**kwargs):
     # === State Initialization ===
 {state_code}
     
-    # === Expert Functions ===
+    # === Particle Force Experts ===
+    # These functions calculate forces acting on individual particles
 {expert_code}
     
     # === Integration Kernel ===
+    # Applies all particle forces and updates physics
 {kernel_code}
     
     # === Temporal Updates ===
+    # Legacy temporal update kernels (if any)
 {temporal_code}
+    
+    # === Utility Functions ===
+    # State updates, temporal dynamics, and helper functions that don't act on particles
+{utility_code}
+    
+    # === Utility Kernel ===
+    # Executes utility functions for state management
+{utility_kernel}
     
     # === Drawing Functions ===
 {drawing_code}
@@ -119,6 +130,8 @@ if __name__ == "__main__":
         state_code: str = "",
         temporal_code: str = "",
         config_code: str = "",
+        utility_code: str = "",
+        utility_kernel: str = "",
         drawing_code: str = "",
         drawing_kernel: str = "",
         respawn_code: str = "",
@@ -138,6 +151,8 @@ if __name__ == "__main__":
             state_code: State initialization code
             temporal_code: Temporal update code
             config_code: Additional configuration code
+            utility_code: Utility expert functions (temporal updates, state updates, etc.)
+            utility_kernel: Kernel that calls utility experts
             drawing_code: Drawing behavior functions
             drawing_kernel: Drawing kernel that calls visual experts
             respawn_code: Respawn functions for food/resources
@@ -152,12 +167,12 @@ if __name__ == "__main__":
         # Build update calls - CORRECT ORDER IS CRITICAL
         update_calls = []
         
-        # Only include particle physics if we have non-visual experts
+        # 1. Always apply utility experts first (handles temporal updates, state updates)
+        if utility_kernel and "update_utilities" in utility_kernel:
+            update_calls.append("update_utilities()  # Execute utility functions")
+        
+        # Only include particle physics if we have force experts
         if has_non_visual_experts:
-            # 1. First apply temporal updates if present
-            if temporal_code and "update_temporal_states" in temporal_code:
-                update_calls.append("update_temporal_states()")
-            
             # 2. Apply expert behaviors to calculate forces
             update_calls.append("apply_all_experts()")
             
@@ -208,6 +223,8 @@ if __name__ == "__main__":
             expert_code=self._indent("\n\n".join(experts), 4),
             kernel_code=self._indent(kernel, 4),
             temporal_code=self._indent(temporal_code if temporal_code else "# No temporal updates needed", 4),
+            utility_code=self._indent(utility_code if utility_code else "# No utility functions", 4),
+            utility_kernel=self._indent(utility_kernel if utility_kernel else "# No utility kernel", 4),
             drawing_code=self._indent(drawing_code if drawing_code else "# No drawing functions", 4),
             drawing_kernel=self._indent(drawing_kernel if drawing_kernel else "# No drawing kernel", 4),
             respawn_code=self._indent(respawn_code if respawn_code else "# No respawn functions", 4),
@@ -336,6 +353,8 @@ if __name__ == "__main__":
             code_lines.append("        'randomise': False")
             code_lines.append("    })")
             code_lines.append("")
+        
+        # Temporal states are now part of global states (removed llm_temporal category)
         
         # Particle states
         if 'particle' in states_needed and states_needed['particle']:

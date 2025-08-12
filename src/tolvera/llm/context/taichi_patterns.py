@@ -100,22 +100,31 @@ def parallel_process():
         # Independent operations only
         
 ## Common Pitfalls and Solutions
-### Variable Declaration in Conditionals
-# WRONG - Variable defined inside conditional
+### Variable Declaration in Conditionals - CRITICAL RULE!
+**ALL VARIABLES MUST BE DECLARED BEFORE CONDITIONALS**
+
+# WRONG - Variable defined inside conditional (COMPILATION ERROR!)
 if species == 0:
-    strength = 150.0
+    strength = 150.0  # ERROR: strength not defined in all paths
+    alpha = 1.0      # ERROR: alpha not defined in all paths
 else:
-    strength = 50.0
-force = strength * direction  # ERROR: strength not defined in all paths
+    strength = 50.0   # ERROR: these won't compile!
+    alpha = 0.0      # ERROR: variables must exist before if/else
+force = strength * direction  # CRASH: strength not defined
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # CRASH: alpha not defined
 
-# CORRECT - Declare variable first
-strength = 50.0  # Default value
+# CORRECT - Always declare variables with defaults FIRST
+strength = 50.0  # Default value declared BEFORE conditional
+alpha = 0.0      # Default value declared BEFORE conditional
 if species == 0:
-    strength = 150.0
-force = strength * direction  # OK: strength always defined
+    strength = 150.0  # Now we can modify existing variable
+    alpha = 1.0       # Now we can modify existing variable
+force = strength * direction     # OK: strength always defined
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # OK: alpha always defined
 
-# ALSO CORRECT - Use conditional expression
+# ALSO CORRECT - Use conditional expressions (single line)
 strength = 150.0 if species == 0 else 50.0
+alpha = 1.0 if visible else 0.0
 
 ### CRITICAL: No Returns Inside Conditionals/Loops
 # WRONG - Return inside if statement
@@ -398,6 +407,105 @@ def stigmergy_update():
                 tv.px.px.rgba[px, py] += ti.math.vec4(0.1, 0.0, 0.0, 1.0)
             else:  # Passive state
                 tv.px.px.rgba[px, py] += ti.math.vec4(0.0, 0.1, 0.0, 1.0)
+"""
+
+TAICHI_CRASH_FIXES = """
+# Common Taichi Crash Fixes
+
+## Return Inside Non-Static If (Most Common Crash)
+NEVER use return statements inside conditionals or loops in Taichi functions!
+
+### WRONG - These patterns ALWAYS CRASH:
+```python
+@ti.func
+def expert_function(...) -> ti.math.vec2:
+    if species == 0:
+        return chase_force  # CRASH: Return inside non-static if!
+    else:
+        return flee_force  # CRASH: Return inside non-static if!
+```
+
+### CORRECT - Always use this pattern:
+```python
+@ti.func
+def expert_function(...) -> ti.math.vec2:
+    # 1. ALWAYS declare result variable FIRST
+    force = ti.math.vec2(0.0, 0.0)  # Default value
+    
+    # 2. Modify result in conditionals (NO RETURN!)
+    if species == 0:
+        force = chase_force
+    else:
+        force = flee_force
+    
+    # 3. SINGLE RETURN at the END
+    return force
+```
+
+## Division by Zero
+Always check before dividing by distance or norm
+
+### WRONG:
+```python
+direction = diff / diff.norm()  # Crashes if diff is zero vector
+```
+
+### CORRECT:
+```python
+dist = diff.norm()
+if dist > 0.001:  # Safety threshold
+    direction = diff / dist
+else:
+    direction = ti.math.vec2(0.0, 0.0)
+```
+
+## Index Out of Bounds
+Check boundaries when accessing arrays or pixel fields
+
+### WRONG:
+```python
+tv.px.px.rgba[x, y] = color  # May crash if x,y outside screen
+```
+
+### CORRECT:
+```python
+if 0 <= x < tv.x and 0 <= y < tv.y:
+    tv.px.px.rgba[x, y] = color
+```
+
+## Type Mismatch
+Ensure correct types for Taichi operations
+
+### WRONG:
+```python
+pos = [x, y]  # Python list
+force = ti.math.vec2(0, 0) + pos  # Type error
+```
+
+### CORRECT:
+```python
+pos = ti.math.vec2(x, y)  # Taichi vector
+force = ti.math.vec2(0.0, 0.0) + pos  # OK
+```
+
+## Undefined Variables in Conditionals
+Declare all variables before conditional blocks
+
+### WRONG:
+```python
+if condition:
+    result = compute_something()
+# result might not be defined!
+return result  # Error if condition was false
+```
+
+### CORRECT:
+```python
+result = default_value  # Always define first
+if condition:
+    result = compute_something()
+return result  # Always defined
+```
 """
 
 IML_PATTERNS = """

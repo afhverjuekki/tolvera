@@ -138,24 +138,35 @@ class ColorResolver:
     async def _resolve_with_llm(self, color_name: str) -> List[float]:
         """Use LLM to resolve complex color names to RGBA."""
         from pydantic_ai import Agent
-        from pydantic_ai.models.gemini import GeminiModel
+        from ..debug.tracing import get_collector, LLMCallData
+        from .model_factory import ModelFactory
         import os
+        
+        # Get trace collector
+        collector = get_collector()
         
         # Use provided LLM client or create one
         if self.llm_client:
             model = self.llm_client
+            # Try to determine model name from the client
+            if hasattr(model, 'model_name'):
+                model_name = model.model_name
+            elif hasattr(model, '__class__'):
+                model_name = model.__class__.__name__
+            else:
+                model_name = "custom"
         else:
-            # Create Gemini model (requires API key)
-            if not os.getenv('GEMINI_API_KEY'):
-                # Fallback to simple resolution
-                logger.warning(f"No GEMINI_API_KEY found, using fallback for '{color_name}'")
+            # Use model factory to create a model (defaults to gemini for backward compatibility)
+            default_model = os.getenv('DEFAULT_MODEL', 'gemini-2.0-flash')
+            try:
+                model = ModelFactory.create_model(default_model)
+                model_name = default_model
+            except (ValueError, ImportError) as e:
+                # Fallback to simple resolution if no model is available
+                logger.warning(f"No LLM model available: {e}. Using fallback for '{color_name}'")
                 return self.COMMON_COLORS.get(color_name.lower(), [0.7, 0.7, 0.7, 1.0])
-            model = GeminiModel("gemini-2.0-flash")
         
-        agent = Agent(
-            model,
-            output_type=ColorRGBA,
-            system_prompt="""You are a color expert. Convert color names to RGBA values.
+        system_prompt = """You are a color expert. Convert color names to RGBA values.
             
             Rules:
             - Output red, green, blue as floats from 0.0 to 1.0
@@ -171,10 +182,59 @@ class ColorResolver:
             - "coral" -> r=1.0, g=0.5, b=0.31
             - "turquoise" -> r=0.25, g=0.88, b=0.82
             """
+        
+        agent = Agent(
+            model,
+            output_type=ColorRGBA,
+            system_prompt=system_prompt
         )
         
-        result = await agent.run(f"Convert the color '{color_name}' to RGBA values")
-        return result.output.to_list()
+        # Create trace node for color resolution
+        with collector.trace_node("color_resolution", "color_resolution", 
+                                 color_name=color_name) as resolution_node:
+            try:
+                # Create nested LLM call node
+                with collector.trace_node("llm_color_resolution", "llm_call",
+                                         model=model_name) as llm_node:
+                    user_prompt = f"Convert the color '{color_name}' to RGBA values"
+                    result = await agent.run(user_prompt)
+                    
+                    # Log LLM call details
+                    if llm_node:
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+                        # Determine provider from model name
+                        provider = ModelFactory.get_provider_for_model(model_name) if model_name != "custom" else "custom"
+                        llm_data = LLMCallData(
+                            model=model_name,
+                            provider=provider,
+                            system_prompt=system_prompt.strip(),
+                            user_prompt=user_prompt,
+                            full_prompt=full_prompt,
+                            raw_response=str(result.output),
+                            parsed_response={
+                                "color_name": result.output.color_name,
+                                "r": result.output.r,
+                                "g": result.output.g,
+                                "b": result.output.b,
+                                "a": result.output.a,
+                                "rgba_list": result.output.to_list()
+                            }
+                        )
+                        llm_node.llm_call = llm_data
+                        
+                resolution_node.success = True
+                resolution_node.result = {
+                    "resolved_color": result.output.to_list(),
+                    "color_name": color_name
+                }
+                
+                return result.output.to_list()
+                
+            except Exception as e:
+                resolution_node.success = False
+                resolution_node.error = str(e)
+                logger.error(f"Color resolution failed for '{color_name}': {e}")
+                raise
     
     def get_default_species_colors(self, num_species: int) -> Dict[int, List[float]]:
         """Generate default colors for species using golden ratio for distinction."""

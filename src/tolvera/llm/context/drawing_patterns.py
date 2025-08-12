@@ -211,7 +211,7 @@ def draw_with_species_colors():
 """
 
 DRAWING_API_REFERENCE = """
-## Pixel Buffer Drawing API (Tölvera)
+## Pixel Buffer Drawing API (Tölvera) - CORRECT SIGNATURES
 
 The pixel buffer `tv.px` provides methods for drawing operations:
 
@@ -221,20 +221,47 @@ The pixel buffer `tv.px` provides methods for drawing operations:
 - `tv.px.decay(factor)` - Apply decay/fade effect (0.995 typical)
 - `tv.px.particles(particles, species)` - Draw all particles with species colors
 
-### Drawing Primitives (in @ti.kernel functions)
-- `tv.px.line(x1, y1, x2, y2, color)` - Draw line
-- `tv.px.circle(x, y, radius, color)` - Draw filled circle  
-- `tv.px.rect(x, y, width, height, color)` - Draw filled rectangle
-- Coordinates can be float and are cast internally
+### Drawing Primitives - EXACT FUNCTION SIGNATURES (in @ti.kernel or @ti.func functions)
+- `tv.px.point(x: ti.i32, y: ti.i32, rgba: vec4)` - Draw single pixel
+- `tv.px.line(x0: ti.f32, y0: ti.f32, x1: ti.f32, y1: ti.f32, rgba: vec4)` - Draw anti-aliased line
+- `tv.px.circle(x: ti.i32, y: ti.i32, r: ti.i32, rgba: vec4, fill: ti.i32 = 1)` - Draw circle
+- `tv.px.rect(x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: vec4, fill: ti.i32 = 1)` - Draw rectangle
+- `tv.px.triangle(a: vec2, b: vec2, c: vec2, rgba: vec4, fill: ti.i32 = 1)` - Draw triangle with vec2 points
 
-### Blending Operations
-- `tv.px.blend_mix(other_px, factor)` - Blend with another Pixels object
-- `tv.px.set(other_px)` - Replace with another Pixels object
-- `tv.px.from_img(path)` - Load image into pixels
+### CRITICAL: Color Format
+- Colors must be `ti.math.vec4(r, g, b, a)` or `ti.Vector([r, g, b, a])` where values are 0.0-1.0
+- NOT just `color` - must be proper vec4 type
+
+### CORRECT Examples
+```python
+# Circle at position (100, 100) with radius 10, red color
+tv.px.circle(100, 100, 10, ti.math.vec4(1.0, 0.0, 0.0, 1.0))
+
+# Line from (0, 0) to (100, 100), green color  
+tv.px.line(0.0, 0.0, 100.0, 100.0, ti.math.vec4(0.0, 1.0, 0.0, 1.0))
+
+# Triangle with three vec2 points, blue color
+a = ti.math.vec2(100.0, 100.0)
+b = ti.math.vec2(200.0, 100.0)  
+c = ti.math.vec2(150.0, 200.0)
+tv.px.triangle(a, b, c, ti.math.vec4(0.0, 0.0, 1.0, 1.0))
+
+# Rectangle at (50, 50) size 100x50, white color
+tv.px.rect(50, 50, 100, 50, ti.math.vec4(1.0, 1.0, 1.0, 1.0))
+```
 
 ### Coordinate System
 - Origin (0, 0) at top-left corner
 - X axis: left to right (0 to tv.x)
 - Y axis: **top to bottom** (0 to tv.y) - screen coordinates
 - Use modulo for wrapping: `px = ti.cast(pos.x, ti.i32) % tv.x`
+
+### From Asterboids Example
+```python
+# Triangle drawing from actual working code
+v1 = ti.Vector([pos.x + size * ti.cos(ang), pos.y + size * ti.sin(ang)])
+v2 = ti.Vector([pos.x + size * ti.cos(ang + offset), pos.y + size * ti.sin(ang + offset)])  
+v3 = ti.Vector([pos.x + size * ti.cos(ang - offset), pos.y + size * ti.sin(ang - offset)])
+tv.px.triangle(v1, v2, v3, ti.Vector([1.,1.,1.,1.]))
+```
 """

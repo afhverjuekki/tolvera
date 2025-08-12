@@ -101,6 +101,7 @@ def init_particles():
 {velocity_init}
         tv.p.field[i].size = 5.0
         tv.p.field[i].mass = 1.0
+        tv.p.field[i].speed = 20.0  
         
         # Assign species"""
         
@@ -143,6 +144,7 @@ def init_particles_grid():
                 tv.p.field[particle_idx].vel = ti.Vector([0.0, 0.0])
                 tv.p.field[particle_idx].size = min(grid_spacing_x, grid_spacing_y) * 0.8
                 tv.p.field[particle_idx].mass = 1.0
+                tv.p.field[particle_idx].speed = 20.0 
                 
                 # Assign species"""
         
@@ -217,13 +219,14 @@ def init_particles_clustered():
             else:
                 init_code += f"""
             tv.p.field[particle_idx].vel = ti.Vector([
-                (ti.random() - 0.5) * 50.0,
-                (ti.random() - 0.5) * 50.0
+                (ti.random() - 0.5) * 150.0,
+                (ti.random() - 0.5) * 150.0
             ])"""
             
             init_code += f"""
             tv.p.field[particle_idx].size = 5.0
             tv.p.field[particle_idx].mass = 1.0
+            tv.p.field[particle_idx].speed = 20.0 
             tv.p.field[particle_idx].species = {sid}
             
             particle_idx += 1"""

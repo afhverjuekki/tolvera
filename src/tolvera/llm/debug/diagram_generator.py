@@ -33,7 +33,17 @@ class MermaidDiagramGenerator:
             "    classDef parsing fill:#fce4ec,stroke:#c2185b,stroke-width:2px;",
             "    classDef drawing fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px;",
             "    classDef state_analysis fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;",
+            "    classDef color_resolution fill:#fff3e0,stroke:#ff5722,stroke-width:2px;",
             "    classDef temporal_update fill:#fffde7,stroke:#f9a825,stroke-width:2px;",
+            "    classDef refinement fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
+            "    classDef error_correction fill:#ffebee,stroke:#f44336,stroke-width:3px;",
+            "    %% Expert type styles",
+            "    classDef force_expert fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;",
+            "    classDef interaction_expert fill:#e0f2f1,stroke:#00695c,stroke-width:2px;",
+            "    classDef temporal_update_expert fill:#fff8e1,stroke:#ef6c00,stroke-width:2px;",
+            "    classDef state_update_expert fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;",
+            "    classDef utility_expert fill:#fce4ec,stroke:#ad1457,stroke-width:2px;",
+            "    classDef visual_expert fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px;",
             "    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:3px;",
             "    classDef success fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;",
             "    classDef demo fill:#f5f5f5,stroke:#666666,stroke-width:2px;",
@@ -44,8 +54,13 @@ class MermaidDiagramGenerator:
         
         known_types = {
             'synthesis', 'decomposition', 'llm_call', 'routing', 
-            'parsing', 'drawing', 'state_analysis', 'temporal_update',
+            'parsing', 'drawing', 'state_analysis', 'color_resolution', 'temporal_update',
+            'refinement', 'error_correction', 'behavior_modification',
             'demo', 'error', 'success'
+        }
+        
+        expert_types = {
+            'force', 'interaction', 'temporal_update', 'state_update', 'utility', 'visual'
         }
         
         for node_id, node_data in self._collect_all_nodes(trace).items():
@@ -54,6 +69,19 @@ class MermaidDiagramGenerator:
                 lines.append(f"    class {node_id} error")
             elif node.status == "success" and node.type == "synthesis":
                 lines.append(f"    class {node_id} success")
+            elif node.type == "synthesis":
+                # Check for expert type in synthesis nodes
+                expert_type = node.metadata.get("expert_type") or node.input_data.get("expert_type")
+                if expert_type and expert_type in expert_types:
+                    lines.append(f"    class {node_id} {expert_type}_expert")
+                else:
+                    lines.append(f"    class {node_id} synthesis")
+            elif node.type == "refinement":
+                # Check for error correction refinement
+                if "error_correction" in node.name:
+                    lines.append(f"    class {node_id} error_correction")
+                else:
+                    lines.append(f"    class {node_id} refinement")
             elif node.type in known_types:
                 lines.append(f"    class {node_id} {node.type}")
             else:
@@ -79,6 +107,7 @@ class MermaidDiagramGenerator:
             "    participant Decomposer",
             "    participant StateAnalyzer as State Analyzer", 
             "    participant Synthesizer",
+            "    participant Refiner",
             "    participant LLM",
             ""
         ]
@@ -150,6 +179,19 @@ class MermaidDiagramGenerator:
             component_count = len(components)
             label += f"<br/>{component_count} expert{'s' if component_count != 1 else ''}"
             
+            # Show expert types breakdown
+            expert_types = {}
+            for comp in components:
+                expert_type = comp.get("expert_type", "unknown")
+                expert_types[expert_type] = expert_types.get(expert_type, 0) + 1
+            
+            if expert_types:
+                type_summary = []
+                for etype, count in expert_types.items():
+                    type_summary.append(f"{count}×{etype}")
+                if len(type_summary) <= 3:  # Show details if not too many
+                    label += f"<br/>{', '.join(type_summary)}"
+            
         elif node.type == "synthesis" and node.output_data:
             expert_count = 0
             for child in node.children:
@@ -158,6 +200,11 @@ class MermaidDiagramGenerator:
             if expert_count == 0:
                 expert_count = node.output_data.get("expert_count", node.output_data.get("experts_added", 0))
             label += f"<br/>{expert_count} experts"
+            
+            # Show expert type if available
+            expert_type = node.metadata.get("expert_type") or node.input_data.get("expert_type")
+            if expert_type:
+                label += f"<br/>{expert_type}"
             
         elif node.type == "llm_call" and node.llm_call:
             if 'decompose' in node.name.lower() or (node.parent_id and 'decompose' in node.parent_id):
@@ -168,6 +215,45 @@ class MermaidDiagramGenerator:
                     label += f"<br/>Decompose → {component_count} expert{'s' if component_count != 1 else ''}"
                 else:
                     label += "<br/>Decomposition"
+            elif 'color_resolution' in node.name.lower():
+                parsed = node.llm_call.parsed_response
+                if parsed and isinstance(parsed, dict):
+                    color_name = parsed.get("color_name", "unknown")
+                    rgba_list = parsed.get("rgba_list", [])
+                    if rgba_list and len(rgba_list) >= 3:
+                        r, g, b = rgba_list[:3]
+                        label += f"<br/>'{color_name}' → rgb({r:.2f},{g:.2f},{b:.2f})"
+                    else:
+                        label += f"<br/>Resolve '{color_name}'"
+                else:
+                    color_name = node.metadata.get("color_name", "unknown")
+                    label += f"<br/>Resolve '{color_name}'"
+            elif 'state_analysis' in node.name.lower():
+                parsed = node.llm_call.parsed_response
+                if parsed and isinstance(parsed, dict):
+                    global_states = parsed.get("global_states", [])
+                    particle_states = parsed.get("particle_states", [])
+                    species_states = parsed.get("species_states", [])
+                    
+                    global_count = len(global_states) if isinstance(global_states, list) else global_states if isinstance(global_states, int) else 0
+                    particle_count = len(particle_states) if isinstance(particle_states, list) else particle_states if isinstance(particle_states, int) else 0
+                    species_count = len(species_states) if isinstance(species_states, list) else species_states if isinstance(species_states, int) else 0
+                    
+                    total_states = global_count + particle_count + species_count
+                    label += f"<br/>Found {total_states} states"
+                    
+                    # Show breakdown if states found
+                    if total_states > 0:
+                        parts = []
+                        if global_count > 0:
+                            parts.append(f"{global_count}G")
+                        if particle_count > 0:
+                            parts.append(f"{particle_count}P")
+                        if species_count > 0:
+                            parts.append(f"{species_count}S")
+                        label += f"<br/>{'+'.join(parts)}"
+                else:
+                    label += "<br/>Analyze states"
             else:
                 if node.input_data.get("description"):
                     input_desc = self._escape_mermaid_text(node.input_data["description"])
@@ -184,7 +270,7 @@ class MermaidDiagramGenerator:
             decision = node.metadata.get("routing_decision", "")
             confidence = node.metadata.get("routing_confidence", 0)
             if decision:
-                label += f"<br/>→ {decision} ({confidence:.0%})"
+                label += f"<br/>→ {decision} {confidence:.0%}"
                 
         elif node.type == "state_analysis" and node.output_data:
             states_count = (
@@ -197,6 +283,15 @@ class MermaidDiagramGenerator:
                 label += f"<br/>{states_count} states"
             if temporal_count > 0:
                 label += f"<br/>{temporal_count} temporal updates"
+                
+        elif node.type == "refinement" and node.output_data:
+            changes = node.output_data.get("changes_made", "")
+            if changes and len(changes) > 30:
+                changes = changes[:27] + "..."
+            if changes:
+                label += f"<br/>→ {self._escape_mermaid_text(changes)}"
+            if node.metadata.get("has_error"):
+                label += f"<br/>⚡ Error fix"
         
         if node.status == "error" and node.error:
             error_msg = node.error[:30] + "..." if len(node.error) > 30 else node.error
@@ -214,6 +309,7 @@ class MermaidDiagramGenerator:
             "drawing": ("[(", ")]"),  # Cylindrical
             "state_analysis": ("([", "])"),  # Stadium shape for state_analysis
             "temporal_update": ("((", "))"),  # Double circle
+            "refinement": ("[/", "\\]"),  # Double circle
         }
         return shapes.get(node.type, ("(", ")"))
     
@@ -245,6 +341,16 @@ class MermaidDiagramGenerator:
         
         collect(root)
         return nodes
+    
+    def _find_node_by_id(self, root: TraceNode, target_id: str) -> Optional[TraceNode]:
+        """Find a node by its ID in the trace tree."""
+        if root.id == target_id:
+            return root
+        for child in root.children:
+            found = self._find_node_by_id(child, target_id)
+            if found:
+                return found
+        return None
     
     def _add_chronological_sequence(self, node: TraceNode, lines: List[str]):
         def collect_llm_calls_chronologically(node: TraceNode, llm_calls: List[TraceNode]):
@@ -292,6 +398,32 @@ class MermaidDiagramGenerator:
                         else:
                             lines.append("    LLM-->>-StateAnalyzer: No custom states needed")
                             lines.append("    StateAnalyzer-->>-Agent: Using default states")
+            
+            elif 'refinement' in llm_node.name.lower():
+                # Handle refinement nodes
+                lines.append("    User->>+Refiner: Request refinement")
+                
+                # Check if this is an error correction or behavior modification
+                if llm_node.parent_id:
+                    parent_node = self._find_node_by_id(node, llm_node.parent_id)
+                    if parent_node and parent_node.metadata.get("has_error"):
+                        lines.append("    Refiner->>+LLM: Fix error")
+                    else:
+                        lines.append("    Refiner->>+LLM: Modify behavior")
+                else:
+                    lines.append("    Refiner->>+LLM: Refine sketch")
+                
+                if llm_node.llm_call and llm_node.llm_call.parsed_response:
+                    parsed = llm_node.llm_call.parsed_response
+                    if isinstance(parsed, dict):
+                        changes = parsed.get("changes_made", "")
+                        if changes:
+                            if len(changes) > 40:
+                                changes = changes[:37] + "..."
+                            lines.append(f"    LLM-->>-Refiner: {self._escape_mermaid_text(changes)}")
+                        else:
+                            lines.append("    LLM-->>-Refiner: Refinement complete")
+                        lines.append("    Refiner-->>-User: Sketch updated")
                 
             else:
                 if llm_node.input_data.get("description"):

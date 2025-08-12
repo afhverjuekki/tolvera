@@ -34,7 +34,16 @@ class StateManager:
     def create_states_from_spec(self, spec: Dict[str, Any]) -> None:
         for category in ['global', 'particle', 'species']:
             if category in spec and spec[category]:
-                self._create_category_states(category, spec[category])
+                # Map temporal to global if it exists (for backward compatibility)
+                if category == 'temporal':
+                    logger.info("Mapping temporal states to global category")
+                    self._create_category_states('global', spec[category])
+                else:
+                    self._create_category_states(category, spec[category])
+        # Handle temporal as global if present
+        if 'temporal' in spec and spec['temporal']:
+            logger.info("Mapping temporal states to global category")
+            self._create_category_states('global', spec['temporal'])
     
     def collect_and_create_states(self, all_states_specs: List[Dict[str, Any]]) -> None:
         """
@@ -47,14 +56,17 @@ class StateManager:
         merged_spec = {'global': {}, 'particle': {}, 'species': {}}
         
         for spec in all_states_specs:
-            for category in ['global', 'particle', 'species']:
+            for category in ['global', 'particle', 'species', 'temporal']:
                 if category in spec and spec[category]:
+                    # Map temporal to global
+                    target_category = 'global' if category == 'temporal' else category
                     for state_name, state_def in spec[category].items():
-                        if state_name not in merged_spec[category]:
-                            merged_spec[category][state_name] = state_def
-                            logger.info(f"Collected {category} state: {state_name}")
+                        if state_name not in merged_spec[target_category]:
+                            merged_spec[target_category][state_name] = state_def
+                            logger.info(f"Collected {target_category} state: {state_name}" + 
+                                       (f" (from temporal)" if category == 'temporal' else ""))
                         else:
-                            logger.debug(f"State {state_name} already collected for {category}")
+                            logger.debug(f"State {state_name} already collected for {target_category}")
         
         # Create all states at once
         logger.info(f"Creating all collected states: {sum(len(states) for states in merged_spec.values())} total")
@@ -138,7 +150,7 @@ class StateManager:
             'state': state_spec,
             'shape': shape_map[category],
             'osc': ('get', 'set') if category != 'particle' else ('get',),
-            'randomise': False if has_integer_states or category == 'global' else True
+            'randomise': False if has_integer_states or category in ['global', 'temporal'] else True
         })
         
         self.state_registry[category] = states
@@ -182,6 +194,7 @@ class StateManager:
             self._init_particle_states(state_obj, states)
         elif category == 'species':
             self._init_species_states(state_obj, states)
+        # Temporal states are now handled as global states
     
     def _init_global_states(self, state_obj, states: Dict[str, Any]):
         for prop_name, prop_def in states.items():
@@ -216,6 +229,10 @@ class StateManager:
                     max_val = 1.0
             
             if initial is not None:
+                # Ensure integer types get integer values
+                if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str:
+                    if isinstance(initial, float):
+                        initial = int(initial)
                 setattr(state_obj.field[0], prop_name, initial)
             elif 'day_phase' in prop_name:
                 setattr(state_obj.field[0], prop_name, 0.25)  # Dawn
@@ -281,6 +298,10 @@ class StateManager:
             
             for i in range(self.tv.pn):
                 if initial is not None:
+                    # Ensure integer types get integer values
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str:
+                        if isinstance(initial, float):
+                            initial = int(initial)
                     setattr(state_obj.field[i], prop_name, initial)
                 elif 'home' in prop_name.lower() and 'vec2' in type_str:
                     if hasattr(self.tv.p, 'field') and i < self.tv.pn:
@@ -307,6 +328,8 @@ class StateManager:
                         if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str or 'int' in type_str:
                             initial_val = int(initial_val)
                     setattr(state_obj.field[i], prop_name, initial_val)
+    
+    # Removed _init_temporal_states - temporal states are now handled as global states
     
     def _init_species_states(self, state_obj, states: Dict[str, Any]):
         for prop_name, prop_def in states.items():
@@ -342,6 +365,10 @@ class StateManager:
             
             for s in range(self.tv.sn):
                 if initial is not None:
+                    # Ensure integer types get integer values
+                    if 'i32' in type_str or 'i64' in type_str or 'u32' in type_str or 'u64' in type_str:
+                        if isinstance(initial, float):
+                            initial = int(initial)
                     setattr(state_obj.field[s], prop_name, initial)
                 else:
                     # Default to middle of range with some variation
@@ -470,6 +497,8 @@ class StateManager:
             code_lines.append(f"        'randomise': {randomise_value}")
             code_lines.append("    })")
         
+        # Temporal states are now included in global states
+        
         if self.state_registry['species']:
             code_lines.append("\n# Species states")
             code_lines.append("if 'llm_species' not in tv.s:")
@@ -547,6 +576,8 @@ class StateManager:
                         if '.' in str(initial_val):
                             initial_val = str(int(float(initial_val)))
                     code_lines.append(f"tv.s.llm_global.field[0].{name} = {initial_val}")
+        
+        # Temporal states are now included in global states initialization
         
         # Particle states - only if they need specific initialization
         if self.state_registry['particle']:
@@ -685,6 +716,11 @@ class StateManager:
             state_name: Name of the state
             temporal_update: TemporalUpdate object or dict with update info
         """
+        # Map temporal category to global
+        if category == 'temporal':
+            category = 'global'
+            logger.info(f"Mapping temporal update from 'temporal' to 'global' for state: {state_name}")
+        
         if category not in self.temporal_updates:
             logger.warning(f"Unknown category '{category}' for temporal update")
             return
@@ -692,63 +728,7 @@ class StateManager:
         self.temporal_updates[category][state_name] = temporal_update
         logger.info(f"Registered temporal update for {category}.{state_name}")
     
-    def generate_temporal_update_kernel(self) -> str:
-        """Generate a complete temporal update kernel from all registered temporal updates."""
-        # Check if we have any temporal updates
-        has_updates = any(
-            updates for updates in self.temporal_updates.values()
-        )
-        
-        if not has_updates:
-            return ""
-        
-        kernel_lines = [
-            "@ti.kernel",
-            "def update_temporal_states():",
-            "    '''Update all temporal states based on registered rules.'''",
-            "    frame = tv.ctx.i[None]",
-            "    dt = 1.0 / 60.0  # Assuming 60 FPS",
-            ""
-        ]
-        
-        # Generate global state updates
-        if self.temporal_updates['global']:
-            kernel_lines.append("    # Global state updates")
-            for state_name, update in self.temporal_updates['global'].items():
-                update_expr = self._format_temporal_update(
-                    update, state_name, 'global', '0'
-                )
-                if update_expr:
-                    kernel_lines.extend(update_expr)
-            kernel_lines.append("")
-        
-        # Generate particle state updates
-        if self.temporal_updates['particle']:
-            kernel_lines.append("    # Particle state updates")
-            kernel_lines.append("    for i in range(tv.pn):")
-            kernel_lines.append("        if tv.p.field[i].active > 0:")
-            
-            for state_name, update in self.temporal_updates['particle'].items():
-                update_expr = self._format_temporal_update(
-                    update, state_name, 'particle', 'i', indent=3
-                )
-                if update_expr:
-                    kernel_lines.extend(update_expr)
-            kernel_lines.append("")
-        
-        # Generate species state updates
-        if self.temporal_updates['species']:
-            kernel_lines.append("    # Species state updates")
-            kernel_lines.append("    for s in range(tv.sn):")
-            
-            for state_name, update in self.temporal_updates['species'].items():
-                update_expr = self._format_temporal_update(
-                    update, state_name, 'species', 's', indent=2
-                )
-                if update_expr:
-                    kernel_lines.extend(update_expr)
-        
-        return "\n".join(kernel_lines)
+    # Legacy generate_temporal_update_kernel method removed - utility experts now handle temporal updates
     
     def _format_temporal_update(self, update, state_name: str, category: str, 
                                 index: str, indent: int = 1) -> List[str]:

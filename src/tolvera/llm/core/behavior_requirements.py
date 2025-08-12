@@ -189,10 +189,15 @@ class BehaviorRequirementsAnalyzer:
             pattern_confidence=confidence
         )
         
-        # Add pattern-specific requirements
+        # Store pattern-specific requirements as hints, not automatic additions
+        # The LLM will determine which are actually needed based on the specific behavior
         if pattern_type in self.PATTERN_STATE_REQUIREMENTS:
-            requirements.state_requirements.extend(self.PATTERN_STATE_REQUIREMENTS[pattern_type])
-            logger.info(f"Added {len(self.PATTERN_STATE_REQUIREMENTS[pattern_type])} states for {pattern_type}")
+            # Store as hints for the synthesizer to consider
+            requirements.implementation_notes.append(
+                f"Pattern '{pattern_type}' typically uses states: " + 
+                ", ".join([s.name for s in self.PATTERN_STATE_REQUIREMENTS[pattern_type]])
+            )
+            logger.info(f"Added state hints for {pattern_type} pattern")
         
         # Add required experts
         if pattern_type in self.PATTERN_EXPERTS:
@@ -221,9 +226,14 @@ class BehaviorRequirementsAnalyzer:
         if decomposed_behavior:
             self._extract_decomposed_requirements(decomposed_behavior, requirements)
         
-        # Analyze for additional state requirements from description
-        additional_states = self._analyze_additional_states(description)
-        requirements.state_requirements.extend(additional_states)
+        # Analyze for potential state requirements from description
+        # These are hints for the LLM, not automatic requirements
+        state_hints = self._analyze_state_hints(description)
+        if state_hints:
+            requirements.implementation_notes.append(
+                "Based on description keywords, consider these states: " + 
+                ", ".join([s.name for s in state_hints])
+            )
         
         # Add implementation notes based on pattern
         requirements.implementation_notes = self._get_implementation_notes(pattern_type, description)
@@ -342,7 +352,7 @@ class BehaviorRequirementsAnalyzer:
         
         return None
     
-    def _analyze_additional_states(self, description: str) -> List[StateRequirement]:
+    def _analyze_state_hints(self, description: str) -> List[StateRequirement]:
         """Analyze for additional state requirements from description."""
         desc_lower = description.lower()
         additional_states = []
@@ -513,12 +523,26 @@ class BehaviorRequirementsAnalyzer:
     def _extract_decomposed_requirements(self, decomposed_behavior: Any, requirements: BehaviorRequirements) -> None:
         """Extract requirements from decomposed behavior."""
         if hasattr(decomposed_behavior, 'suggested_states'):
-            for state_name, category in decomposed_behavior.suggested_states:
+            for state_tuple in decomposed_behavior.suggested_states:
+                # Handle new 5-tuple format: (name, category, type, min, max)
+                if len(state_tuple) >= 5:
+                    state_name, category, type_str, min_val, max_val = state_tuple[:5]
+                elif len(state_tuple) == 2:
+                    # Backward compatibility with old 2-tuple format
+                    state_name, category = state_tuple
+                    type_str = "ti.f32"
+                    min_val = 0.0
+                    max_val = 1.0
+                else:
+                    continue  # Skip invalid tuples
+                    
                 if not any(s.name == state_name for s in requirements.state_requirements):
                     requirements.state_requirements.append(StateRequirement(
                         name=state_name,
                         category=category,
-                        type="ti.f32",
+                        type=type_str,
+                        min=min_val,
+                        max=max_val,
                         description=f"State from decomposition: {state_name}"
                     ))
         

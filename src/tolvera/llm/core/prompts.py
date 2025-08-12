@@ -87,6 +87,111 @@ class ContextAwarePromptBuilder:
             'swarm': SWARM_INTELLIGENCE,
             'examples': EXAMPLE_EXPERTS
         }
+    
+    def build_prompt(
+        self,
+        description: str,
+        expert_type: str,
+        contexts: set,
+        available_states: Optional[Dict[str, List[str]]] = None
+    ) -> str:
+        """
+        Build a prompt for a specific expert type with relevant contexts.
+        
+        Args:
+            description: Natural language description of the behavior
+            expert_type: Type of expert to generate ('force', 'interaction', 'utility', 'temporal_update', etc.)
+            contexts: Set of context names to include
+            available_states: Optional available states dictionary
+            
+        Returns:
+            Formatted prompt string
+        """
+        prompt_parts = []
+        
+        # Add relevant contexts
+        for context_name in contexts:
+            if context_name in self.contexts:
+                prompt_parts.append(self.contexts[context_name])
+        
+        # Add expert-type specific guidance
+        if expert_type == 'utility':
+            prompt_parts.append("""
+UTILITY EXPERT GUIDELINES:
+- Create @ti.func functions with NO particle parameters (no pos, vel, mass, species, particle_idx)
+- Most utility functions take NO parameters at all: @ti.func def expert_name():
+- These handle state updates, temporal dynamics, and helper calculations
+- Access states directly: tv.s.llm_particle.field[i] or tv.s.llm_global.field[0]
+- Do NOT return force vectors (no ti.math.vec2 or ti.Vector returns)
+- Most have NO return statement (void functions)
+- Loop over particles internally if needed: for i in range(tv.pn)
+
+Example:
+@ti.func
+def expert_update_phase():
+    # NO parameters, NO return
+    for i in range(tv.pn):
+        tv.s.llm_particle.field[i].phase += 0.01
+""")
+        elif expert_type == 'temporal_update':
+            prompt_parts.append("""
+TEMPORAL UPDATE GUIDELINES:
+- CRITICAL: These are parameterless @ti.func functions: @ti.func def expert_name():
+- ABSOLUTELY NO particle parameters (no pos, vel, mass, species, particle_idx)
+- ABSOLUTELY NO return statement - these are void functions  
+- Handle day/night cycles, energy depletion, growth, oscillations
+- Access temporal states: tv.s.llm_temporal.field[0].state_name
+- Loop over particles if needed: for i in range(tv.pn)
+- Common pattern: increment/decrement state values over time
+
+CORRECT EXAMPLE:
+@ti.func  
+def expert_day_night_cycle():
+    # NO parameters, NO return
+    tv.s.llm_temporal.field[0].day_phase = (tv.s.llm_temporal.field[0].day_phase + 0.001) % 1.0
+
+WRONG (DO NOT GENERATE):
+@ti.func
+def expert_name(pos, vel, mass, species, particle_idx) -> ti.math.vec2:
+    # This is completely wrong for temporal updates!
+""")
+        elif expert_type == 'initialization':
+            prompt_parts.append("""
+INITIALIZATION GUIDELINES:
+- Create kernels that set initial particle positions and properties
+- Use patterns like random, grid, clustered, ring distributions
+- Set species IDs and colors appropriately
+- Initialize custom states if needed
+""")
+        
+        return "\n\n".join(prompt_parts)
+    
+    def detect_needed_contexts(self, description: str) -> set:
+        """Auto-detect which contexts are relevant for a description."""
+        contexts = set()
+        desc_lower = description.lower()
+        
+        # Pattern detection
+        if any(word in desc_lower for word in ['temporal', 'time', 'day', 'night', 'cycle', 'phase']):
+            contexts.add('temporal_dynamics')
+            contexts.add('temporal_patterns_extended')
+        
+        if any(word in desc_lower for word in ['flock', 'school', 'swarm', 'cohesion', 'alignment']):
+            contexts.add('flocking')
+            contexts.add('swarm')
+        
+        if any(word in desc_lower for word in ['cellular', 'automaton', 'game of life', 'conway']):
+            contexts.add('cellular')
+        
+        if any(word in desc_lower for word in ['draw', 'trail', 'glow', 'visual', 'render']):
+            contexts.add('drawing')
+            contexts.add('drawing_api')
+        
+        if any(word in desc_lower for word in ['species', 'predator', 'prey', 'ecosystem']):
+            contexts.add('species_interactions')
+            contexts.add('ecosystem')
+        
+        return contexts
         
     def build_synthesis_prompt(
         self,
@@ -409,7 +514,7 @@ def flocking_cohesion(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, specie
     if neighbor_count > 0:
         center /= neighbor_count
         to_center = center - pos
-        force = to_center * 0.1  # Gentle cohesion
+        force = to_center * 80.0  # Strong cohesion for visible movement
     
     return force
 
@@ -602,8 +707,34 @@ if dist > 0.001:
         
         return "\n".join(prompt_sections)
     
-    def build_state_analysis_prompt(self, description: str) -> str:
+    def build_state_analysis_prompt(self, description: str, expert_type: Optional[str] = None) -> str:
         """Build prompt for analyzing what states are needed"""
+        
+        # Add expert-type specific examples
+        expert_examples = ""
+        if expert_type == 'force':
+            expert_examples = """
+FORCE EXPERT EXAMPLES:
+- "particles chase food" → needs 'consumed' state (particle, ti.i32) to mark eaten items
+- "energy depletes as they move" → needs 'energy' state (particle, ti.f32, 0-100)
+- "particles return home when tired" → needs 'home_pos' (particle, ti.math.vec2) AND 'energy'
+- "magnetic particles" → needs 'charge' state (particle, ti.f32, -1 to 1)
+"""
+        elif expert_type == 'interaction':
+            expert_examples = """
+INTERACTION EXPERT EXAMPLES:
+- "predators hunt within range" → needs 'hunt_radius' (species, ti.f32, 50-200)
+- "particles form social bonds" → needs 'bond_count' (particle, ti.i32, 0-10)
+- "remember last encounter" → needs 'last_interaction_time' (particle, ti.f32)
+"""
+        elif expert_type == 'visual':
+            expert_examples = """
+VISUAL EXPERT EXAMPLES:
+- "particles blink periodically" → needs 'blink_phase' (particle, ti.f32, 0-6.28)
+- "color cycles through spectrum" → needs 'hue_shift' (particle, ti.f32, 0-360)
+- "pulsing size" → needs 'pulse_timer' (particle, ti.f32, 0-1)
+"""
+        
         return f"""Analyze what custom states (if any) are needed for this behavior: "{description}"
 
 IMPORTANT: The following properties are ALREADY AVAILABLE on every particle and should NOT be recreated:
@@ -617,9 +748,9 @@ IMPORTANT: The following properties are ALREADY AVAILABLE on every particle and 
 - ppos, pvel: Previous position/velocity
 
 Only create NEW states for properties that don't already exist.
-
+{expert_examples}
 Consider:
-1. Does it need to track time or phases? (global states)
+1. Does it need to track time, phases, or system-wide parameters? (global states - including time-based)
 2. Does it need per-particle memory or properties NOT listed above? (particle states)  
 3. Does it need species-specific configuration? (species states)
 4. Can it be implemented with just the existing properties?
@@ -629,17 +760,18 @@ Return a JSON object with this structure:
     "needs_states": true/false,
     "global_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 1000.0, "description": "...", "initial": 300.0}}}},
     "particle_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 100.0, "description": "...", "initial": null}}}},
-    "species_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 1.0, "description": "...", "initial": null}}}},
-    "temporal_config": {{"requires_time": true/false, "day_duration": 10.0}}
+    "species_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 1.0, "description": "...", "initial": null}}}}
 }}
 
 Common state types with PROPER RANGES:
-- Gravity strength: ti.f32, min: 0.0, max: 1000.0, initial: 300.0
-- Force magnitudes: ti.f32, min: 0.0, max: 1000.0
-- Energy/Resource: ti.f32, min: 0.0, max: 100.0, initial: 80.0
-- Day phase: ti.f32, min: 0.0, max: 1.0
-- Memory positions: ti.math.vec2 (for home_pos, target_pos)
-- Counters: ti.i32"""
+- Gravity strength (global): ti.f32, min: 0.0, max: 1000.0, initial: 300.0
+- Force magnitudes (global): ti.f32, min: 0.0, max: 1000.0
+- Energy/Resource (particle): ti.f32, min: 0.0, max: 100.0, initial: 80.0
+- Day phase (global): ti.f32, min: 0.0, max: 1.0
+- Time of day (global): ti.f32, min: 0.0, max: 24.0
+- Season cycle (global): ti.f32, min: 0.0, max: 1.0
+- Memory positions (particle): ti.math.vec2 (for home_pos, target_pos)
+- Counters (global/particle): ti.i32"""
     
     def _detect_relevant_contexts(self, description: str) -> List[str]:
         """Intelligently detect which contexts to include"""
@@ -799,6 +931,8 @@ Common state types with PROPER RANGES:
             for state in states['global']:
                 lines.append(f"- {state}")
             lines.append("")
+        
+        # Temporal states are now part of global states (removed llm_temporal category)
         
         if 'particle' in states and states['particle']:
             lines.append("**Particle States** (access with `tv.s.llm_particle.field[particle_idx].state_name`):")

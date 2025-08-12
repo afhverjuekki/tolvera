@@ -20,9 +20,9 @@ class BehaviorComponent(BaseModel):
         description="High-level behavioral guidance (e.g., 'apply downward force proportional to mass', 'chase nearest prey', 'flee from nearest predator')"
     )
     priority: float = Field(description="Weight/importance of this component (0.1-1.0)")
-    required_states: Optional[List[Tuple[str, str]]] = Field(
+    required_states: Optional[List[Tuple[str, str, str, float, float]]] = Field(
         default=None,
-        description="States needed as list of (name, category) tuples (e.g., [('grid_x', 'particle'), ('energy', 'particle')])"
+        description="States needed as list of (name, category, type, min, max) tuples (e.g., [('day_phase', 'temporal', 'ti.f32', 0.0, 1.0), ('energy', 'particle', 'ti.f32', 0.0, 100.0)])"
     )
     is_temporal: bool = Field(
         default=False,
@@ -88,6 +88,11 @@ class SpeedSpecification(BaseModel):
         description="Specific speed value if mentioned (e.g., 100.0)"
     )
 
+class SpeciesColorMapping(BaseModel):
+    """RGBA color values for a species."""
+    species_id: int = Field(description="Species ID (0-based)")
+    rgba_values: List[float] = Field(description="RGBA color values [r, g, b, a] (0.0-1.0)")
+
 class SpeciesInfo(BaseModel):
     """Species configuration extracted from behavior description."""
     total_count: int = Field(description="Total number of species (1-10)")
@@ -95,9 +100,9 @@ class SpeciesInfo(BaseModel):
         default=None,
         description="List of species names and their IDs (e.g., [{'species_id': 0, 'name': 'predator'}])"
     )
-    species_colors: Optional[Dict[int, List[float]]] = Field(
+    species_colors: Optional[List[SpeciesColorMapping]] = Field(
         default=None,
-        description="RGBA colors for each species (e.g., {0: [1.0, 0.2, 0.2, 1.0]})"
+        description="RGBA colors for each species as structured list"
     )
     species_color_descriptions: Optional[List[SpeciesColor]] = Field(
         default=None,
@@ -123,9 +128,9 @@ class DecomposedBehavior(BaseModel):
         default=None,
         description="Shared context for multi-expert behaviors"
     )
-    suggested_states: List[Tuple[str, str]] = Field(
+    suggested_states: List[Tuple[str, str, str, float, float]] = Field(
         default_factory=list,
-        description="All states needed across all components as (name, category) tuples"
+        description="All states needed across all components as (name, category, type, min, max) tuples"
     )
     species_info: SpeciesInfo = Field(
         description="Species configuration detected from the description"
@@ -270,14 +275,13 @@ class BehaviorDecomposer:
     }
     
     def __init__(self, model_name, prompt_builder, api_key=None):
-        from pydantic_ai.models.gemini import GeminiModel
-        import os
+        from .model_factory import ModelFactory
         
-        if api_key:
-            os.environ['GEMINI_API_KEY'] = api_key
-        
-        self.model = GeminiModel(model_name)
+        # Use model factory to create the appropriate model
+        self.model = ModelFactory.create_model(model_name, api_key)
+        self.provider = ModelFactory.get_provider_for_model(model_name)
         self.model_name = model_name
+        logger.info(f"BehaviorDecomposer using provider '{self.provider}' with model '{model_name}'")
         self.prompt_builder = prompt_builder
         self.decomposition_agent = self._create_decomposition_agent()
         
@@ -295,7 +299,11 @@ class BehaviorDecomposer:
             - Species system: Multiple species (0 to sn-1) can have different behaviors and colors
             - Forces should return ti.math.vec2(x, y) values
             - CRITICAL: Never use 'return' inside if/for/while blocks - causes crashes
-            - TEMPORAL STATES: Energy, age, phase, temperature can change over time
+            - STATE CATEGORIES:
+              * 'global': System-wide parameters (gravity, temperature)
+              * 'particle': Per-particle data (energy, home_pos)
+              * 'species': Per-species config (aggression, speed_modifier)
+              * 'temporal': Time-based states (day_phase, season_cycle)
             
             Your role is to:
             1. DETERMINE BEHAVIOR CATEGORY:
@@ -343,13 +351,13 @@ class BehaviorDecomposer:
                - expert_name: A clear function name (e.g., 'gravity_force', 'prey_flee')
                - implementation: High-level behavioral guidance (NOT code)
                - expert_type: Choose from:
-                 * 'force' - continuous forces applied each frame
-                 * 'interaction' - particle-particle interactions
-                 * 'state_update' - discrete state changes
-                 * 'visual' - drawing/rendering effects
-                 * 'initialization' - particle setup and positioning
-                 * 'temporal_update' - time-based state evolution
-                 * 'configuration' - system parameters
+                 * 'force' - continuous forces applied each frame (takes particle params, returns force)
+                 * 'interaction' - particle-particle interactions (takes two particles, returns force)
+                 * 'state_update' - discrete state changes (NO particle params, NO force return)
+                 * 'visual' - drawing/rendering effects (NO particle params, returns zero force)
+                 * 'initialization' - particle setup and positioning (handled separately)
+                 * 'temporal_update' - time-based state evolution (NO particle params, NO return)
+                 * 'configuration' - system parameters (handled separately)
                - applies_to_species: CRITICAL - Set species IDs for species-specific behaviors:
                  * "Species 0", "Species one", "first species" → [0]
                  * "Species 1", "Species two", "second species" → [1]
@@ -366,7 +374,18 @@ class BehaviorDecomposer:
                  * "phases", "cycles", "oscillates" → add phase temporal update
                - DO NOT add automatic energy decay unless description says so
                - TEMPORAL INDICATORS: "over time", "gradually", "depletes", "regenerates", "ages", "grows", "tired", "exhausted"
-               - For temporal behaviors, set is_temporal=true and specify required_states with temporal updates
+               - For temporal behaviors, set is_temporal=true and specify required_states
+            
+            9. GENERATE REQUIRED STATES for each component:
+               - Specify as: (name, category, type, min, max)
+               - Categories: 'global', 'particle', 'species', 'temporal'
+               - Types: 'ti.f32', 'ti.i32', 'ti.math.vec2'
+               - Examples:
+                 * Day/night: [('day_phase', 'temporal', 'ti.f32', 0.0, 1.0)]
+                 * Energy: [('energy', 'particle', 'ti.f32', 0.0, 100.0)]
+                 * Grid: [('grid_x', 'particle', 'ti.i32', 0, 100), ('grid_y', 'particle', 'ti.i32', 0, 100)]
+                 * Temperature: [('temperature', 'global', 'ti.f32', 0.0, 100.0)]
+               - IMPORTANT: Components will be told what states are available to use
             
             SINGLE-COMPONENT behaviors:
             - "particles fall with gravity" → gravity_force expert
@@ -527,27 +546,45 @@ class BehaviorDecomposer:
             1. predator_hunt_with_energy: "hunt prey when energy sufficient" (type: force)
                - Implementation: "chase prey if energy > 30, stronger force with more energy"
                - is_temporal: false
+               - required_states: [("energy", "particle", "ti.f32", 0.0, 100.0)]
             2. prey_flee: "escape from predators" (type: force)
                - is_temporal: false
             3. energy_dynamics: "update energy based on activity" (type: temporal_update)
                - Implementation: "decrease energy when moving fast, regenerate when resting"
                - is_temporal: true
-               - required_states: [("energy", "particle")]
-            REQUIRES: energy state with temporal update
+               - required_states: [("energy", "particle", "ti.f32", 0.0, 100.0)]
+            suggested_states: [("energy", "particle", "ti.f32", 0.0, 100.0)]
             
             TEMPORAL BEHAVIOR ("particles lose energy over time and become tired"):
             Components:
             1. movement_with_energy: "move based on available energy" (type: force)
                - Implementation: "scale movement force by energy level"
                - is_temporal: false
+               - required_states: [("energy", "particle", "ti.f32", 0.0, 100.0)]
             2. energy_depletion: "continuously decrease energy" (type: temporal_update)
                - Implementation: "decrease energy only when moving: energy -= velocity.norm() * 0.01"
                - is_temporal: true
-               - required_states: [("energy", "particle")]
+               - required_states: [("energy", "particle", "ti.f32", 0.0, 100.0)]
             3. tired_behavior: "modify behavior when low energy" (type: state_update)
                - Implementation: "if energy < 20: reduce velocity by 50%"
                - is_temporal: false
             NOTE: Only add energy decay if description explicitly mentions it!
+            
+            DAY/NIGHT BEHAVIOR ("blue species moves faster during day, red does opposite"):
+            Components:
+            1. blue_daytime_speed: "increase blue species speed during day" (type: force)
+               - Implementation: "apply force scaled by sin(day_phase * pi) for blue species"
+               - applies_to_species: [0]
+               - required_states: [("day_phase", "temporal", "ti.f32", 0.0, 1.0)]
+            2. red_nighttime_speed: "increase red species speed at night" (type: force)
+               - Implementation: "apply force scaled by (1 - sin(day_phase * pi)) for red species"
+               - applies_to_species: [1]
+               - required_states: [("day_phase", "temporal", "ti.f32", 0.0, 1.0)]
+            3. day_phase_update: "cycle through day/night phases" (type: temporal_update)
+               - Implementation: "day_phase = (day_phase + 0.001) % 1.0"
+               - is_temporal: true
+               - required_states: [("day_phase", "temporal", "ti.f32", 0.0, 1.0)]
+            suggested_states: [("day_phase", "temporal", "ti.f32", 0.0, 1.0)]
             
             PREDATOR-PREY ("red predators hunt green prey"):
             REQUIRED components array (NEVER leave empty):
@@ -648,7 +685,7 @@ class BehaviorDecomposer:
             
             prompt = f"""Analyze this behavior and create expert specifications: "{description}"
             
-            CRITICAL: You MUST generate components. Never return an empty components list!
+            CRITICAL: You MUST generate components AND their required states. Never return empty lists!
             
             1. IDENTIFY SPECIES AND COLORS: Extract species and their colors
                - "small green fish" and "larger red predators" = 2 species
@@ -686,6 +723,12 @@ class BehaviorDecomposer:
                - implementation: behavioral guidance (NOT code)
                - expert_type: 'force' or 'interaction' (NOT 'initialization' or 'configuration')
                - priority: 0.5-1.0
+               - required_states: List of states the expert needs as (name, category, type, min, max)
+                 * Day/night behaviors → [('day_phase', 'temporal', 'ti.f32', 0.0, 1.0)]
+                 * Energy behaviors → [('energy', 'particle', 'ti.f32', 0.0, 100.0)]
+                 * Grid behaviors → [('grid_x', 'particle', 'ti.i32', 0, 100)]
+            
+            5. Populate suggested_states with ALL unique states from all components
                
             CRITICAL RULES:
             - DO NOT create initialization or configuration experts (handled elsewhere)

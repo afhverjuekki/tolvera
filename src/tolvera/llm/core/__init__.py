@@ -15,7 +15,7 @@ from .state_manager import StateManager
 from .prompts import ContextAwarePromptBuilder
 from .llm_client import LLMClient
 from .behavior_agent import BehaviorAgent
-from .decomposer import BehaviorDecomposer, DecomposedBehavior, BehaviorComponent
+from .decomposer import BehaviorDecomposer, DecomposedBehavior, BehaviorComponent, SpeciesColorMapping
 
 __all__ = [
     'BehaviorSynthesisRequest',
@@ -34,5 +34,6 @@ __all__ = [
     'BehaviorAgent',
     'BehaviorDecomposer',
     'DecomposedBehavior',
-    'BehaviorComponent'
+    'BehaviorComponent',
+    'SpeciesColorMapping'
 ]

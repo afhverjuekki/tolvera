@@ -54,9 +54,10 @@ async def demo_basic_behaviors():
     
     # Combine behaviors into a single description to avoid state conflicts
     # combined_behavior = "two species, one blue and tangerine colored, repel one another."
-    # combined_behavior = "draw geometric triangles that overlap and fill the screen in a beautiful colorful stained glass appearance.  More overlap every few seconds."
-    combined_behavior = "one blue species moves faster during the day than at night.  The red species does the opposite"
+    # combined_behavior = "draw circle patterns that fills the screen in a beautiful colorful stained glass appearance.  More overlap every few seconds."
+    # combined_behavior = "one blue species moves faster during the day than at night.  The red species does the opposite"
     # combined_behavior = "a tangerine species circles around and red rectangle that is drawn in the center of the screen"
+    combined_behavior = "Every couple of seconds draw a tangerine rectangle near the center of the screen but ranomdize where it goes a bit"
     
     print(f"\nAdding behavior: {combined_behavior}")
     try:
