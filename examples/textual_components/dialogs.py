@@ -7,11 +7,16 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, TextArea, DirectoryTree, Static
-from textual import on
+from textual import on, events
+from textual.binding import Binding
 
 
 class SaveDialog(ModalScreen):
     """Dialog for saving sketches with custom naming."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     SaveDialog {
@@ -80,10 +85,24 @@ class SaveDialog(ModalScreen):
     def cancel_save(self):
         """Handle cancel button press."""
         self.dismiss(None)
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(None)
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(None)
 
 
 class LoadDialog(ModalScreen):
     """Dialog for loading existing sketches."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     LoadDialog {
@@ -146,10 +165,24 @@ class LoadDialog(ModalScreen):
     def cancel_load(self):
         """Handle cancel button press."""
         self.dismiss(None)
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(None)
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(None)
 
 
 class ErrorDialog(ModalScreen):
     """Dialog for displaying errors with suggestions."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     ErrorDialog {
@@ -208,10 +241,24 @@ class ErrorDialog(ModalScreen):
     def close_dialog(self):
         """Close the error dialog."""
         self.dismiss(None)
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(None)
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(None)
 
 
 class HelpDialog(ModalScreen):
     """Dialog for displaying help information."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     HelpDialog {
@@ -283,3 +330,13 @@ class HelpDialog(ModalScreen):
     def close_help(self):
         """Close the help dialog."""
         self.dismiss()
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss()
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss()

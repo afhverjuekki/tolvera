@@ -249,20 +249,25 @@ class ModelFactory:
         # Create model instance based on provider
         try:
             if provider == 'ollama':
-                # Ollama needs special configuration with OpenAI compatibility
+                # Ollama uses OpenAI compatibility mode
                 ollama_host = kwargs.pop('base_url', os.getenv('OLLAMA_HOST', 'http://localhost:11434'))
                 # Ensure proper URL format for OpenAI compatibility
                 if not ollama_host.endswith('/v1'):
                     ollama_host = f"{ollama_host.rstrip('/')}/v1"
                 
-                # Import OpenAIProvider for Ollama
+                # Import OpenAI classes for Ollama compatibility
+                from pydantic_ai.models.openai import OpenAIModel
                 from pydantic_ai.providers.openai import OpenAIProvider
+                
+                # Create OpenAI provider instance for Ollama
                 provider_instance = OpenAIProvider(
                     base_url=ollama_host,
-                    api_key='ollama',  # Ollama doesn't need a real API key
+                    api_key='ollama',  # Ollama doesn't validate API keys
                     **kwargs
                 )
-                model = model_class(actual_model, provider=provider_instance)
+                
+                # Create OpenAI model with Ollama provider
+                model = OpenAIModel(actual_model, provider=provider_instance)
                 logger.info(f"Created Ollama model '{actual_model}' with host: {ollama_host}")
                 
             elif provider == 'google':

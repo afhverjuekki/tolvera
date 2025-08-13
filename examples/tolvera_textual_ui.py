@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from textual import on, work
+from textual import on, work, events
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, Grid
 from textual.widgets import (
@@ -45,6 +45,10 @@ from textual.containers import Grid
 
 class ModelSelectorScreen(ModalScreen[str]):
     """Modal screen for selecting the LLM model."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     /* Bioluminescent modal screen styling */
@@ -295,11 +299,25 @@ class ModelSelectorScreen(ModalScreen[str]):
         else:
             # Cancel was pressed
             self.dismiss(None)
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(None)
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(None)
 
 
 
 class TutorialScreen(ModalScreen):
     """Interactive tutorial walkthrough for new users."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     TutorialScreen {
@@ -682,10 +700,24 @@ Welcome to the world of alife creation! 🦠✨"""
         elif self.current_step == 4:  # Refinement step
             # Close the modal and trigger refinement - save current step
             self.dismiss(("refine", self.current_step))
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(("closed", self.current_step))
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(("closed", self.current_step))
 
 
 class WelcomeScreen(ModalScreen[bool]):
     """Welcome screen with artificial life animations."""
+    
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+    ]
     
     DEFAULT_CSS = """
     WelcomeScreen {
@@ -1079,6 +1111,16 @@ class WelcomeScreen(ModalScreen[bool]):
             if self.animation_timer:
                 self.animation_timer.stop()
             self.dismiss(True)
+    
+    def action_dismiss(self) -> None:
+        """Close the modal when ESC is pressed."""
+        self.dismiss(False)
+    
+    def on_click(self, event: events.Click) -> None:
+        """Close modal when clicking outside the dialog."""
+        clicked, _ = self.get_widget_at(event.screen_x, event.screen_y)
+        if clicked is self:
+            self.dismiss(False)
 
 
 class TolveraTextualUI(App):
@@ -1091,15 +1133,14 @@ class TolveraTextualUI(App):
     }
     
     #sketch-input-container {
-        height: 11;
+        height: 8;
         border: solid #00D9FF 80%;  /* Electric cyan - bioluminescent jellyfish */
         padding: 1;
-        margin-bottom: 1;
         background: #000814 95%;
     }
     
     #description-input {
-        height: 5;
+        height: 3;
         width: 85%;
         background: #001629;
         border: solid #00D9FF 30%;
@@ -1107,35 +1148,47 @@ class TolveraTextualUI(App):
     
     #generate-btn {
         width: 15%;
-        height: 5;
+        height: 3;
         margin-left: 1;
-        background: #00D9FF 20%;
-        border: solid #00D9FF;
+        background: #B7410E 25%;  /* Rust orange background */
+        border: solid #D2691E;    /* Rust border */
+        color: #FF8C42;           /* Bright rust text */
     }
     
     #generate-btn:hover {
-        background: #00D9FF 40%;
+        background: #D2691E 35%;  /* Darker rust on hover */
+        border: solid #FF8C42;    /* Brighter rust border on hover */
+        color: #FFB380;           /* Lighter rust text on hover */
         text-style: bold;
+    }
+    
+    /* Controls panel at the top, spanning full width */
+    #controls-container {
+        height: 5;
+        border: solid #FFB700 70%;  /* Bioluminescent gold - firefly squid */
+        padding: 0 1;
+        background: #000814 90%;
+    }
+    
+    #controls-horizontal {
+        layout: horizontal;
+        height: 100%;
+        width: 100%;
+        align: center middle;
+        padding: 0;
     }
     
     #main-grid {
         layout: grid;
-        grid-size: 3 2;
-        grid-rows: 3fr 1fr;
-        grid-columns: 1fr 2fr 1fr;
+        grid-size: 2 2;
+        grid-rows: 2fr 1fr;
+        grid-columns: 2fr 1fr;
         height: 1fr;
     }
     
     /* When chat is collapsed, expand code editor to span chat's column */
     #main-grid.chat-collapsed #code-editor-container {
         column-span: 2;
-    }
-    
-    #control-panel {
-        border: solid #FFB700 70%;  /* Bioluminescent gold - firefly squid */
-        padding: 1;
-        layout: vertical;
-        background: #000814 90%;
     }
     
     #code-editor-container {
@@ -1199,10 +1252,26 @@ class TolveraTextualUI(App):
         background: #140008 95%;
     }
     
+    #trace-info Horizontal {
+        height: 100%;
+        align: center middle;
+    }
+    
+    #trace-display {
+        width: 1fr;
+        height: 100%;
+        margin-right: 1;
+    }
+    
+    #trace-info #report-btn {
+        width: 15;
+        height: 3;
+        margin: 0;
+    }
+    
     #status-log {
         border: solid #39FF14 50%;  /* Neon green - plankton bloom */
         padding: 1;
-        column-span: 2;
         height: 100%;
         background: #001405 95%;
     }
@@ -1216,7 +1285,7 @@ class TolveraTextualUI(App):
     .panel-title {
         text-align: center;
         text-style: bold;
-        margin-bottom: 1;
+        margin-bottom: 0;
         color: #00D9FF;  /* Bright cyan titles */
         text-style: bold italic;
     }
@@ -1267,6 +1336,13 @@ class TolveraTextualUI(App):
         color: #00F5FF 90%;
     }
     
+    /* Override default button width for controls */
+    #controls-horizontal Button {
+        width: 1fr !important;
+        margin: 0 !important;
+        margin-right: 1 !important;
+    }
+    
     Button:hover {
         background: #00D9FF 20%;
         border: solid #00D9FF 80%;
@@ -1284,22 +1360,25 @@ class TolveraTextualUI(App):
         color: #39FF14;
     }
     
-    #control-panel Button {
+    #controls-horizontal Button {
         height: 3;
-        margin: 1 0;
+        margin: 0;
+        min-width: 12;
+        width: 1fr;
+        margin-right: 1;
     }
     
-    #control-panel Button.warning {
+    #controls-horizontal Button.warning {
         border: solid #FFB700 60%;
         color: #FFB700;
     }
     
-    #control-panel Button.error {
+    #controls-horizontal Button.error {
         border: solid #F72585 60%;
         color: #F72585;
     }
     
-    #control-panel Button.success {
+    #controls-horizontal Button.success {
         border: solid #39FF14 60%;
         color: #39FF14;
     }
@@ -1353,16 +1432,33 @@ class TolveraTextualUI(App):
         background: #000814;
         color: #00D9FF 70%;
     }
+    
+    /* Manual keybinds display at bottom */
+    .manual-keybinds {
+        dock: bottom;
+        height: 1;
+        background: #000814;
+        padding: 0;
+        border-top: solid #00D9FF 30%;
+    }
+    
+    #keybind-display {
+        text-align: center;
+        color: #00D9FF 80%;
+        background: #000814;
+        height: 1;
+        padding: 0;
+    }
     """
     
     BINDINGS = [
-        Binding("ctrl+n", "new_sketch", "New Sketch", priority=True),
-        Binding("ctrl+r", "run_sketch", "Run Sketch", priority=True),
-        Binding("ctrl+s", "save_sketch", "Save Sketch", priority=True),
-        Binding("ctrl+t", "toggle_chat", "Toggle Chat", priority=True),
-        Binding("f2", "show_tutorial", "Tutorial", priority=True),
-        Binding("ctrl+q", "quit", "Quit", priority=True),
-        Binding("f1", "show_help", "Help"),
+        Binding("ctrl+n", "new_sketch", "New Sketch", priority=True, show=True),
+        Binding("ctrl+r", "run_sketch", "Run Sketch", priority=True, show=True),
+        Binding("ctrl+s", "save_sketch", "Save Sketch", priority=True, show=True),
+        Binding("ctrl+t", "toggle_chat", "Toggle Chat", priority=True, show=True),
+        Binding("f2", "show_tutorial", "Tutorial", priority=True, show=True),
+        Binding("ctrl+q", "quit", "Quit", priority=True, show=True),
+        Binding("f1", "show_help", "Help", show=True),
     ]
     
     # Reactive properties
@@ -1402,20 +1498,21 @@ class TolveraTextualUI(App):
                 )
                 yield Button("Generate Sketch", variant="primary", id="generate-btn", disabled=True)
         
-        # Main grid layout
-        with Container(id="main-grid"):
-            # Top row - Controls (left), Code Editor (center), Chat (right)
-            with Vertical(id="control-panel"):
-                yield Label("Controls", classes="panel-title")
-                yield Button("Run Sketch", variant="success", id="run-btn")
-                yield Button("Stop Sketch", variant="error", id="stop-btn", disabled=True)
-                yield Button("Save Sketch", variant="primary", id="save-btn")
-                yield Button("Load Sketch", variant="default", id="load-btn")
+        # Controls panel at the top
+        with Vertical(id="controls-container"):
+            with Horizontal(id="controls-horizontal"):
+                yield Button("Run", variant="success", id="run-btn")
+                yield Button("Stop", variant="error", id="stop-btn", disabled=True)
+                yield Button("Save", variant="primary", id="save-btn")
+                yield Button("Load", variant="default", id="load-btn")
                 yield Button("Reset", variant="warning", id="reset-btn")
                 yield Button("Toggle Diff", variant="default", id="diff-btn", disabled=True)
                 yield Button("Hide Chat", variant="default", id="chat-toggle-btn")
                 yield Button("Change Model", variant="default", id="model-btn")
-            
+        
+        # Main grid layout
+        with Container(id="main-grid"):
+            # Left - Code Editor (now larger)
             with Vertical(id="code-editor-container"):
                 with Horizontal():
                     yield Label("Generated Code", classes="panel-title")
@@ -1439,17 +1536,27 @@ class TolveraTextualUI(App):
                     id="refinement-input"
                 )
             
-            # Bottom row - Trace (left), Status spanning the rest
-            with Vertical(id="trace-info"):
-                yield Label("Trace Information", classes="panel-title")
-                yield Static("No trace data yet", id="trace-display")
-                yield Button("View Report", variant="primary", id="report-btn", disabled=True)
-            
+            # Bottom row - Status spanning the rest, Trace (right)
             with Vertical(id="status-log"):
                 yield Label("Status & Logs", classes="panel-title")
-                yield Log(id="log-output", highlight=True)
+                yield TextArea(
+                    "",
+                    id="log-output",
+                    read_only=True,
+                    show_line_numbers=False,
+                    language=None
+                )
+            
+            with Vertical(id="trace-info"):
+                yield Label("Trace Information", classes="panel-title")
+                with Horizontal():
+                    yield Static("No trace data yet", id="trace-display")
+                    yield Button("View Report", variant="primary", id="report-btn", disabled=True)
         
-        yield Footer()
+        # Manual keybind display at bottom
+        with Container(id="manual-keybinds", classes="manual-keybinds"):
+            yield Static("Ctrl+N: New | Ctrl+R: Run | Ctrl+S: Save | Ctrl+T: Toggle Chat | F2: Tutorial | F1: Help | Ctrl+Q: Quit", 
+                        id="keybind-display")
         
         # Global loading overlay - appears on top of everything when visible
         with Container(id="loading-overlay"):
@@ -1548,9 +1655,19 @@ class TolveraTextualUI(App):
     def log_message(self, message: str):
         """Add a message to the log."""
         try:
-            log = self.query_one("#log-output", Log)
+            log = self.query_one("#log-output", TextArea)
             timestamp = datetime.now().strftime('%H:%M:%S')
-            log.write_line(f"[{timestamp}] {message}")
+            new_line = f"[{timestamp}] {message}"
+            
+            # Append to existing text with newline
+            current_text = log.text
+            if current_text:
+                log.text = current_text + "\n" + new_line
+            else:
+                log.text = new_line
+            
+            # Auto-scroll to bottom
+            log.scroll_end()
         except Exception:
             # Log not available yet (during initialization)
             pass
@@ -1564,19 +1681,16 @@ class TolveraTextualUI(App):
             self.is_initializing = True
             self.agents_ready = False
             
-            self.log_message("🦠 Spawning artificial life agents...")
-            self.log_message("⏳ Incubating neural pathways... (10-30 seconds)")
-            
             # Small delay to let UI update
             await asyncio.sleep(0.1)
             
             # Initialize Tölvera - this is fast
-            self.log_message("  🌊 Creating digital ocean environment...")
+            self.log_message("Initializing Tölvera...")
             try:
                 self.tv = Tolvera(width=1920, height=1080, pn=500, sn=4)
-                self.log_message("  ✨ Tölvera ecosystem initialized")
+                self.log_message("✨ Tölvera ecosystem initialized")
             except Exception as e:
-                self.log_message(f"  ❌ Tölvera failed: {e}")
+                self.log_message(f"❌ Tölvera failed: {e}")
                 raise
             
             # Small delay to let UI update
@@ -1584,33 +1698,32 @@ class TolveraTextualUI(App):
             
             # Initialize behavior agent - THIS IS THE SLOW PART
             provider, actual_model = ModelFactory.parse_model_string(self.model_name)
-            self.log_message(f"  🐙 Cultivating BehaviorAgent with {provider} provider...")
-            self.log_message(f"  Model: {actual_model}")
-            self.log_message("  🧪 Synthesizing neural networks...")
+            self.log_message(f"Creating BehaviorAgent with {provider} provider...")
+            self.log_message(f"Model: {actual_model}")
             
             try:
                 self.behavior_agent = BehaviorAgent(self.tv, model_name=self.model_name)
-                self.log_message("  🦋 BehaviorAgent emerged successfully")
+                self.log_message("BehaviorAgent emerged successfully")
                 
             except Exception as e:
-                self.log_message(f"  ❌ BehaviorAgent failed: {e}")
+                self.log_message(f"❌ BehaviorAgent failed: {e}")
                 raise
             
             # Small delay to let UI update
             await asyncio.sleep(0.1)
             
             # Initialize sketch refiner - also potentially slow
-            self.log_message(f"  🪸 Growing SketchRefiner with {provider}...")
+            self.log_message(f"Initializing SketchRefiner with {provider}...")
             try:
                 self.sketch_refiner = SketchRefiner(model_name=self.model_name)
-                self.log_message(f"  🌺 SketchRefiner bloomed with {provider}")
+                self.log_message(f"SketchRefiner bloomed with {provider}")
             except Exception as e:
-                self.log_message(f"  ❌ SketchRefiner failed: {e}")
+                self.log_message(f"❌ SketchRefiner failed: {e}")
                 raise
             
             # Mark as ready
             self.agents_ready = True
-            self.log_message("🌟 Digital ecosystem ready! Begin creating artificial life...")
+            self.log_message("We're ready! Begin creating alife...")
             
             # Enable the generate button
             try:
@@ -1639,7 +1752,7 @@ class TolveraTextualUI(App):
             
         finally:
             self.is_initializing = False
-            self.log_message("🧬 Genesis complete")
+            # self.log_message("🧬 Genesis complete")
     
     @on(Button.Pressed, "#generate-btn")
     def generate_sketch(self):
@@ -1654,7 +1767,7 @@ class TolveraTextualUI(App):
             self.push_screen(ModelSelectorScreen(), self.handle_model_selection)
             return
         
-        self.log_message("🦠 Initiating artificial life synthesis...")
+        self.log_message("🦠 Initiating alife synthesis...")
         self.generate_sketch_worker()
     
     @work(exclusive=True)
@@ -1739,10 +1852,10 @@ class TolveraTextualUI(App):
             return
         
         try:
-            # Save current code first
+            # Save current code first (use clean code without diff markers)
             code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
             with open(self.current_sketch_path, 'w') as f:
-                f.write(code_editor.text)
+                f.write(code_editor.get_clean_code())
             
             self.log_message(f"🌀 Animating life form: {self.current_sketch_path}")
             
@@ -1827,14 +1940,16 @@ class TolveraTextualUI(App):
         try:
             self.log_message(f"🧬 Evolving behaviors: {request}")
             
-            # Get current code and store it for diff
+            # Get current code editor
             code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
-            current_code = code_editor.text
+            
+            # Get CLEAN code without diff markers for LLM processing
+            current_code = code_editor.get_clean_code()
             
             # Store the pre-refinement code for diff highlighting
             code_editor.store_pre_refinement_code()
             
-            # Apply refinement (async operation)
+            # Apply refinement (async operation) with clean code
             result = await self.sketch_refiner.refine_sketch(
                 current_code,
                 request
@@ -1857,10 +1972,10 @@ class TolveraTextualUI(App):
                 diff_btn = self.query_one("#diff-btn", Button)
                 diff_btn.disabled = False
                 
-                # Update the diff indicator with initial status
+                # Update the diff indicator with enhanced status
                 diff_indicator = self.query_one("#diff-indicator", Static)
-                num_changes = len(code_editor.diff_lines)
-                if num_changes > 0:
+                if code_editor.diff_data:
+                    summary = code_editor.get_diff_summary()
                     # Convert 0-based to 1-based line numbers for display
                     line_nums = sorted([n + 1 for n in code_editor.diff_lines])
                     
@@ -1869,9 +1984,9 @@ class TolveraTextualUI(App):
                         lines_str = ", ".join(str(n) for n in line_nums)
                     else:
                         # Show first few and last with ellipsis
-                        lines_str = f"{line_nums[0]}-{line_nums[-1]} ({num_changes} lines)"
+                        lines_str = f"{line_nums[0]}-{line_nums[-1]}"
                     
-                    diff_indicator.update(f"🟢 Lines changed: {lines_str}")
+                    diff_indicator.update(f"🔄 Lines {lines_str}: {summary}")
                 
                 # Add response to chat with diff summary
                 chat_container = self.query_one("#chat-history", ScrollableContainer)
@@ -1910,7 +2025,7 @@ class TolveraTextualUI(App):
             try:
                 code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
                 with open(save_path, 'w') as f:
-                    f.write(code_editor.text)
+                    f.write(code_editor.get_clean_code())
                 self.current_sketch_path = save_path
                 self.log_message(f"🧊 Life form crystallized at: {save_path}")
             except Exception as e:
@@ -1969,7 +2084,7 @@ class TolveraTextualUI(App):
         chat_container.remove_children()
         
         # Clear logs
-        self.query_one("#log-output", Log).clear()
+        self.query_one("#log-output", TextArea).text = ""
         
         # Reset state
         self.current_sketch_path = None
@@ -1988,9 +2103,9 @@ class TolveraTextualUI(App):
         diff_indicator = self.query_one("#diff-indicator", Static)
         
         if new_state:
-            # Show diff summary with line numbers in the indicator
-            num_changes = len(code_editor.diff_lines)
-            if num_changes > 0:
+            # Show enhanced diff summary in the indicator
+            if code_editor.diff_data:
+                summary = code_editor.get_diff_summary()
                 # Convert 0-based to 1-based line numbers for display
                 line_nums = sorted([n + 1 for n in code_editor.diff_lines])
                 
@@ -1999,10 +2114,10 @@ class TolveraTextualUI(App):
                     lines_str = ", ".join(str(n) for n in line_nums)
                 else:
                     # Show first few and last with ellipsis
-                    lines_str = f"{line_nums[0]}-{line_nums[-1]} ({num_changes} lines)"
+                    lines_str = f"{line_nums[0]}-{line_nums[-1]}"
                 
-                diff_indicator.update(f"🟢 Lines changed: {lines_str}")
-            self.log_message("🔍 Diff highlighting enabled - showing changes from refinement")
+                diff_indicator.update(f"🔄 Lines {lines_str}: {summary}")
+            self.log_message("🔍 Enhanced diff highlighting enabled - showing detailed word-level changes")
         else:
             diff_indicator.update("")
             self.log_message("📝 Diff highlighting disabled - normal view")

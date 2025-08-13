@@ -7,9 +7,10 @@ from textual.widgets import TextArea, ListView, ListItem, Label, Static
 from textual.containers import Vertical, Horizontal
 from textual.reactive import reactive
 from textual.widgets.text_area import TextAreaTheme
+from rich.style import Style
 from datetime import datetime
 import difflib
-from typing import Set, Optional
+from typing import Set, Optional, Dict
 
 
 class EnhancedCodeEditor(TextArea):
@@ -22,6 +23,22 @@ class EnhancedCodeEditor(TextArea):
     
     EnhancedCodeEditor.diff-mode {
         border: solid #39FF14 60%;
+    }
+    
+    /* CSS approach for diff line highlighting */
+    EnhancedCodeEditor.diff-mode .diff-added {
+        background: #1a4a1a;
+        color: #90ee90;
+    }
+    
+    EnhancedCodeEditor.diff-mode .diff-modified {
+        background: #4a4a1a;
+        color: #ffd700;
+    }
+    
+    EnhancedCodeEditor.diff-mode .diff-deleted {
+        background: #4a1a1a;
+        color: #ff6b6b;
     }
     """
     
@@ -41,21 +58,14 @@ class EnhancedCodeEditor(TextArea):
         self.last_saved = None
         self.modified = False
         
-        # Diff highlighting state
+        # Enhanced diff state
         self.pre_refinement_code: Optional[str] = None
         self.refined_code_clean: Optional[str] = None  # Store clean refined code
         self.diff_lines: Set[int] = set()
         self.diff_enabled = False
         self.original_theme = "dracula"
+        self.diff_data: Dict[int, Dict[str, str]] = {}  # Line number -> diff info
         
-        # Create and register diff theme
-        self._create_diff_theme()
-    
-    def _create_diff_theme(self):
-        """Create a custom theme for diff highlighting."""
-        # We can't highlight individual line numbers in the gutter,
-        # so we'll just keep the normal theme and use markers instead
-        pass
     
     def store_pre_refinement_code(self):
         """Store the current code before refinement."""
@@ -63,88 +73,162 @@ class EnhancedCodeEditor(TextArea):
         self.diff_lines.clear()
         self.diff_enabled = False
     
-    def compute_diff_lines(self, refined_code: str) -> Set[int]:
+    def compute_enhanced_diff(self, refined_code: str) -> Dict[int, Dict[str, str]]:
         """
-        Compute which lines have changed between original and refined code.
+        Compute detailed word-level diff information for changed lines.
         
         Returns:
-            Set of 0-based line numbers that have been added or modified
+            Dict mapping line number -> {old_line, new_line, changes_desc}
         """
         if not self.pre_refinement_code:
-            return set()
+            return {}
         
-        original_lines = self.pre_refinement_code.splitlines(keepends=False)
-        refined_lines = refined_code.splitlines(keepends=False)
+        original_lines = self.pre_refinement_code.splitlines()
+        refined_lines = refined_code.splitlines()
         
-        # Use SequenceMatcher to find differences
+        # Use SequenceMatcher to find differences at line level
         matcher = difflib.SequenceMatcher(None, original_lines, refined_lines)
-        changed_lines = set()
+        diff_data = {}
         
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag in ('replace', 'insert'):
-                # Lines j1 to j2 in the refined code are new/changed
-                for line_num in range(j1, j2):
-                    changed_lines.add(line_num)
+            if tag == 'replace':
+                # Lines were modified - do word-level diff for each pair
+                for idx in range(min(i2 - i1, j2 - j1)):
+                    old_line = original_lines[i1 + idx] if i1 + idx < len(original_lines) else ""
+                    new_line = refined_lines[j1 + idx] if j1 + idx < len(refined_lines) else ""
+                    line_num = j1 + idx  # Use refined code line number
+                    
+                    if old_line != new_line:
+                        changes_desc = self._compute_word_level_changes(old_line, new_line)
+                        diff_data[line_num] = {
+                            'old_line': old_line,
+                            'new_line': new_line,
+                            'changes_desc': changes_desc,
+                            'type': 'modified'
+                        }
+            
+            elif tag == 'insert':
+                # Lines were added
+                for idx in range(j2 - j1):
+                    line_num = j1 + idx
+                    new_line = refined_lines[line_num]
+                    diff_data[line_num] = {
+                        'old_line': '',
+                        'new_line': new_line,
+                        'changes_desc': f"Added entire line: {new_line.strip()}",
+                        'type': 'added'
+                    }
+            
             elif tag == 'delete':
-                # Lines were deleted, mark the line after deletion if exists
+                # Lines were deleted - mark next line if it exists
                 if j1 < len(refined_lines):
-                    changed_lines.add(j1)
+                    diff_data[j1] = {
+                        'old_line': original_lines[i1] if i1 < len(original_lines) else '',
+                        'new_line': refined_lines[j1],
+                        'changes_desc': f"Deleted line: {original_lines[i1].strip() if i1 < len(original_lines) else ''}",
+                        'type': 'deleted_before'
+                    }
         
-        return changed_lines
+        return diff_data
+    
+    def _compute_word_level_changes(self, old_line: str, new_line: str) -> str:
+        """
+        Compute word-level changes between two lines.
+        
+        Returns a human-readable description of what changed.
+        """
+        old_words = old_line.split()
+        new_words = new_line.split()
+        
+        matcher = difflib.SequenceMatcher(None, old_words, new_words)
+        changes = []
+        
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'replace':
+                old_text = ' '.join(old_words[i1:i2])
+                new_text = ' '.join(new_words[j1:j2])
+                changes.append(f'"{old_text}" → "{new_text}"')
+            elif tag == 'delete':
+                deleted_text = ' '.join(old_words[i1:i2])
+                changes.append(f'removed "{deleted_text}"')
+            elif tag == 'insert':
+                added_text = ' '.join(new_words[j1:j2])
+                changes.append(f'added "{added_text}"')
+        
+        if changes:
+            return f"Changes: {', '.join(changes)}"
+        else:
+            return "Line modified (whitespace/formatting changes)"
     
     def apply_diff_highlighting(self, refined_code: str):
-        """Apply diff highlighting to show changes from refinement."""
+        """Apply enhanced diff highlighting to show detailed changes from refinement."""
         # Store the clean refined code for later restoration
         self.refined_code_clean = refined_code
         
-        # Compute which lines changed
-        self.diff_lines = self.compute_diff_lines(refined_code)
+        # Compute detailed diff information
+        self.diff_data = self.compute_enhanced_diff(refined_code)
+        self.diff_lines = set(self.diff_data.keys())
         
         if self.diff_lines:
             self.diff_enabled = True
             self.add_class("diff-mode")
             
-            # Apply visual indicators to changed lines
-            self._apply_line_highlights(refined_code)
+            # Apply enhanced diff indicators to changed lines
+            self._apply_enhanced_diff_indicators(refined_code)
     
-    def _apply_line_highlights(self, code: str):
-        """Apply visual highlights to changed lines."""
-        if not self.diff_enabled or not self.diff_lines:
+    def _apply_enhanced_diff_indicators(self, code: str):
+        """Apply enhanced diff indicators showing detailed word-level changes."""
+        if not self.diff_enabled or not self.diff_data:
             return
         
-        # Add subtle markers only to changed lines
         lines = code.splitlines()
-        marked_lines = []
+        enhanced_lines = []
         
         for i, line in enumerate(lines):
-            if i in self.diff_lines:
-                # Add a subtle green dot at the end of changed lines
-                # This keeps the code readable while indicating changes
-                if line.strip() and not line.strip().startswith('#'):
-                    marked_lines.append(f"{line}  # 🟢")
+            if i in self.diff_data:
+                diff_info = self.diff_data[i]
+                change_type = diff_info['type']
+                changes_desc = diff_info['changes_desc']
+                
+                # Choose indicator based on change type - make them more prominent
+                if change_type == 'added':
+                    indicator = f"  # 🟢 ADDED → {changes_desc}"
+                elif change_type == 'deleted_before':
+                    indicator = f"  # 🔴 DELETED → {changes_desc}"
+                elif change_type == 'modified':
+                    indicator = f"  # 🟡 CHANGED → {changes_desc}"
+                else:
+                    indicator = f"  # 🔵 MODIFIED → {changes_desc}"
+                
+                # Add the detailed change information
+                if line.strip() and not line.rstrip().endswith('#'):
+                    enhanced_lines.append(f"{line}{indicator}")
                 elif line.strip().startswith('#'):
-                    # For existing comments, add marker
-                    marked_lines.append(f"{line} 🟢")
+                    # For existing comments, add indicator on new line
+                    enhanced_lines.append(line)
+                    enhanced_lines.append(f"#{indicator}")
                 else:
                     # For empty lines that changed
-                    marked_lines.append(f"{line}  # 🟢")
+                    enhanced_lines.append(f"{line}{indicator}")
             else:
-                marked_lines.append(line)
+                enhanced_lines.append(line)
         
-        # Load the marked code
-        marked_code = '\n'.join(marked_lines)
-        self.load_text(marked_code)
+        # Load the enhanced code
+        enhanced_code = '\n'.join(enhanced_lines)
+        self.load_text(enhanced_code)
     
     def clear_diff_highlighting(self):
         """Clear diff highlighting and return to normal view."""
         self.diff_enabled = False
         self.diff_lines.clear()
+        self.diff_data.clear()
         self.remove_class("diff-mode")
+        
         self.pre_refinement_code = None
         self.refined_code_clean = None
     
     def toggle_diff_highlighting(self) -> bool:
-        """Toggle diff highlighting on/off. Returns new state."""
+        """Toggle enhanced diff highlighting on/off. Returns new state."""
         if self.diff_enabled:
             # Simply restore the clean refined code we stored earlier
             if self.refined_code_clean:
@@ -153,23 +237,38 @@ class EnhancedCodeEditor(TextArea):
             self.diff_enabled = False
             self.remove_class("diff-mode")
             return False
-        elif self.pre_refinement_code and self.diff_lines and self.refined_code_clean:
+        elif self.pre_refinement_code and self.diff_data and self.refined_code_clean:
             self.diff_enabled = True
             self.add_class("diff-mode")
-            # Re-apply the highlights using the clean code
-            self._apply_line_highlights(self.refined_code_clean)
+            # Re-apply the enhanced diff indicators using the clean code
+            self._apply_enhanced_diff_indicators(self.refined_code_clean)
             return True
         return False
     
     def get_diff_summary(self) -> str:
-        """Get a summary of the changes."""
+        """Get an enhanced summary of the changes."""
         if not self.pre_refinement_code:
             return "No refinement applied yet"
         
-        if not self.diff_lines:
+        if not self.diff_data:
             return "No changes detected"
         
-        return f"{len(self.diff_lines)} lines modified"
+        added_count = sum(1 for info in self.diff_data.values() if info['type'] == 'added')
+        modified_count = sum(1 for info in self.diff_data.values() if info['type'] == 'modified')
+        deleted_count = sum(1 for info in self.diff_data.values() if info['type'] == 'deleted_before')
+        
+        summary_parts = []
+        if added_count > 0:
+            summary_parts.append(f"{added_count} added")
+        if modified_count > 0:
+            summary_parts.append(f"{modified_count} modified")
+        if deleted_count > 0:
+            summary_parts.append(f"{deleted_count} deleted")
+        
+        if summary_parts:
+            return f"{len(self.diff_data)} lines changed: {', '.join(summary_parts)}"
+        else:
+            return f"{len(self.diff_data)} lines changed"
     
     def on_text_area_changed(self):
         """Track when the code has been modified."""
@@ -179,6 +278,57 @@ class EnhancedCodeEditor(TextArea):
         """Mark the current state as saved."""
         self.last_saved = datetime.now()
         self.modified = False
+    
+    def get_clean_code(self) -> str:
+        """
+        Get clean code without diff markers for LLM refinement.
+        
+        If diff highlighting is enabled, returns the clean refined code.
+        Otherwise, strips any remaining diff markers from the current text.
+        """
+        if self.diff_enabled and self.refined_code_clean:
+            # Return the stored clean version
+            return self.refined_code_clean
+        else:
+            # Strip any enhanced diff markers from current text
+            current_text = self.text
+            lines = current_text.splitlines()
+            clean_lines = []
+            
+            for line in lines:
+                # Remove enhanced diff markers with new format
+                if '  # 🟢 ADDED →' in line:
+                    clean_line = line.split('  # 🟢 ADDED →')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # 🔴 DELETED →' in line:
+                    clean_line = line.split('  # 🔴 DELETED →')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # 🟡 CHANGED →' in line:
+                    clean_line = line.split('  # 🟡 CHANGED →')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # 🔵 MODIFIED →' in line:
+                    clean_line = line.split('  # 🔵 MODIFIED →')[0].rstrip()
+                    clean_lines.append(clean_line)
+                # Handle old-style markers for backward compatibility
+                elif '  # ✅' in line:
+                    clean_line = line.split('  # ✅')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # ❌' in line:
+                    clean_line = line.split('  # ❌')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # 🔄' in line:
+                    clean_line = line.split('  # 🔄')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif '  # 🟢' in line:
+                    clean_line = line.split('  # 🟢')[0].rstrip()
+                    clean_lines.append(clean_line)
+                elif line.startswith('#  # '):
+                    # Skip lines that are purely diff comment additions
+                    continue
+                else:
+                    clean_lines.append(line)
+            
+            return '\n'.join(clean_lines)
     
     def get_status(self) -> str:
         """Get the editor status."""
