@@ -487,14 +487,39 @@ def {function_name}():
         shared_context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Synthesize a component with shared context."""
-        # Add component-specific context
+        # Add component-specific context with FULL details
         synthesis_context = dict(shared_context)
         synthesis_context['component'] = component
         synthesis_context['component_description'] = component.description
         synthesis_context['component_behavioral_guidance'] = component.implementation
         
-        # Create an enhanced description that includes high-level behavioral guidance
+        # Add the new detailed fields from enhanced decomposer
+        if hasattr(component, 'force_formula'):
+            synthesis_context['force_formula'] = component.force_formula
+        if hasattr(component, 'implementation_details'):
+            synthesis_context['implementation_details'] = component.implementation_details
+        if hasattr(component, 'parameters'):
+            synthesis_context['parameters'] = component.parameters
+        
+        # Create an enhanced description that includes all implementation guidance
         enhanced_description = f"{component.description}. Behavior: {component.implementation}"
+        if hasattr(component, 'force_formula') and component.force_formula:
+            enhanced_description += f" Force calculation: {component.force_formula}"
+        
+        # Add ALL components to context so each expert knows about others
+        if 'all_components' in shared_context:
+            synthesis_context['other_components'] = [
+                {
+                    'name': c.expert_name,
+                    'type': c.expert_type,
+                    'description': c.description,
+                    'implementation': c.implementation,
+                    'force_formula': getattr(c, 'force_formula', None),
+                    'depends_on': getattr(c, 'depends_on', [])
+                }
+                for c in shared_context['all_components'] 
+                if c.expert_name != component.expert_name
+            ]
         
         # Add previous experts to context for coordination
         if len(self.experts) > 0:

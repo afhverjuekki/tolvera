@@ -389,7 +389,13 @@ class StateManager:
             if states
         }
     
-    def generate_state_initialization_code(self) -> str:
+    def generate_state_initialization_code(self, behavior_context: Optional[Dict[str, Any]] = None) -> str:
+        """Generate state initialization code with optional behavior context for intelligent defaults.
+        
+        Args:
+            behavior_context: Optional context from decomposer including behavior description,
+                           components, and implementation details.
+        """
         if not any(self.state_registry.values()):
             return "# No custom states defined"
         
@@ -557,7 +563,12 @@ class StateManager:
         
         return "\n".join(code_lines)
     
-    def generate_state_value_initialization_code(self) -> str:
+    def generate_state_value_initialization_code(self, behavior_context: Optional[Dict[str, Any]] = None) -> str:
+        """Generate state value initialization code.
+        
+        Args:
+            behavior_context: Optional context from decomposer for intelligent initialization.
+        """
         if not any(self.state_registry.values()):
             return "# No state values to initialize"
         
@@ -631,7 +642,16 @@ class StateManager:
         
         return "\n".join(code_lines) if code_lines else "# State values use defaults"
     
-    def _get_initial_value_for_codegen(self, name: str, state_def: Any, category: str, species_id: int = 0):
+    def _get_initial_value_for_codegen(self, name: str, state_def: Any, category: str, species_id: int = 0, context: Optional[Dict[str, Any]] = None):
+        """Get initial value for a state with optional context for intelligent defaults.
+        
+        Args:
+            name: State name
+            state_def: State definition
+            category: State category (global, particle, species)
+            species_id: Species ID for species-specific states
+            context: Optional behavior context from decomposer
+        """
         # Import here to avoid circular import
         from ..core.behavior_requirements import StateRequirement
         

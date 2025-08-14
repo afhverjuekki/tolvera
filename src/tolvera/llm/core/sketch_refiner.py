@@ -70,57 +70,57 @@ class SketchRefiner:
         
         # Build refinement-specific instructions
         refinement_instructions = """You are an expert at refining Tölvera particle simulations.
-            
-            Your role is to:
-            1. PRESERVE all existing functionality while applying requested changes
-            2. Apply targeted refinements based on user feedback
-            3. ADD NEW FEATURES including artificial life behaviors and drawing operations
-            4. Fix any errors or issues mentioned
-            5. Follow Taichi and Tölvera best practices
-            
-            COMMON REFINEMENTS:
-            
-            Force Adjustments:
-            - "Make gravity stronger" → Increase magnitude of downward force (more negative Y)
-            - "Reduce attraction" → Decrease force multiplier
-            - "Add drift" → Add random force component
-            
-            Speed Changes:
-            - "Move faster" → Increase velocity multipliers or speed values
-            - "Slow down" → Add more damping (multiply vel by 0.9-0.95)
-            - "Stop movement" → Set velocities to 0 or increase damping
-            
-            Visual Changes:
-            - "Make bigger" → Increase tv.p.field[i].size values
-            - "Change color" → Modify tv.s.species.field[x].rgba values
-            - "Add transparency" → Reduce alpha (4th component) in rgba
-            
-            Behavioral Additions:
-            - "Also repel" → Add new repulsion expert function
-            - "Add trails" → Add drawing behavior that samples positions
-            - "Make them flock" → Add alignment, cohesion, separation
-            
-            Bug Fixes:
-            - "Not moving" → Check: forces applied? dt multiplied? position updated?
-            - "Drawing doesn't appear" → Check: draw() kernel called? correct coordinates?
-            - "Crashes" → Look for: return in conditional, division by zero, out of bounds
-            
-            Temporal/Drawing Adjustments:
-            - "Draw more often" → Reduce time thresholds
-            - "Change frequency" → Adjust modulo or timing values
-            - "Random offset different" → Modify random range multipliers
-            
-            STRUCTURE TO MAINTAIN:
-            1. Configuration section (kwargs setup)
-            2. Particle initialization
-            3. State initialization (if present)
-            4. Expert functions (@ti.func)
-            5. Integration kernel (apply_all_experts)
-            6. Utility functions (if present)
-            7. Drawing functions (if present)
-            8. Render loop (@tv.render)
-            
-            ALWAYS return the COMPLETE refined sketch, not just the changed parts."""
+
+Your role is to:
+1. PRESERVE all existing functionality while applying requested changes
+2. Apply targeted refinements based on user feedback
+3. ADD NEW FEATURES including artificial life behaviors and drawing operations
+4. Fix any errors or issues mentioned
+5. Follow Taichi and Tölvera best practices
+
+COMMON REFINEMENTS:
+
+Force Adjustments:
+- "Make gravity stronger" → Increase magnitude of downward force (more negative Y)
+- "Reduce attraction" → Decrease force multiplier
+  - "Add drift" → Add random force component
+  
+  Speed Changes:
+  - "Move faster" → Increase velocity multipliers or speed values
+  - "Slow down" → Add more damping (multiply vel by 0.9-0.95)
+  - "Stop movement" → Set velocities to 0 or increase damping
+  
+  Visual Changes:
+  - "Make bigger" → Increase tv.p.field[i].size values
+  - "Change color" → Modify tv.s.species.field[x].rgba values
+  - "Add transparency" → Reduce alpha (4th component) in rgba
+  
+  Behavioral Additions:
+  - "Also repel" → Add new repulsion expert function
+  - "Add trails" → Add drawing behavior that samples positions
+  - "Make them flock" → Add alignment, cohesion, separation
+  
+  Bug Fixes:
+  - "Not moving" → Check: forces applied? dt multiplied? position updated?
+  - "Drawing doesn't appear" → Check: draw() kernel called? correct coordinates?
+  - "Crashes" → Look for: return in conditional, division by zero, out of bounds
+  
+  Temporal/Drawing Adjustments:
+  - "Draw more often" → Reduce time thresholds
+  - "Change frequency" → Adjust modulo or timing values
+  - "Random offset different" → Modify random range multipliers
+  
+  STRUCTURE TO MAINTAIN:
+  1. Configuration section (kwargs setup)
+  2. Particle initialization
+  3. State initialization (if present)
+  4. Expert functions (@ti.func)
+  5. Integration kernel (apply_all_experts)
+  6. Utility functions (if present)
+  7. Drawing functions (if present)
+  8. Render loop (@tv.render)
+  
+  ALWAYS return the COMPLETE refined sketch, not just the changed parts."""
         
         # Use the centralized prompt builder to get all the context
         # For refinement, we want ALL available contexts since we don't know what will be needed
@@ -191,35 +191,35 @@ class SketchRefiner:
             
             # Build the refinement prompt
             prompt = f"""Refine this Tölvera sketch based on the user's request.
-            
-            CURRENT SKETCH:
-            ```python
-            {sketch_code}
-            ```
-            
-            USER REQUEST: {refinement_request}
-            """
+
+CURRENT SKETCH:
+```python
+{sketch_code}
+```
+
+USER REQUEST: {refinement_request}
+"""
             
             if error_info:
                 prompt += f"""
-            
-            ERROR INFORMATION:
-            The sketch crashed with this error:
-            {error_info}
-            
-            Fix this error as part of the refinement.
-            """
+
+ERROR INFORMATION:
+The sketch crashed with this error:
+{error_info}
+
+Fix this error as part of the refinement.
+"""
             
             prompt += """
-            
-            Apply the requested changes while:
-            1. Preserving all existing behaviors not mentioned in the request
-            2. Following Taichi best practices (no return in conditionals!)
-            3. Maintaining the sketch structure
-            4. Ensuring the sketch will run without errors
-            
-            Return the COMPLETE refined sketch code.
-            """
+
+Apply the requested changes while:
+1. Preserving all existing behaviors not mentioned in the request
+2. Following Taichi best practices (no return in conditionals!)
+3. Maintaining the sketch structure
+4. Ensuring the sketch will run without errors
+
+Return the COMPLETE refined sketch code.
+"""
             
             try:
                 # Trace the LLM call
@@ -243,6 +243,9 @@ class SketchRefiner:
                     refined_code = result.output.refined_code
                     changes_made = result.output.changes_made
                     warnings = result.output.warnings
+                    
+                    # Sanitize refined code to fix common LLM formatting issues
+                    refined_code = self._sanitize_refined_code(refined_code)
                     
                     # Create LLM call data with full prompt
                     full_prompt_text = f"{system_prompt_text}\n\n{prompt}"
@@ -295,6 +298,27 @@ class SketchRefiner:
                     'warnings': f"Refinement failed: {str(e)}"
                 }
     
+    def _sanitize_refined_code(self, code: str) -> str:
+        """
+        Sanitize refined code to fix common LLM formatting issues.
+        
+        Args:
+            code: The refined sketch code from LLM
+            
+        Returns:
+            Cleaned code with formatting issues fixed
+        """
+        # Remove trailing whitespace
+        code = code.rstrip()
+        
+        # Remove trailing triple quotes that LLMs sometimes add
+        if code.endswith('"""'):
+            code = code[:-3].rstrip()
+        elif code.endswith("'''"):
+            code = code[:-3].rstrip()
+        
+        return code
+    
     def _validate_refined_code(self, code: str) -> Optional[str]:
         """
         Perform basic validation on refined code.
@@ -326,6 +350,77 @@ class SketchRefiner:
             warnings.append("Tölvera initialization not found")
         
         return "; ".join(warnings) if warnings else None
+    
+    async def repair_sketch(
+        self,
+        sketch_code: str,
+        error_logs: str,
+        additional_context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Repair a sketch that failed to execute based on error logs.
+        
+        Args:
+            sketch_code: The current sketch code that failed
+            error_logs: The error messages and logs from the failed execution
+            additional_context: Optional additional context from the user
+            
+        Returns:
+            Dictionary with:
+                - refined_code: The repaired sketch code
+                - changes_made: Summary of what was fixed
+                - warnings: Any potential issues to be aware of
+                - success: Whether repair succeeded
+        """
+        logger.info(f"Repairing sketch based on error logs")
+        
+        # Build a repair-focused request with expert context
+        repair_request = f"""You are a world-class expert in Python, Taichi, and the Tölvera particle simulation ecosystem. 
+You have deep, specialized knowledge of:
+
+1. Taichi Programming: GPU-accelerated computing, Taichi kernels, fields, and functions
+2. Tölvera Framework: Particle systems, species management, custom states, and integration kernels
+3. Python: Advanced Python programming, debugging, and error resolution
+4. Particle Simulations: Physics simulations, force calculations, emergent behaviors
+
+CRITICAL TAICHI RULES TO FOLLOW:
+- NEVER use return statements inside conditional blocks (causes "Return inside non-static if" crash)
+- Always declare result variables at the start of functions and modify them in conditionals
+- Use ti.math.vec2() or ti.Vector([x, y]) for force calculations
+- Handle division by zero explicitly with safety checks
+- Use Taichi math functions (ti.sin, ti.cos) not Python's math module inside kernels
+- Vector components accessed via indexing: vec[0], vec[1] (not .x, .y for ti.Vector)
+
+The sketch crashed with the following errors:
+
+{error_logs}
+
+COMMON ERROR PATTERNS AND FIXES:
+- "Return inside non-static if": Move return statement outside conditionals
+- "Division by zero": Add safety checks like "if dist > 0.001:"
+- "AttributeError on vec.x": Use vec[0] instead for ti.Vector types
+- "NameError": Check variable definitions and scope
+- "IndexError": Verify array bounds and particle counts
+- "TypeError": Ensure correct Taichi types (ti.f32, ti.i32, etc.)
+
+Please analyze the error logs carefully and fix ALL issues to ensure the sketch runs without crashing.
+Focus on:
+1. Identifying the exact error type and location
+2. Applying Taichi-specific fixes (especially for return statements)
+3. Preserving all existing functionality while fixing the errors
+4. Following Tölvera and Taichi best practices"""
+        
+        if additional_context:
+            repair_request += f"\n\nAdditional context from user: {additional_context}"
+        
+        repair_request += "\n\nReturn the COMPLETE repaired sketch code with all errors fixed."
+        
+        # Use the existing refine_sketch method with the error info
+        return await self.refine_sketch(
+            sketch_code=sketch_code,
+            refinement_request=repair_request,
+            error_info=error_logs
+        )
     
     def extract_expert_functions(self, sketch_code: str) -> Dict[str, str]:
         """

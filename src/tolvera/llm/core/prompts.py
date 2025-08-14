@@ -201,7 +201,7 @@ INITIALIZATION GUIDELINES:
         constrained: bool = True,
         context: Optional[Dict] = None
     ) -> str:
-        """Build comprehensive prompt for expert synthesis"""
+        """Build comprehensive prompt for expert synthesis with full decomposition context"""
         
         # Auto-detect relevant contexts
         if include_contexts is None:
@@ -640,6 +640,50 @@ if dist > 0.001:
                 prompt_sections.append(f"```python\n{ex_data['code']}\n```")
             prompt_sections.append("")
         
+        # Add decomposition context if available
+        if context and 'decomposition' in context:
+            decomposition = context['decomposition']
+            if decomposition:
+                prompt_sections.append("## DECOMPOSITION CONTEXT")
+                prompt_sections.append(f"Original description: {getattr(decomposition, 'original_description', description)}")
+                prompt_sections.append(f"Interpretation: {getattr(decomposition, 'interpretation', '')}")
+                
+                # Add details about other components
+                if 'other_components' in context:
+                    prompt_sections.append("\n### Other Components in this Behavior:")
+                    for comp in context['other_components']:
+                        prompt_sections.append(f"- **{comp['name']}** ({comp['type']}): {comp['description']}")
+                        if comp.get('force_formula'):
+                            prompt_sections.append(f"  Formula: {comp['force_formula']}")
+                        if comp.get('depends_on'):
+                            prompt_sections.append(f"  Depends on: {', '.join(comp['depends_on'])}")
+                    prompt_sections.append("")
+                
+                # Add current component details
+                if 'component' in context:
+                    component = context['component']
+                    prompt_sections.append("### Current Component Being Synthesized:")
+                    prompt_sections.append(f"Name: {getattr(component, 'expert_name', 'unknown')}")
+                    prompt_sections.append(f"Type: {getattr(component, 'expert_type', 'force')}")
+                    prompt_sections.append(f"Description: {getattr(component, 'description', '')}")
+                    prompt_sections.append(f"Implementation: {getattr(component, 'implementation', '')}")
+                    
+                    # Add detailed implementation guidance if available
+                    if 'force_formula' in context and context['force_formula']:
+                        prompt_sections.append(f"\n**Force Formula to Implement**: {context['force_formula']}")
+                    
+                    if 'implementation_details' in context and context['implementation_details']:
+                        prompt_sections.append("\n**Implementation Steps**:")
+                        for detail in context['implementation_details']:
+                            prompt_sections.append(f"- {detail}")
+                    
+                    if 'parameters' in context and context['parameters']:
+                        prompt_sections.append("\n**Required Parameters**:")
+                        for param_name, (param_type, min_val, max_val) in context['parameters'].items():
+                            prompt_sections.append(f"- {param_name}: {param_type} (range: {min_val} to {max_val})")
+                    
+                    prompt_sections.append("")
+        
         # Task specification
         prompt_sections.append("## TASK")
         prompt_sections.append(f"Create expert function(s) for: **{description}**")
@@ -654,6 +698,13 @@ if dist > 0.001:
         prompt_sections.append("  - Protectors/guardians: blue [0.2, 0.2, 1.0, 1.0]")
         prompt_sections.append("  - Neutral/peaceful: yellow [1.0, 0.9, 0.2, 1.0]")
         prompt_sections.append("  - Always use RGBA format with alpha=1.0")
+        
+        # Add implementation-specific guidance
+        if context and 'implementation_details' in context:
+            prompt_sections.append("\nFOLLOW THESE SPECIFIC IMPLEMENTATION STEPS PROVIDED BY THE DECOMPOSER:")
+            for i, detail in enumerate(context['implementation_details'], 1):
+                prompt_sections.append(f"{i}. {detail}")
+        
         prompt_sections.append("")
         
         if constrained:

@@ -37,6 +37,7 @@ class MermaidDiagramGenerator:
             "    classDef temporal_update fill:#fffde7,stroke:#f9a825,stroke-width:2px;",
             "    classDef refinement fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
             "    classDef error_correction fill:#ffebee,stroke:#f44336,stroke-width:3px;",
+            "    classDef sketch_repair fill:#fff3e0,stroke:#ff9800,stroke-width:2px;",
             "    %% Expert type styles",
             "    classDef force_expert fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;",
             "    classDef interaction_expert fill:#e0f2f1,stroke:#00695c,stroke-width:2px;",
@@ -55,7 +56,7 @@ class MermaidDiagramGenerator:
         known_types = {
             'synthesis', 'decomposition', 'llm_call', 'routing', 
             'parsing', 'drawing', 'state_analysis', 'color_resolution', 'temporal_update',
-            'refinement', 'error_correction', 'behavior_modification',
+            'refinement', 'error_correction', 'behavior_modification', 'sketch_repair',
             'demo', 'error', 'success'
         }
         
@@ -82,6 +83,8 @@ class MermaidDiagramGenerator:
                     lines.append(f"    class {node_id} error_correction")
                 else:
                     lines.append(f"    class {node_id} refinement")
+            elif node.type == "sketch_repair":
+                lines.append(f"    class {node_id} sketch_repair")
             elif node.type in known_types:
                 lines.append(f"    class {node_id} {node.type}")
             else:
@@ -292,6 +295,23 @@ class MermaidDiagramGenerator:
                 label += f"<br/>→ {self._escape_mermaid_text(changes)}"
             if node.metadata.get("has_error"):
                 label += f"<br/>⚡ Error fix"
+                
+        elif node.type == "sketch_repair" and node.output_data:
+            if node.output_data.get("repair_success"):
+                changes = node.output_data.get("changes_made", "")
+                if changes and len(changes) > 30:
+                    changes = changes[:27] + "..."
+                if changes:
+                    label += f"<br/>✅ {self._escape_mermaid_text(changes)}"
+                lines_changed = node.output_data.get("code_lines_changed", 0)
+                if lines_changed:
+                    label += f"<br/>{lines_changed} lines modified"
+            else:
+                error = node.output_data.get("error", "")
+                if error and len(error) > 30:
+                    error = error[:27] + "..."
+                if error:
+                    label += f"<br/>❌ {self._escape_mermaid_text(error)}"
         
         if node.status == "error" and node.error:
             error_msg = node.error[:30] + "..." if len(node.error) > 30 else node.error
@@ -309,7 +329,8 @@ class MermaidDiagramGenerator:
             "drawing": ("[(", ")]"),  # Cylindrical
             "state_analysis": ("([", "])"),  # Stadium shape for state_analysis
             "temporal_update": ("((", "))"),  # Double circle
-            "refinement": ("[/", "\\]"),  # Double circle
+            "refinement": ("[/", "\\]"),  # Parallelogram
+            "sketch_repair": ("{{", "}}"),  # Hexagon
         }
         return shapes.get(node.type, ("(", ")"))
     
@@ -353,16 +374,44 @@ class MermaidDiagramGenerator:
         return None
     
     def _add_chronological_sequence(self, node: TraceNode, lines: List[str]):
-        def collect_llm_calls_chronologically(node: TraceNode, llm_calls: List[TraceNode]):
+        def collect_all_events_chronologically(node: TraceNode, events: List[TraceNode]):
+            # Collect LLM calls and sketch repair events
             if node.type == "llm_call" and node.llm_call:
-                llm_calls.append(node)
+                events.append(node)
+            elif node.type == "sketch_repair":
+                events.append(node)
             for child in node.children:
-                collect_llm_calls_chronologically(child, llm_calls)
+                collect_all_events_chronologically(child, events)
         
-        llm_calls = []
-        collect_llm_calls_chronologically(node, llm_calls)
+        events = []
+        collect_all_events_chronologically(node, events)
         
-        for llm_node in llm_calls:
+        for event_node in events:
+            
+            # Handle sketch repair events separately
+            if event_node.type == "sketch_repair":
+                lines.append("    User->>+Agent: Repair sketch errors")
+                if event_node.output_data:
+                    if event_node.output_data.get("repair_success"):
+                        changes = event_node.output_data.get("changes_made", "")
+                        if changes:
+                            if len(changes) > 40:
+                                changes = changes[:37] + "..."
+                            lines.append(f"    Agent-->>-User: {self._escape_mermaid_text(changes)}")
+                        else:
+                            lines.append("    Agent-->>-User: Repair completed")
+                    else:
+                        error = event_node.output_data.get("error", "")
+                        if error:
+                            if len(error) > 40:
+                                error = error[:37] + "..."
+                            lines.append(f"    Agent-->>-User: Repair failed: {self._escape_mermaid_text(error)}")
+                        else:
+                            lines.append("    Agent-->>-User: Repair failed")
+                continue
+            
+            # Handle LLM calls
+            llm_node = event_node
             
             if 'decompose' in llm_node.name.lower():
                 lines.append("    Agent->>+Decomposer: Analyze behavior complexity")

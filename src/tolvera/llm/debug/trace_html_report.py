@@ -864,6 +864,7 @@ class TraceHTMLReporter:
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower() or call.get('parent', {}).get('type') == 'refinement'
             is_error_correction = 'error_correction' in call.get('name', '').lower()
+            is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
             
             # Determine call type and assign appropriate color
             if is_refinement:
@@ -874,6 +875,15 @@ class TraceHTMLReporter:
                 else:
                     timeline_label = "refinement"
                     color = color_scheme['refinement']
+            elif is_sketch_repair:
+                # For sketch repair, show repair result
+                output_data = call.get('output_data', {})
+                if output_data and output_data.get('repair_success'):
+                    timeline_label = "sketch_repair_success"
+                    color = '#4CAF50'  # Green for successful repair
+                else:
+                    timeline_label = "sketch_repair_failed" 
+                    color = '#F44336'  # Red for failed repair
             elif is_decomposition:
                 # For decomposition, show "decomposition" as the label
                 timeline_label = "decomposition"
@@ -981,11 +991,12 @@ class TraceHTMLReporter:
             # For synthesis calls, check if we have an expert_name in input_data
             synthesis_expert_name = input_data.get('expert_name', '')
             
-            # Handle different types of LLM calls
+            # Handle different types of calls (including non-LLM calls like sketch repair)
             is_decomposition = call.get('name') == 'llm_decompose' or 'decompose' in call.get('name', '').lower()
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower()
+            is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
             
             # Check for utility/temporal expert synthesis
             expert_type = input_data.get('expert_type') or call.get('metadata', {}).get('expert_type', '')
@@ -1072,6 +1083,19 @@ class TraceHTMLReporter:
                 else:
                     color_name = input_data.get('color_name', call.get('metadata', {}).get('color_name', 'unknown'))
                     expert_name = f"color_resolution → '{color_name}'"
+            elif is_sketch_repair:
+                # This is a sketch repair call (non-LLM event)
+                code = ''  # Sketch repair doesn't have generated code in same format
+                if call.get('output_data'):
+                    output = call['output_data']
+                    if output.get('repair_success'):
+                        changes = output.get('changes_made', '')
+                        expert_name = f"sketch_repair_success → {changes[:50]}..." if changes else "sketch_repair_success"
+                    else:
+                        error = output.get('error', '')
+                        expert_name = f"sketch_repair_failed → {error[:50]}..." if error else "sketch_repair_failed"
+                else:
+                    expert_name = 'sketch_repair_initiated'
             elif is_refinement:
                 # This is a refinement call
                 code = parsed_response.get('refined_code', '') if parsed_response else ''
@@ -1205,6 +1229,9 @@ class TraceHTMLReporter:
                     
                     <!-- Temporal/Utility Expert Details (if this is a temporal/utility synthesis) -->
                     {self._generate_temporal_utility_details(parsed_response, input_data, expert_type, is_temporal or is_utility) if (is_temporal or is_utility) else ''}
+                    
+                    <!-- Sketch Repair Details (if this is a sketch repair call) -->
+                    {self._generate_sketch_repair_details(call.get('output_data', {}), input_data, is_sketch_repair) if is_sketch_repair else ''}
                     
                     <!-- Refinement Details (if this is a refinement call) -->
                     {self._generate_refinement_details(parsed_response, input_data, is_refinement) if is_refinement else ''}
@@ -1607,6 +1634,100 @@ class TraceHTMLReporter:
                     This refinement was triggered by an error in the sketch execution.
                 </div>
             '''
+        
+        section += '</div></div>'
+        return section
+    
+    def _generate_sketch_repair_details(self, output_data: Dict[str, Any], input_data: Dict[str, Any], is_sketch_repair: bool) -> str:
+        """Generate detailed HTML section for sketch repair events."""
+        if not is_sketch_repair:
+            return ''
+        
+        section = '''
+        <div class="sketch-repair-section">
+            <div class="section-title">🩹 Sketch Repair Details</div>
+            <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+        '''
+        
+        # Show trigger information
+        if input_data.get('trigger'):
+            trigger = input_data['trigger']
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Trigger:</strong> 
+                    <span style="color: #FF9800;">{html.escape(trigger)}</span>
+                </div>
+            '''
+        
+        # Show error logs that prompted the repair
+        if input_data.get('error_logs'):
+            error_logs = input_data['error_logs']
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Error Logs:</strong>
+                    <pre style="background-color: var(--bg-secondary); padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 200px;">
+{html.escape(error_logs[:1000])}{'...' if len(error_logs) > 1000 else ''}
+                    </pre>
+                </div>
+            '''
+        
+        # Show repair results
+        if output_data.get('repair_success'):
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #E8F5E9; border-left: 3px solid #4CAF50; border-radius: 4px;">
+                    <strong style="color: #4CAF50;">✅ Repair Successful</strong>
+                </div>
+            '''
+            
+            if output_data.get('changes_made'):
+                changes = output_data['changes_made']
+                section += f'''
+                    <div style="margin-bottom: 15px;">
+                        <strong>Changes Applied:</strong> 
+                        <span style="color: #4CAF50;">{html.escape(changes)}</span>
+                    </div>
+                '''
+            
+            if output_data.get('code_lines_changed'):
+                lines_changed = output_data['code_lines_changed']
+                section += f'''
+                    <div style="margin-bottom: 15px;">
+                        <strong>Lines Modified:</strong> 
+                        <span style="color: #2196F3;">{lines_changed}</span>
+                    </div>
+                '''
+            
+            if output_data.get('final_code_length'):
+                code_length = output_data['final_code_length']
+                section += f'''
+                    <div style="margin-bottom: 15px;">
+                        <strong>Final Code Size:</strong> 
+                        <span style="color: var(--text-secondary);">{code_length} characters</span>
+                    </div>
+                '''
+        else:
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #FFEBEE; border-left: 3px solid #F44336; border-radius: 4px;">
+                    <strong style="color: #F44336;">❌ Repair Failed</strong>
+                </div>
+            '''
+            
+            if output_data.get('error'):
+                error = output_data['error']
+                section += f'''
+                    <div style="margin-bottom: 15px;">
+                        <strong>Error:</strong> 
+                        <span style="color: #F44336;">{html.escape(error)}</span>
+                    </div>
+                '''
+            
+            if output_data.get('exception'):
+                section += f'''
+                    <div style="margin-bottom: 15px;">
+                        <strong>Type:</strong> 
+                        <span style="color: var(--text-secondary);">Exception during repair process</span>
+                    </div>
+                '''
         
         section += '</div></div>'
         return section

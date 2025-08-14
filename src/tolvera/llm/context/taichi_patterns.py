@@ -1,6 +1,43 @@
 TAICHI_FUNDAMENTALS = """
 # Taichi Fundamentals for Tölvera
 
+## ⚠️ CRITICAL TAICHI RULES - VIOLATING THESE WILL CRASH THE CODE! ⚠️
+
+### 1. INTERACTION MATRIX ACCESS (MOST COMMON ERROR!)
+❌ WRONG - THIS WILL CRASH:
+```python
+# Cannot do nested field access like this:
+attraction = tv.s.llm_species.field[species].attraction_matrix[other_species]  # CRASH!
+```
+
+✅ CORRECT - For 2D interaction matrix:
+```python
+# Option 1: Define as 2D field with shape (tv.sn, tv.sn)
+tv.s.set('interaction_matrix', {
+    'state': {'attraction': (ti.f32, -200.0, 200.0)},
+    'shape': (tv.sn, tv.sn),  # 2D shape for species pairs!
+})
+# Access: tv.s.interaction_matrix.field[species1, species2].attraction
+
+# Option 2: Use separate 1D fields per species
+# Access: tv.s.llm_species.field[species].attraction_to_species_0
+```
+
+### 2. RETURN STATEMENTS IN CONDITIONALS
+❌ WRONG - CRASHES WITH "Return inside non-static if":
+```python
+if species == 0:
+    return chase_force  # CRASH!
+```
+
+✅ CORRECT:
+```python
+force = ti.math.vec2(0.0, 0.0)
+if species == 0:
+    force = chase_force  # Set variable
+return force  # Single return at end
+```
+
 ## Physics Conventions
 Tölvera uses STANDARD PHYSICS/MATH coordinates:
 - Origin (0,0) is at the TOP-LEFT corner of the screen

@@ -33,6 +33,7 @@ class ConsoleTracer:
         "refinement": "🔧",
         "error_correction": "⚡",
         "behavior_modification": "✨",
+        "sketch_repair": "🩹",
         # Expert type icons
         "force": "⚡",
         "interaction": "🔗", 
@@ -147,6 +148,12 @@ class ConsoleTracer:
                 name = self._color(f"Refining: {node.metadata.get('refinement_request', 'Modifying behavior')}", "magenta")
             else:
                 name = self._color(f"Refinement: {node.name}", "magenta")
+        elif node.type == "sketch_repair":
+            icon = self.ICONS.get("sketch_repair", "🩹")
+            if node.name == "sketch_repair_initiated":
+                name = self._color(f"Sketch Repair: Auto-fixing execution errors", "yellow")
+            else:
+                name = self._color(f"Sketch Repair: {node.name}", "yellow")
         
         print(f"{indent}{icon} {name}")
         
@@ -205,6 +212,8 @@ class ConsoleTracer:
             self._show_color_resolution_output(node, depth + 1)
         elif node.type == "refinement" and node.output_data:
             self._show_refinement_output(node, depth + 1)
+        elif node.type == "sketch_repair" and node.output_data:
+            self._show_sketch_repair_output(node, depth + 1)
     
     def _show_decomposition_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)
@@ -430,6 +439,29 @@ class ConsoleTracer:
         if output.get("code_length"):
             length = output["code_length"]
             print(f"{indent}{self._color('Code size:', 'dim')} {length} chars")
+    
+    def _show_sketch_repair_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        output = node.output_data
+        
+        if output.get("repair_success"):
+            print(f"{indent}{self._color('✅ Repair successful', 'green')}")
+            if output.get("changes_made"):
+                changes = output["changes_made"]
+                print(f"{indent}{self._color('Changes:', 'bold')} {self._color(changes, 'green')}")
+            if output.get("code_lines_changed"):
+                lines_changed = output["code_lines_changed"]
+                print(f"{indent}{self._color('Lines modified:', 'dim')} {lines_changed}")
+            if output.get("final_code_length"):
+                code_length = output["final_code_length"]
+                print(f"{indent}{self._color('Final code size:', 'dim')} {code_length} chars")
+        else:
+            print(f"{indent}{self._color('❌ Repair failed', 'red')}")
+            if output.get("error"):
+                error_msg = output["error"]
+                print(f"{indent}{self._color('Error:', 'red')} {error_msg}")
+            if output.get("exception"):
+                print(f"{indent}{self._color('Type:', 'dim')} Exception during repair process")
     
     def _print_details(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)

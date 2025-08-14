@@ -10,12 +10,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from textual import on, work, events
+from textual.timer import Timer
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, Grid
 from textual.widgets import (
-    Button, Footer, Header, Input, Label, LoadingIndicator,
+    Button, Footer, Header, Input, Label,
     Log, Static, TextArea, RadioSet, RadioButton
 )
+from textual.widget import Widget
 from textual.screen import Screen, ModalScreen
 from textual.reactive import reactive
 from textual.binding import Binding
@@ -54,7 +56,7 @@ class ModelSelectorScreen(ModalScreen[str]):
     /* Bioluminescent modal screen styling */
     ModelSelectorScreen {
         align: center middle;
-        background: #000814 95%;  /* Deep ocean backdrop */
+        background: #000814;  /* Fully opaque deep ocean backdrop */
     }
     
     #model-selection-dialog {
@@ -322,7 +324,7 @@ class TutorialScreen(ModalScreen):
     DEFAULT_CSS = """
     TutorialScreen {
         align: center middle;
-        background: #000814 95%;
+        background: #000814;
     }
     
     #tutorial-container {
@@ -1122,6 +1124,109 @@ class WelcomeScreen(ModalScreen[bool]):
         if clicked is self:
             self.dismiss(False)
 
+class CreativeLoadingWidget(Widget):
+    """Custom animated loading widget with artistic themes."""
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.animation_frame = 0
+        self.animation_timer: Optional[Timer] = None
+        self.static_message: Optional[str] = None
+        
+        # Different animation sequences for variety
+        self.animations = [
+            # Artistic brush strokes
+            ["✦", "✧", "✩", "✪", "✫", "✬", "✭", "✮"],
+            # Generating particles
+            ["◐", "◓", "◑", "◒"],
+            # Code synthesis
+            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            # Creative flow
+            ["◢", "◣", "◤", "◥"],
+            # Pixel art style
+            ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+        ]
+        
+        self.messages = [
+            "Weaving digital tapestries...",
+            "Cultivating artificial life...",
+            "Painting with pixels...",
+            "Synthesizing behaviors...",
+            "Creating computational art...",
+            "Breathing life into code...",
+            "Orchestrating particle symphonies...",
+            "Crafting generative dreams..."
+        ]
+        
+        self.current_animation = 0
+        self.current_message = 0
+    
+    def compose(self) -> ComposeResult:
+        """Compose the loading widget."""
+        yield Static("", id="loading-spinner")
+        yield Static("", id="loading-static-message")
+        yield Static("", id="loading-creative-message")
+    
+    def on_mount(self) -> None:
+        """Start the animation when mounted."""
+        self.start_animation()
+    
+    def start_animation(self) -> None:
+        """Start the loading animation."""
+        self.animation_timer = self.set_interval(0.1, self.update_animation)
+        self.update_display()
+    
+    def stop_animation(self) -> None:
+        """Stop the loading animation."""
+        if self.animation_timer:
+            self.animation_timer.stop()
+        # Clear static message
+        self.static_message = None
+    
+    def update_animation(self) -> None:
+        """Update animation frame."""
+        current_anim = self.animations[self.current_animation]
+        self.animation_frame = (self.animation_frame + 1) % len(current_anim)
+        
+        # Change animation and message every few cycles
+        if self.animation_frame == 0:
+            cycle_count = getattr(self, '_cycle_count', 0) + 1
+            setattr(self, '_cycle_count', cycle_count)
+            
+            if cycle_count % 3 == 0:  # Change every 3 animation cycles
+                self.current_animation = (self.current_animation + 1) % len(self.animations)
+                self.current_message = (self.current_message + 1) % len(self.messages)
+        
+        self.update_display()
+    
+    def update_display(self) -> None:
+        """Update the display with current animation frame and message."""
+        try:
+            current_anim = self.animations[self.current_animation]
+            spinner_char = current_anim[self.animation_frame]
+            message = self.messages[self.current_message]
+            
+            # Update spinner with color - single horizontal line
+            spinner_widget = self.query_one("#loading-spinner", Static)
+            # Create a horizontal pattern with the spinner character
+            horizontal_spinner = f"  {spinner_char}  {spinner_char}  {spinner_char}  {spinner_char}  {spinner_char}  "
+            spinner_widget.update(f"[bold #00F5FF]{horizontal_spinner}[/]")
+            
+            # Update static message if set
+            static_widget = self.query_one("#loading-static-message", Static)
+            if self.static_message:
+                static_widget.update(f"[#00F5FF]{self.static_message}[/]")
+            else:
+                static_widget.update("")
+            
+            # Always update creative message for animation
+            creative_widget = self.query_one("#loading-creative-message", Static)
+            creative_widget.update(f"[#00D9FF]{message}[/]")
+            
+        except Exception:
+            # Fallback if queries fail
+            pass
+
 
 class TolveraTextualUI(App):
     """Main Textual UI application for Tölvera sketch generation."""
@@ -1276,18 +1381,44 @@ class TolveraTextualUI(App):
         background: #001405 95%;
     }
     
+    #copy-logs-btn {
+        width: 15;
+        height: 3;
+        margin: 0;
+        padding: 0;
+        background: #001405 50%;
+        border: solid #39FF14 40%;
+        color: #39FF14 80%;
+    }
+    
+    #copy-logs-btn:hover {
+        background: #39FF14 20%;
+        border: solid #39FF14 60%;
+        color: #39FF14;
+        text-style: bold;
+    }
+    
     #log-output {
         height: 100%;
-        max-height: 8;
+        max-height: 7;
         color: #00F5FF 80%;  /* Aqua text for logs */
     }
     
     .panel-title {
         text-align: center;
         text-style: bold;
-        margin-bottom: 0;
+        margin: 0;
         color: #00D9FF;  /* Bright cyan titles */
         text-style: bold italic;
+    }
+    
+    #status-log Horizontal {
+        height: 3;
+    }
+    
+    #status-log .panel-title {
+        text-align: left;
+        width: 1fr;
     }
     
     /* Global loading overlay - full screen modal */
@@ -1306,26 +1437,45 @@ class TolveraTextualUI(App):
     }
     
     #loading-content {
-        width: 50;
-        height: 12;
+        width: 60;
+        height: 15;
         background: #000B1A 95%;
         border: double #00D9FF 80%;
-        padding: 2;
+        padding: 3;
         align: center middle;
         layout: vertical;
     }
     
-    #loading-content LoadingIndicator {
-        background: transparent;
-        color: #00F5FF;
-        margin-bottom: 2;
+    #loading-content CreativeLoadingWidget {
+        align: center middle;
+        layout: vertical;
+        height: auto;
     }
     
-    #loading-text {
+    #loading-spinner {
         text-align: center;
         color: #00F5FF;
         text-style: bold;
+        margin-bottom: 1;
+        height: 1;
     }
+    
+    #loading-static-message {
+        text-align: center;
+        color: #00F5FF;
+        text-style: bold;
+        height: auto;
+        margin-bottom: 1;
+    }
+    
+    #loading-creative-message {
+        text-align: center;
+        color: #00D9FF;
+        text-style: bold italic;
+        height: auto;
+        margin-bottom: 1;
+    }
+    
     
     Button {
         margin: 1 0;
@@ -1409,8 +1559,15 @@ class TolveraTextualUI(App):
         color: #FFB570;
     }
     
-    #refinement-input {
+    #chat-controls {
         dock: bottom;
+        height: 3;
+        layout: horizontal;
+        width: 100%;
+    }
+    
+    #refinement-input {
+        width: 70%;
         height: 3;
         background: #0A0014;
         border: solid #7209B7 40%;
@@ -1419,6 +1576,28 @@ class TolveraTextualUI(App):
     
     #refinement-input:focus {
         border: solid #7209B7 80%;
+    }
+    
+    #repair-btn {
+        width: 30%;
+        height: 3;
+        margin-left: 1;
+        background: #FF6B35 20%;
+        border: solid #FF6B35 60%;
+        color: #FF6B35;
+    }
+    
+    #repair-btn:hover {
+        background: #FF6B35 35%;
+        border: solid #FF8C42;
+        color: #FFB380;
+        text-style: bold;
+    }
+    
+    #repair-btn:disabled {
+        border: solid #FF6B35 20%;
+        color: #FF6B35 40%;
+        opacity: 0.5;
     }
     
     /* Animate borders for organic feel - animations not supported in Textual CSS */
@@ -1482,6 +1661,8 @@ class TolveraTextualUI(App):
         self.tv = None
         self.tutorial_current_step = 0  # Persist tutorial state
         self.tutorial_completed = False  # Track if tutorial was completed
+        self.last_error_logs = ""  # Store last error logs for repair functionality
+        self.has_execution_error = False  # Track if there was an execution error
         
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
@@ -1531,14 +1712,18 @@ class TolveraTextualUI(App):
             with Vertical(id="chat-panel"):
                 yield Label("Refinement Chat", classes="panel-title")
                 yield ScrollableContainer(id="chat-history")
-                yield Input(
-                    placeholder="Enter refinement request...",
-                    id="refinement-input"
-                )
+                with Horizontal(id="chat-controls"):
+                    yield Input(
+                        placeholder="Enter refinement request...",
+                        id="refinement-input"
+                    )
+                    yield Button("🔧 Repair Sketch", variant="warning", id="repair-btn", disabled=True)
             
             # Bottom row - Status spanning the rest, Trace (right)
             with Vertical(id="status-log"):
-                yield Label("Status & Logs", classes="panel-title")
+                with Horizontal():
+                    yield Label("Status & Logs", classes="panel-title")
+                    yield Button("📋 Copy", variant="default", id="copy-logs-btn")
                 yield TextArea(
                     "",
                     id="log-output",
@@ -1561,8 +1746,7 @@ class TolveraTextualUI(App):
         # Global loading overlay - appears on top of everything when visible
         with Container(id="loading-overlay"):
             with Container(id="loading-content"):
-                yield LoadingIndicator()
-                yield Label("Processing...", id="loading-text")
+                yield CreativeLoadingWidget()
     
     def on_mount(self):
         """Initialize the application when mounted."""
@@ -1600,6 +1784,9 @@ class TolveraTextualUI(App):
     
     def handle_welcome_screen(self, continued: bool | None) -> None:
         """Handle the welcome screen dismissal."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)
+        
         if continued:
             self.log_message("🌟 Welcome sequence complete")
             # Now show the model selector
@@ -1612,6 +1799,9 @@ class TolveraTextualUI(App):
     
     def handle_model_selection(self, model: str | None) -> None:
         """Handle the model selection from the modal."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)  # This ensures focus returns to the app
+        
         if model:
             self.model_name = model
             # Parse the model to show provider info
@@ -1620,13 +1810,7 @@ class TolveraTextualUI(App):
             self.log_message("Starting agent initialization...")
             
             # Show loading indicator
-            try:
-                loading = self.query_one("#loading-overlay", Container)
-                loading.add_class("visible")
-                loading_text = self.query_one("#loading-text", Label)
-                loading_text.update("Initializing agents... This may take 10-30 seconds on first run.")
-            except:
-                pass
+            self.show_loading("Initializing agents... This may take 10-30 seconds on first run.")
             
             # Disable generate button during initialization
             try:
@@ -1642,13 +1826,7 @@ class TolveraTextualUI(App):
             self.model_name = "gemini-2.0-flash"
             
             # Show loading indicator
-            try:
-                loading = self.query_one("#loading-overlay", Container)
-                loading.add_class("visible")
-                loading_text = self.query_one("#loading-text", Label)
-                loading_text.update("Initializing agents with default model...")
-            except:
-                pass
+            self.show_loading("Initializing agents with default model...")
             
             self.initialize_agents()
     
@@ -1670,6 +1848,50 @@ class TolveraTextualUI(App):
             log.scroll_end()
         except Exception:
             # Log not available yet (during initialization)
+            pass
+    
+    def show_loading(self, message: str = "Processing..."):
+        """Show the loading overlay with custom message."""
+        try:
+            # Show overlay
+            loading = self.query_one("#loading-overlay", Container)
+            loading.add_class("visible")
+            
+            # Start the animation and set the static message
+            creative_widget = self.query_one("CreativeLoadingWidget")
+            # Set a static message for this loading session
+            creative_widget.static_message = message
+            creative_widget.start_animation()
+        except Exception:
+            pass
+    
+    def hide_loading(self):
+        """Hide the loading overlay."""
+        try:
+            # Stop animation first
+            creative_widget = self.query_one("CreativeLoadingWidget")
+            creative_widget.stop_animation()
+            
+            # Hide overlay
+            loading = self.query_one("#loading-overlay", Container)
+            loading.remove_class("visible")
+            
+            # Try to restore focus to a logical widget
+            try:
+                # If agents are ready, focus generate button
+                if self.agents_ready:
+                    generate_btn = self.query_one("#generate-btn", Button)
+                    if not generate_btn.disabled:
+                        generate_btn.focus()
+                        return
+                
+                # Fallback to description input
+                desc_input = self.query_one("#description-input", TextArea)
+                desc_input.focus()
+            except Exception:
+                # Last resort
+                self.set_focus(None)
+        except Exception:
             pass
     
     @work(exclusive=True)
@@ -1725,16 +1947,14 @@ class TolveraTextualUI(App):
             self.agents_ready = True
             self.log_message("We're ready! Begin creating alife...")
             
-            # Enable the generate button
+            # Enable the generate button and restore focus on main thread
             try:
                 generate_btn = self.query_one("#generate-btn", Button)
                 generate_btn.disabled = False
-                # Also update loading indicator if visible
-                try:
-                    loading = self.query_one("#loading-overlay", Container)
-                    loading.remove_class("visible")
-                except:
-                    pass
+                # Hide loading indicator
+                self.hide_loading()
+                # Schedule focus restoration on main thread
+                self.call_later(self.restore_focus_after_init)
             except Exception as e:
                 self.log_message(f"⚠️ Could not enable generate button: {e}")
             
@@ -1753,6 +1973,68 @@ class TolveraTextualUI(App):
         finally:
             self.is_initializing = False
             # self.log_message("🧬 Genesis complete")
+    
+    def restore_focus_after_init(self):
+        """Restore focus to the main app after agent initialization completes."""
+        # Add a small delay to ensure UI has fully updated
+        self.set_timer(0.1, self._do_focus_after_init)
+    
+    def _do_focus_after_init(self):
+        """Actually perform the focus restoration after delay."""
+        try:
+            # Focus the generate button since that's what user will want to use next
+            generate_btn = self.query_one("#generate-btn", Button)
+            if not generate_btn.disabled:
+                generate_btn.focus()
+                self.log_message("🔄 Terminal focus restored")
+                return
+        except Exception:
+            pass
+        
+        # Fallback to description input
+        try:
+            desc_input = self.query_one("#description-input", TextArea) 
+            desc_input.focus()
+            self.log_message("🔄 Terminal focus restored")
+        except Exception:
+            # Last resort - focus the app itself
+            self.set_focus(None)
+    
+    def restore_focus_after_generation(self):
+        """Restore focus to the main app after sketch generation completes."""
+        try:
+            # Focus the run button since that's the next logical step
+            run_btn = self.query_one("#run-btn", Button)
+            run_btn.focus()
+        except Exception:
+            self.set_focus(None)
+    
+    def restore_focus_after_run(self):
+        """Restore focus to the main app after sketch run completes."""
+        try:
+            # Focus the refinement input for user to provide feedback
+            refinement_input = self.query_one("#refinement-input", Input)
+            refinement_input.focus()
+        except Exception:
+            self.set_focus(None)
+    
+    def restore_focus_after_refinement(self):
+        """Restore focus to the main app after refinement completes."""
+        try:
+            # Focus the run button to test the refined sketch
+            run_btn = self.query_one("#run-btn", Button)
+            run_btn.focus()
+        except Exception:
+            self.set_focus(None)
+    
+    def restore_focus_after_repair(self):
+        """Restore focus to the main app after repair completes."""
+        try:
+            # Focus the run button to test the repaired sketch
+            run_btn = self.query_one("#run-btn", Button)
+            run_btn.focus()
+        except Exception:
+            self.set_focus(None)
     
     @on(Button.Pressed, "#generate-btn")
     def generate_sketch(self):
@@ -1785,10 +2067,7 @@ class TolveraTextualUI(App):
                 return
             
             # Show loading indicator
-            loading = self.query_one("#loading-overlay", Container)
-            loading.add_class("visible")
-            loading_text = self.query_one("#loading-text", Label)
-            loading_text.update("Generating artificial life sketch...")
+            self.show_loading("Generating artificial life sketch...")
             self.is_generating = True
             
             self.log_message(f"🧫 Cultivating behaviors: {description}")
@@ -1835,9 +2114,10 @@ class TolveraTextualUI(App):
                 self.main_trace.complete("failed")
         finally:
             # Hide loading indicator
-            loading = self.query_one("#loading-overlay", Container)
-            loading.remove_class("visible")
+            self.hide_loading()
             self.is_generating = False
+            # Schedule focus restoration on main thread
+            self.call_later(self.restore_focus_after_generation)
     
     @on(Button.Pressed, "#run-btn")
     def run_sketch(self):
@@ -1859,6 +2139,16 @@ class TolveraTextualUI(App):
             
             self.log_message(f"🌀 Animating life form: {self.current_sketch_path}")
             
+            # Reset error state for new run
+            self.has_execution_error = False
+            self.last_error_logs = ""
+            # Disable repair button at start of new run
+            try:
+                repair_btn = self.query_one("#repair-btn", Button)
+                repair_btn.disabled = True
+            except Exception:
+                pass
+            
             # Disable run button, enable stop button
             self.query_one("#run-btn", Button).disabled = True
             self.query_one("#stop-btn", Button).disabled = False
@@ -1872,7 +2162,10 @@ class TolveraTextualUI(App):
             )
             
             # Read output asynchronously
-            async def read_stream(stream, prefix):
+            async def read_stream(stream, prefix, is_stderr=False):
+                error_buffer = []
+                capturing_error = False
+                
                 while True:
                     line = await stream.readline()
                     if not line:
@@ -1880,23 +2173,86 @@ class TolveraTextualUI(App):
                     line = line.decode('utf-8', errors='replace').strip()
                     if line:
                         self.log_message(f"{prefix}: {line}")
+                        
+                        # Only capture errors from stderr stream
+                        if is_stderr:
+                            # Detect start of Python traceback
+                            if "Traceback (most recent call last):" in line:
+                                capturing_error = True
+                                error_buffer = [line]
+                                self.has_execution_error = True
+                            # Continue capturing error lines
+                            elif capturing_error:
+                                error_buffer.append(line)
+                                # Stop capture at the final error line (common Python error types)
+                                if (line.startswith("AssertionError") or 
+                                    line.startswith("TypeError") or
+                                    line.startswith("AttributeError") or
+                                    line.startswith("NameError") or
+                                    line.startswith("ValueError") or
+                                    line.startswith("RuntimeError") or
+                                    line.startswith("ZeroDivisionError") or
+                                    line.startswith("IndexError") or
+                                    line.startswith("KeyError") or
+                                    line.startswith("taichi.lang.exception")):
+                                    # Keep capturing a bit more for context
+                                    pass
+                                # Shell error indicators mean we're done
+                                elif "zsh:" in line or "bash:" in line:
+                                    capturing_error = False
+                
+                # Store accumulated errors from stderr
+                if error_buffer and is_stderr:
+                    self.last_error_logs = "\n".join(error_buffer)
+                    self.has_execution_error = True
+                    # Enable repair button immediately when errors are detected
+                    try:
+                        repair_btn = self.query_one("#repair-btn", Button)
+                        repair_btn.disabled = False
+                        self.log_message("❌ Execution failed - 'Repair Sketch' button is now enabled")
+                    except Exception:
+                        pass
             
             # Create tasks for reading both streams
-            stdout_task = asyncio.create_task(read_stream(self.sketch_process.stdout, "OUT"))
-            stderr_task = asyncio.create_task(read_stream(self.sketch_process.stderr, "ERR"))
+            stdout_task = asyncio.create_task(read_stream(self.sketch_process.stdout, "OUT", is_stderr=False))
+            stderr_task = asyncio.create_task(read_stream(self.sketch_process.stderr, "ERR", is_stderr=True))
             
             # Wait for process to complete
             await asyncio.gather(stdout_task, stderr_task)
             await self.sketch_process.wait()
             
-            self.log_message("🦋 Life cycle completed")
+            if self.has_execution_error:
+                self.log_message("🦋 Life cycle completed with errors")
+            else:
+                self.log_message("🦋 Life cycle completed successfully")
             
         except Exception as e:
             self.log_message(f"❌ Failed to run sketch: {e}")
+            # If there's a general exception, also enable repair button
+            self.has_execution_error = True
+            self.last_error_logs = str(e)
+            try:
+                repair_btn = self.query_one("#repair-btn", Button)
+                repair_btn.disabled = False
+            except Exception:
+                pass
         finally:
             self.is_running = False
             self.query_one("#run-btn", Button).disabled = False
             self.query_one("#stop-btn", Button).disabled = True
+            
+            # Final check: ensure repair button is enabled if we have execution errors
+            if self.has_execution_error and self.last_error_logs:
+                try:
+                    repair_btn = self.query_one("#repair-btn", Button)
+                    if repair_btn.disabled:
+                        repair_btn.disabled = False
+                        self.log_message("🔧 Repair option is available for detected errors")
+                except Exception:
+                    pass
+            
+            # Schedule focus restoration on main thread
+            self.call_later(self.restore_focus_after_run)
     
     @on(Button.Pressed, "#stop-btn")
     async def stop_sketch(self):
@@ -2001,12 +2357,24 @@ class TolveraTextualUI(App):
                 if self.current_sketch_path:
                     with open(self.current_sketch_path, 'w') as f:
                         f.write(result['refined_code'])
+                
+                # Reset error state and disable repair button after successful refinement
+                self.has_execution_error = False
+                self.last_error_logs = ""
+                try:
+                    repair_btn = self.query_one("#repair-btn", Button)
+                    repair_btn.disabled = True
+                except Exception:
+                    pass
             else:
                 error_msg = f"❌ Refinement failed: {result.get('error', 'Unknown error')}"
                 self.log_message(error_msg)
                 
         except Exception as e:
             self.log_message(f"❌ Refinement error: {e}")
+        finally:
+            # Schedule focus restoration on main thread
+            self.call_later(self.restore_focus_after_refinement)
     
     @on(Button.Pressed, "#save-btn")
     def save_sketch(self):
@@ -2021,6 +2389,9 @@ class TolveraTextualUI(App):
     
     def handle_save_dialog(self, save_path: str | None) -> None:
         """Handle the save dialog result."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)
+        
         if save_path:
             try:
                 code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
@@ -2038,6 +2409,9 @@ class TolveraTextualUI(App):
     
     def handle_load_dialog(self, load_path: str | None) -> None:
         """Handle the load dialog result."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)
+        
         if load_path:
             try:
                 with open(load_path, 'r') as f:
@@ -2147,6 +2521,160 @@ class TolveraTextualUI(App):
         except Exception as e:
             self.log_message(f"Error toggling chat: {e}")
     
+    @on(Button.Pressed, "#repair-btn")
+    def repair_sketch(self):
+        """Automatically repair the sketch using captured error logs."""
+        if not self.sketch_refiner or not self.current_sketch_code:
+            self.log_message("⚠️ No sketch to repair. Generate one first.")
+            return
+        
+        if not self.last_error_logs:
+            self.log_message("⚠️ No error logs captured. Run the sketch first to see errors.")
+            return
+        
+        self.log_message("🔧 Initiating automatic repair based on captured errors...")
+        
+        # Create trace event for sketch repair initiation
+        if hasattr(self, 'collector') and self.collector and self.collector.enabled:
+            # Start a new trace if we don't have one, or add to existing
+            if not self.main_trace:
+                self.main_trace = self.collector.start_trace("Textual UI Repair", "ui_repair")
+        
+        # Add to chat history
+        chat_container = self.query_one("#chat-history", ScrollableContainer)
+        user_message = Static(f"🔧 Auto-Repair: Fixing errors from last execution", classes="chat-message user-message")
+        chat_container.mount(user_message)
+        chat_container.scroll_end(animate=False)
+        
+        # Start repair worker
+        self.apply_repair_worker()
+    
+    @work(exclusive=True)
+    async def apply_repair_worker(self):
+        """Apply automatic repair to the current sketch based on error logs."""
+        try:
+            # Use trace context manager for repair operation
+            if hasattr(self, 'collector') and self.collector and self.collector.enabled:
+                with self.collector.trace_node(
+                    "sketch_repair_initiated", 
+                    "sketch_repair",
+                    error_logs=self.last_error_logs,
+                    trigger="user_button_click", 
+                    sketch_path=self.current_sketch_path,
+                    has_execution_error=self.has_execution_error
+                ) as repair_trace:
+                    result = await self._do_sketch_repair(repair_trace)
+            else:
+                result = await self._do_sketch_repair(None)
+                
+        except Exception as e:
+            self.log_message(f"❌ Repair error: {e}")
+        finally:
+            # Schedule focus restoration on main thread
+            self.call_later(self.restore_focus_after_repair)
+    
+    async def _do_sketch_repair(self, repair_trace):
+        """Perform the actual sketch repair logic."""
+        try:
+            # Get current code editor
+            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            
+            # Get CLEAN code without diff markers for LLM processing
+            current_code = code_editor.get_clean_code()
+            
+            # Store the pre-refinement code for diff highlighting
+            code_editor.store_pre_refinement_code()
+            
+            # Apply repair using the new repair_sketch method
+            result = await self.sketch_refiner.repair_sketch(
+                sketch_code=current_code,
+                error_logs=self.last_error_logs,
+                additional_context="Please fix all errors so the sketch runs without crashing"
+            )
+            
+            if result['success']:
+                self.current_sketch_code = result['refined_code']
+                
+                # Update code editor with repaired code
+                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor.language = "python"
+                code_editor.load_text(result['refined_code'])
+                
+                # Apply diff highlighting to show changes
+                code_editor.apply_diff_highlighting(result['refined_code'])
+                
+                # Enable the diff toggle button
+                diff_btn = self.query_one("#diff-btn", Button)
+                diff_btn.disabled = False
+                
+                # Update the diff indicator
+                diff_indicator = self.query_one("#diff-indicator", Static)
+                if code_editor.diff_data:
+                    summary = code_editor.get_diff_summary()
+                    line_nums = sorted([n + 1 for n in code_editor.diff_lines])
+                    
+                    if len(line_nums) <= 5:
+                        lines_str = ", ".join(str(n) for n in line_nums)
+                    else:
+                        lines_str = f"{line_nums[0]}-{line_nums[-1]}"
+                    
+                    diff_indicator.update(f"🔧 Repaired lines {lines_str}: {summary}")
+                
+                # Add response to chat
+                chat_container = self.query_one("#chat-history", ScrollableContainer)
+                diff_summary = code_editor.get_diff_summary()
+                agent_message = Static(f"✓ Repair Agent: {result['changes_made']} ({diff_summary})", classes="chat-message agent-message")
+                chat_container.mount(agent_message)
+                chat_container.scroll_end(animate=False)
+                
+                self.log_message(f"✅ Repair successful: {result['changes_made']} - {diff_summary}")
+                
+                # Save updated code
+                if self.current_sketch_path:
+                    with open(self.current_sketch_path, 'w') as f:
+                        f.write(result['refined_code'])
+                
+                # Complete trace with success
+                if repair_trace:
+                    repair_trace.output_data = {
+                        "repair_success": True,
+                        "changes_made": result['changes_made'],
+                        "code_lines_changed": len(code_editor.diff_lines) if hasattr(code_editor, 'diff_lines') else 0,
+                        "final_code_length": len(result['refined_code'])
+                    }
+                    repair_trace.complete("success")
+                
+                # Reset error state and disable repair button
+                self.has_execution_error = False
+                self.last_error_logs = ""
+                repair_btn = self.query_one("#repair-btn", Button)
+                repair_btn.disabled = True
+                
+                self.log_message("💡 Tip: Run the sketch again to verify the fix worked!")
+            else:
+                error_msg = f"❌ Repair failed: {result.get('error', 'Unknown error')}"
+                self.log_message(error_msg)
+                
+                # Complete trace with failure
+                if repair_trace:
+                    repair_trace.output_data = {
+                        "repair_success": False,
+                        "error": result.get('error', 'Unknown error')
+                    }
+                    repair_trace.complete("error")
+                
+        except Exception as e:
+            self.log_message(f"❌ Repair error: {e}")
+            
+            # Complete trace with exception
+            if repair_trace:
+                repair_trace.output_data = {
+                    "repair_success": False,
+                    "error": str(e),
+                    "exception": True
+                }
+                repair_trace.complete("error")
+    
     @on(Button.Pressed, "#model-btn")
     def change_model(self):
         """Change the LLM model."""
@@ -2157,6 +2685,9 @@ class TolveraTextualUI(App):
     
     def handle_model_change(self, model: str | None) -> None:
         """Handle model change from the modal."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)
+        
         if model:
             self.model_name = model
             self.log_message(f"Changed model to: {model}")
@@ -2165,6 +2696,53 @@ class TolveraTextualUI(App):
         else:
             self.log_message("Model change cancelled")
     
+    @on(Button.Pressed, "#copy-logs-btn")
+    def copy_logs_to_clipboard(self):
+        """Copy the entire contents of the Status & Logs to the clipboard."""
+        try:
+            log_output = self.query_one("#log-output", TextArea)
+            log_content = log_output.text
+            
+            if not log_content:
+                self.log_message("⚠️ No logs to copy")
+                return
+            
+            # Copy to clipboard using subprocess (cross-platform approach)
+            import subprocess
+            import platform
+            
+            system = platform.system()
+            
+            if system == "Darwin":  # macOS
+                process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+                process.communicate(log_content.encode('utf-8'))
+            elif system == "Windows":  # Windows
+                process = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=True)
+                process.communicate(log_content.encode('utf-8'))
+            elif system == "Linux":  # Linux
+                # Try xclip first, fall back to xsel
+                try:
+                    process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
+                    process.communicate(log_content.encode('utf-8'))
+                except FileNotFoundError:
+                    try:
+                        process = subprocess.Popen(['xsel', '--clipboard', '--input'], stdin=subprocess.PIPE)
+                        process.communicate(log_content.encode('utf-8'))
+                    except FileNotFoundError:
+                        self.log_message("❌ Clipboard copy failed: xclip or xsel not available")
+                        return
+            else:
+                self.log_message("❌ Clipboard copy not supported on this platform")
+                return
+                
+            # Count lines for user feedback
+            line_count = len(log_content.split('\n'))
+            char_count = len(log_content)
+            self.log_message(f"📋 Copied {line_count} lines ({char_count} chars) to clipboard")
+            
+        except Exception as e:
+            self.log_message(f"❌ Failed to copy logs: {e}")
+
     @on(Button.Pressed, "#report-btn")
     async def view_report(self):
         """Open the trace report in browser."""
@@ -2251,6 +2829,9 @@ Status: {self.main_trace.status}"""
     
     def handle_tutorial_completion(self, result) -> None:
         """Handle tutorial completion or action."""
+        # Restore focus to the main app after modal dismissal
+        self.set_focus(None)
+        
         if isinstance(result, tuple):
             action, step = result
             

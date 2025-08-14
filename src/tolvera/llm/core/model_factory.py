@@ -33,7 +33,7 @@ class ModelFactory:
     DEFAULT_MODELS = {
         'gemini': 'gemini-2.0-flash',
         # 'google': 'gemini-2.0-flash',
-        'openai': 'gpt-4o',
+        'openai': 'gpt-5-mini',
         'anthropic': 'claude-3-5-sonnet-latest',
         'mistral': 'mistral-large-latest',
         'huggingface': 'Qwen/QwQ-32B-Preview',
