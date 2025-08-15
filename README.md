@@ -1,66 +1,228 @@
 # Tölvera Natural Language Interface
 
-# Overview
+This branch specifically focusing on extending Tölvera with a natural language interface for generating complex particle behaviors, simulations, and alife patterns from text descriptions.
 
-This branch introduces the LLM integration module for Tölvera that allows users to generate sketch configurations and code through natural language descriptions. The module leverages local LLM capabilities (tested on llama3.5 and qwen2.5) via Ollama and implements a pipeline for generating validated, runnable code.
+## What You Can Create
 
-## Components
+- **Particle Behavior**: "Particle repel the center of the screen"
+- **Physical Simulations**: "Particles fall with gravity and bounce off boundaries"
+- **Species Interactions**: "Species one repels species two."
+- **Complex Behaviors**: "Red hunters chase blue prey that try to escape""
 
-The following describes a brief overview for some of the components in the implementation (that were general assumptions I made and should be very much be looked over) while mocking this up:
+All generated as complete, runnable Python code with GPU acceleration via Taichi.
 
-- LLM Interface: The class that manages communication with the language model and handles prompt engineering for optimal results.
-- JSON Schema Adherence: Pydantic models that define and validate sketch configurations, asserting all generated parameters are within acceptable ranges (schema adherence),
-- Code Generation: Jinja2 templates that transform validated configurations into executable Tölvera Python code.
+## Quick Start
 
-## How to run
+### Prerequisites
 
-A CLI example is provided in `llm_cli_example.py` that allows natural language interaction for generating and modifying Tölvera sketches. When you run this script (`python llm_cli_example.py`), you'll be met with a choice of implementing either a flock or slime algorithm (I only worked with the `tv.vera` module for this demo) and then asked to enter a prompt and some examples are provided. After this, the query is then sent to the LLM. The LLM process the commands and sends back JSON which is validated via all the pydantic definitions in the `definitions.py` file and the the script is generated via the `codegen.py` file. In the background, we open a terminal and run the script that was just generated and once it runs, it'll open up the window. You can then visually see what you've created and modify accordingly via natural language. If any modifications are requested, the whole process is run again (with a different prompt with the current params sent to the model) and then current script is rewritten with the updated changes. The old window running the script is then terminated and a new window appears. A video demonstration of this process is documented later in this readme.
+- **Python 3.10-3.12** (Python 3.13+ not supported due to Taichi)
+- **Poetry** (Python package manager)
+- **API Key** from at least one supported provider (see configuration below)
 
-## Technical Implementation
+### Installation
 
-The core of this LLM integration relies on a two-stage approach to transform natural language into executable code. The LLM class handles communication with Ollama. It implements a prompt engineering strategy that improves the model's ability to generate valid configurations. I found that including both positive and negative examples in the prompts was crucial (in many LLM papers you’ll see this too) - showing the model not just what we want, but explicitly what we DON’T want. This significantly reduced hallucination issues, particularly with complex parameters when I was dealing with slime.
+1. **Clone the repository:**
 
-For the configuration pipeline, I used Pydantic's validation capabilities. Rather than letting the LLM generate code directly (which proved wildly inconsistent), forcing it to produce a structured JSON configuration provides a validation checkpoint where we can catch and fix issues before code generation. The SketchConfig model includes nested validators that handle species indices, parameter bounds, and cross-dependencies between configuration elements.
+   ```bash
+   git clone https://github.com/Intelligent-Instruments-Lab/tolvera.git
+   cd tolvera
+   ```
 
-The Jinja2 templating system was more reliable than asking the LLM to generate complete code blocks (which also wasn’t great). This is my first time using Jinja is something that isn’t a personal project on my computer so if anyone has experience with this, please look closer because I’m sure I missed something.
+2. **Install dependencies:**
 
-One particularly challenging aspect throughout this whole thing was color handling which you’ll no doubt question why that was implemented. Models frequently hallucinate color values or formats, so I implemented a multi-tiered approach: first checking a lookup table of common colors, then asking the LLM specifically about unknown colors, and finally falling back to default values (just a grey color) when needed. This strategy handled failures gracefully without breaking the entire generation pipeline. This really depended on the model for how much the code had to fall back to default even with examples provided.
+   ```bash
+   poetry install
+   ```
 
-This implementation is designed with the assumption that failures will occur. Each component can operate independently and provides clear feedback when issues arise, hopefully allowing for graceful degradation rather than unknown and confusing failure points. Throughout this implementation, making it clear to the user what is going on was a key design feature. Hopefully that is clear in the code though 😅
+3. **Configure API keys** (see next section)
 
-#### Generating from scratch
+4. **Launch the interface:**
+   ```bash
+   poetry run python examples/tolvera_textual_ui.py
+   ```
 
-https://github.com/user-attachments/assets/46b89b5f-673c-45c2-b4c5-85f16db89dd0
+## API Key Configuration
 
-#### Modifying the code in real time
+**Important**: API keys are required to use this natural language interface. You can try using with Ollama, but these smaller models hallucinate too much to be dependable for generating these types of Tölvera sketches. You need at least one provider configured.
 
-https://github.com/user-attachments/assets/9f03912a-c450-4a51-8705-24fe540ea5ec
+### Step 1: Copy Environment Template
 
-#### Showing the generated code
+```bash
+cp .env.example .env
+```
 
-https://github.com/user-attachments/assets/6121e2b3-7be2-42d7-8e60-77a251da6e3b
+### Step 2: Choose a Provider & Get API Key
 
-For brevity (and because the video files are too large), the full video demo for slime and flock implementations can be viewed by clicking on the respective link below.
+#### **Gemini (Recommended)**
 
-[Full Slime demo](https://drive.google.com/file/d/1ywwNx_fc9A3YJSvIGZV1-7fxlgrgaWCB/view?usp=sharing)
-[Full Flock demo](https://drive.google.com/file/d/1_GY-A8FvAZjqQqOhxPJCXogDhYLO812s/view?usp=sharing)
+- **Best for**: Tölvera synthesis, fast and reliable
+- **Get API Key**: [Google AI Studio](https://makersuite.google.com/app/apikey)
+- **Add to .env**: `GEMINI_API_KEY=your-api-key-here`
 
-The new tree structure I'm proposing looks like this:
+#### **OpenAI (GPT-5)**
 
-- src/tolvera/
-  - llm/
-    - **init**.py - Module exports and documentation
-    - llm.py - Core LLM implementation
-    - definitions.py - Pydantic models and configuration classes
-    - codegen.py - Code generation utilities
-    - llm_cli_example.py - CLI tool for testing
-    - prompts/
-      - prompt_flock.txt - Flock-specific prompting examples
-      - prompt_slime.txt - Slime-specific prompting examples
-    - templates/
-      - template_flock.py.j2 - Flock template
-      - template_slime.py.j2 - Slime template
+- **Best for**: High-quality code generation
+- **Get API Key**: [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Add to .env**: `OPENAI_API_KEY=your-api-key-here`
 
-## Future Work/Things That Should be Addressed
+#### **Anthropic (Claude)**
 
-Although this proof-of-concept demonstrates the feasibility of this approach, for each new example that is added significant testing needs to be conducted with multiple models to ensure that the prompts created are working as intended and do not confuse the user if they should fail. Using multiple LLMs in this way can easily break the system and I would highly recommend to develop this in a manner where failing is the norm, instead of an unintended incident. I implemented a retry approach where some common issues that I was seeing are fixed automatically (colors were notoriously difficult to handle), but your mileage may very based on what example you are implementing.
+- **Best for**: Complex reasoning and analysis
+- **Get API Key**: [Anthropic Console](https://console.anthropic.com/)
+- **Add to .env**: `ANTHROPIC_API_KEY=your-api-key-here`
+
+#### **Mistral AI**
+
+- **Best for**: European users, good balance
+- **Get API Key**: [Mistral Console](https://console.mistral.ai/api-keys/)
+- **Add to .env**: `MISTRAL_API_KEY=your-api-key-here`
+
+#### **Local Models (Ollama)**
+
+- **Best for**: Privacy, no API costs
+- **Setup**:
+  1. Install [Ollama](https://ollama.ai/)
+  2. `ollama pull llama3.2`
+  3. `ollama serve`
+- **No API key required**
+
+### Step 3: Verify Configuration
+
+When you launch Tölvera, it will show which providers are configured:
+
+- **Green**: Provider ready
+- **Red**: Provider not configured
+
+## Running the Application
+
+### Launch Command
+
+```bash
+poetry run python examples/tolvera_textual_ui.py
+```
+
+### First Run Experience
+
+1. **Welcome Screen**: Introduction to Tölvera with animated examples
+2. **Model Selection**: Choose your AI provider and model
+3. **Agent Initialization**: ~10-30 seconds setup (one-time)
+4. **Ready to Create**: Start generating!
+
+### Interface Overview
+
+- **Description Input**: Write what you want to create
+- **Generate Button**: Transform text into code
+- **Code Editor**: View and edit generated Python
+- **Controls**: Run, save, load, and refine your creations
+- **Chat Panel**: Iteratively improve your simulations
+- **Status Logs**: Monitor generation progress
+
+## Getting Started Tutorial
+
+### Interactive Tutorial
+
+Press **F2** at any time to launch the interactive tutorial that walks you through:
+
+1. **Your First Generation**: Create a simple two-species simulation
+2. **Running Simulations**: Launch and stop your Tölvera sketch
+3. **Refinement Chat**: Modify behaviors with natural language
+4. **Diff Viewing**: See exactly what the LLM changed
+5. **Advanced Features**: Save, load, and export capabilities
+
+### Getting Help
+
+- **F1**: General help and keyboard shortcuts
+- **F2**: Interactive tutorial (anytime)
+- **Ctrl+T**: Toggle chat panel
+- **Status Logs**: Real-time progress and error information
+- **Trace Report**: See the process for all the calls to the LLM
+
+## Example Workflows
+
+### Simple Behavior
+
+```
+Description: "Particles are attracted to the center and repel each other"
+→ Click Generate → Click Run → Watch the simulation!
+```
+
+### Complex Ecosystem
+
+```
+Description: "Red predators hunt blue fish while green algae grows slowly"
+→ LLM detects 3 species → Generates predator-prey behaviors → Creates ecosystem
+```
+
+### Iterative Refinement
+
+```
+1. Generate initial behavior
+2. Run and observe
+3. Chat: "Make the predators faster and add boundaries"
+4. LLM refines the code
+5. Run updated simulation
+```
+
+## Keyboard Shortcuts
+
+| Key        | Action            |
+| ---------- | ----------------- |
+| **Ctrl+N** | New sketch        |
+| **Ctrl+R** | Run simulation    |
+| **Ctrl+S** | Save sketch       |
+| **Ctrl+T** | Toggle chat panel |
+| **F1**     | Help dialog       |
+| **F2**     | Tutorial          |
+| **Ctrl+Q** | Quit application  |
+
+## Troubleshooting
+
+### Common Issues
+
+**"No providers configured"**
+
+- Check your `.env` file exists and has valid API keys
+- There's an `.env.example` you can use to format your `.env` after
+- Verify API key format (no quotes, no extra spaces)
+- Test API key on the provider's website
+
+**"Generation failed"**
+
+- Check status logs for detailed error messages
+- Try simplifying your description
+
+**Ollama Issues**
+
+- Ensure Ollama is running: `ollama serve`
+- Check model is installed: `ollama list`
+- Verify connection: `curl http://localhost:11434/api/tags`
+
+### Getting Support
+
+- **Status Logs**: Always check for detailed error messages
+- **Copy Logs Button**: Share logs when asking for help
+- **GitHub Issues**: [Report bugs](https://github.com/mclemcrew/tolvera/tree/week11)
+- **Documentation**: [Full docs](https://afhverjuekki.github.io/tolvera/)
+- **Contact Me**: There's probably a lot wrong with the system right now. Pinging me (@MClem) on the Tölvera Discord is a great way to get my attention! Otherwise, feel free to post an issue on
+
+## Some Other Features
+
+### Multiple AI Providers
+
+Switch between providers anytime with **"Change Model"** button
+
+### Code Saving
+
+Save complete Tölvera sketches to run later
+
+### Debug Tracing
+
+Generate detailed HTML reports of the synthesis process
+
+---
+
+**Ready to begin? Run the interface and see what sketches you create!**
+
+```bash
+poetry run python examples/tolvera_textual_ui.py
+```
