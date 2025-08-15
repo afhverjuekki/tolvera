@@ -3,7 +3,7 @@ Context-aware prompt builder for intelligent prompt generation.
 Automatically selects relevant context based on behavior descriptions.
 """
 
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 import re
 from ..context.library_docs import (
     TOLVERA_CORE_API, 
@@ -653,8 +653,8 @@ if dist > 0.001:
                     prompt_sections.append("\n### Other Components in this Behavior:")
                     for comp in context['other_components']:
                         prompt_sections.append(f"- **{comp['name']}** ({comp['type']}): {comp['description']}")
-                        if comp.get('force_formula'):
-                            prompt_sections.append(f"  Formula: {comp['force_formula']}")
+                        if comp.get('implementation_details'):
+                            prompt_sections.append(f"  Details: {'; '.join(comp['implementation_details'])}")
                         if comp.get('depends_on'):
                             prompt_sections.append(f"  Depends on: {', '.join(comp['depends_on'])}")
                     prompt_sections.append("")
@@ -669,9 +669,6 @@ if dist > 0.001:
                     prompt_sections.append(f"Implementation: {getattr(component, 'implementation', '')}")
                     
                     # Add detailed implementation guidance if available
-                    if 'force_formula' in context and context['force_formula']:
-                        prompt_sections.append(f"\n**Force Formula to Implement**: {context['force_formula']}")
-                    
                     if 'implementation_details' in context and context['implementation_details']:
                         prompt_sections.append("\n**Implementation Steps**:")
                         for detail in context['implementation_details']:
@@ -679,8 +676,8 @@ if dist > 0.001:
                     
                     if 'parameters' in context and context['parameters']:
                         prompt_sections.append("\n**Required Parameters**:")
-                        for param_name, (param_type, min_val, max_val) in context['parameters'].items():
-                            prompt_sections.append(f"- {param_name}: {param_type} (range: {min_val} to {max_val})")
+                        for param_name in context['parameters']:
+                            prompt_sections.append(f"- {param_name}")
                     
                     prompt_sections.append("")
         
@@ -800,29 +797,96 @@ IMPORTANT: The following properties are ALREADY AVAILABLE on every particle and 
 
 Only create NEW states for properties that don't already exist.
 {expert_examples}
-Consider:
-1. Does it need to track time, phases, or system-wide parameters? (global states - including time-based)
-2. Does it need per-particle memory or properties NOT listed above? (particle states)  
-3. Does it need species-specific configuration? (species states)
-4. Can it be implemented with just the existing properties?
 
-Return a JSON object with this structure:
+CRITICAL DECISION LOGIC:
+1. Set "needs_states": true ONLY if you are adding at least one state to ANY category
+2. Set "needs_states": false if ALL state dictionaries will be empty
+3. If needs_states is true, you MUST include at least one state in global_states, particle_states, or species_states
+4. If needs_states is false, ALL state dictionaries MUST be empty
+
+Consider:
+1. Does it need to track time, phases, or system-wide parameters? → Add to global_states
+2. Does it need per-particle memory or properties NOT listed above? → Add to particle_states  
+3. Does it need species-specific configuration? → Add to species_states
+4. Can it be implemented with just the existing properties? → Set needs_states: false
+
+IMPORTANT CONSISTENCY RULES:
+- If needs_states is true, at least one state dictionary must contain states
+- If needs_states is false, all state dictionaries must be empty {{}}
+- Each state MUST have a unique, descriptive name based on its purpose
+- State names should be snake_case (e.g., day_phase, home_pos, energy_level)
+
+Return a JSON object with this EXACT structure:
 {{
-    "needs_states": true/false,
-    "global_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 1000.0, "description": "...", "initial": 300.0}}}},
-    "particle_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 100.0, "description": "...", "initial": null}}}},
-    "species_states": {{"state_name": {{"type": "ti.f32", "min": 0.0, "max": 1.0, "description": "...", "initial": null}}}}
+    "needs_states": true/false,  // true if ANY states are needed, false if NONE needed
+    "global_states": {{           // Empty {{}} if no global states needed
+        "state_name": {{
+            "name": "state_name",  // MUST match the key
+            "type": "ti.f32",      // Use official Taichi types
+            "min": 0.0,            // Minimum value for numeric types
+            "max": 1000.0,         // Maximum value for numeric types
+            "description": "What this state represents",
+            "initial": 300.0       // Initial value (can be null)
+        }}
+    }},
+    "particle_states": {{         // Empty {{}} if no particle states needed
+        "state_name": {{
+            "name": "state_name",  // MUST match the key
+            "type": "ti.f32",
+            "min": 0.0,
+            "max": 100.0,
+            "description": "Per-particle state description",
+            "initial": null
+        }}
+    }},
+    "species_states": {{          // Empty {{}} if no species states needed
+        "state_name": {{
+            "name": "state_name",  // MUST match the key
+            "type": "ti.f32",
+            "min": 0.0,
+            "max": 1.0,
+            "description": "Per-species configuration",
+            "initial": null
+        }}
+    }}
 }}
 
-Common state types with PROPER RANGES:
+Common state types with PROPER RANGES (use these as templates):
 - Gravity strength (global): ti.f32, min: 0.0, max: 1000.0, initial: 300.0
 - Force magnitudes (global): ti.f32, min: 0.0, max: 1000.0
 - Energy/Resource (particle): ti.f32, min: 0.0, max: 100.0, initial: 80.0
-- Day phase (global): ti.f32, min: 0.0, max: 1.0
-- Time of day (global): ti.f32, min: 0.0, max: 24.0
-- Season cycle (global): ti.f32, min: 0.0, max: 1.0
+- Day phase (global): ti.f32, min: 0.0, max: 1.0, initial: 0.25
+- Time of day (global): ti.f32, min: 0.0, max: 24.0, initial: 12.0
+- Season cycle (global): ti.f32, min: 0.0, max: 1.0, initial: 0.0
 - Memory positions (particle): ti.math.vec2 (for home_pos, target_pos)
-- Counters (global/particle): ti.i32"""
+- Counters (global/particle): ti.i32, min: 0, max: 1000
+
+EXAMPLE RESPONSES:
+
+Example 1 - Behavior that needs states:
+{{
+    "needs_states": true,
+    "global_states": {{
+        "gravity_strength": {{
+            "name": "gravity_strength",
+            "type": "ti.f32",
+            "min": 0.0,
+            "max": 1000.0,
+            "description": "Strength of gravitational force",
+            "initial": 300.0
+        }}
+    }},
+    "particle_states": {{}},
+    "species_states": {{}}
+}}
+
+Example 2 - Behavior that doesn't need states:
+{{
+    "needs_states": false,
+    "global_states": {{}},
+    "particle_states": {{}},
+    "species_states": {{}}
+}}"""
     
     def _detect_relevant_contexts(self, description: str) -> List[str]:
         """Intelligently detect which contexts to include"""

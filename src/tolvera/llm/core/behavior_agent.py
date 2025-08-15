@@ -494,8 +494,6 @@ def {function_name}():
         synthesis_context['component_behavioral_guidance'] = component.implementation
         
         # Add the new detailed fields from enhanced decomposer
-        if hasattr(component, 'force_formula'):
-            synthesis_context['force_formula'] = component.force_formula
         if hasattr(component, 'implementation_details'):
             synthesis_context['implementation_details'] = component.implementation_details
         if hasattr(component, 'parameters'):
@@ -503,8 +501,8 @@ def {function_name}():
         
         # Create an enhanced description that includes all implementation guidance
         enhanced_description = f"{component.description}. Behavior: {component.implementation}"
-        if hasattr(component, 'force_formula') and component.force_formula:
-            enhanced_description += f" Force calculation: {component.force_formula}"
+        if hasattr(component, 'implementation_details') and component.implementation_details:
+            enhanced_description += f" Implementation details: {'; '.join(component.implementation_details)}"
         
         # Add ALL components to context so each expert knows about others
         if 'all_components' in shared_context:
@@ -514,7 +512,7 @@ def {function_name}():
                     'type': c.expert_type,
                     'description': c.description,
                     'implementation': c.implementation,
-                    'force_formula': getattr(c, 'force_formula', None),
+                    'implementation_details': getattr(c, 'implementation_details', []),
                     'depends_on': getattr(c, 'depends_on', [])
                 }
                 for c in shared_context['all_components'] 

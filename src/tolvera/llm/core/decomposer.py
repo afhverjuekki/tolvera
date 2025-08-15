@@ -1,6 +1,6 @@
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -42,17 +42,12 @@ class BehaviorComponent(BaseModel):
     )
     
     # Enhanced fields for detailed implementation guidance
-    force_formula: Optional[str] = Field(
-        default=None,
-        description="Mathematical force formula (e.g., 'force = (target_pos - pos).normalize() * chase_strength', 'repulsion = (pos - neighbor_pos) / dist^2 * separation_weight')"
-    )
-    implementation_details: Optional[List[str]] = Field(
-        default=None,
+    implementation_details: List[str] = Field(
         description="Step-by-step implementation hints (e.g., ['1. Find nearest target within radius', '2. Calculate direction vector', '3. Apply force inversely proportional to distance'])"
     )
-    parameters: Optional[Dict[str, Dict[str, Any]]] = Field(
-        default=None,
-        description="Specific parameters with types and ranges (e.g., {'perception_radius': {'type': 'ti.f32', 'min': 50.0, 'max': 150.0}, 'chase_strength': {'type': 'ti.f32', 'min': 100.0, 'max': 300.0}})"
+    parameters: List[str] = Field(
+        default_factory=list,
+        description="List of parameter names used by this component (e.g., ['perception_radius', 'chase_strength', 'min_distance'])"
     )
 
 
@@ -793,18 +788,12 @@ Example of VALID response structure:
     - expert_type: 'force' or 'interaction' (NOT 'initialization' or 'configuration')
     - priority: 0.5-1.0 (weight of this component)
     - required_states: List of states as (name, category, type, min, max)
-    - force_formula: Mathematical formula like:
-      * Separation: 'force = sum((pos - neighbor_pos) / dist^2) for neighbors in radius'
-      * Cohesion: 'force = (center_of_mass - pos).normalize() * cohesion_strength'
-      * Chase: 'force = (prey_pos - pos).normalize() * chase_speed'
     - implementation_details: Step-by-step like:
       * ['1. Find all neighbors within perception_radius',
          '2. Calculate repulsion force inversely proportional to distance',
          '3. Normalize and scale by separation_weight']
-    - parameters: Specific values like:
-      * {{'perception_radius': {{'type': 'ti.f32', 'min': 50.0, 'max': 150.0}},
-         'separation_weight': {{'type': 'ti.f32', 'min': 1.0, 'max': 3.0}},
-         'min_distance': {{'type': 'ti.f32', 'min': 10.0, 'max': 30.0}}}}
+    - parameters: Simple list of parameter names like:
+      * ['perception_radius', 'separation_weight', 'min_distance']
  
  5. Populate suggested_states with ALL unique states from all components
     
@@ -814,9 +803,8 @@ Example of VALID response structure:
  - Each expert must have a DISTINCT behavioral purpose
  - Name experts based on BEHAVIOR not color (e.g., "predator_hunt" not "orange_chase")
  - Avoid overlapping functionality between experts
- - ALWAYS include mathematical formulas in force_formula
  - ALWAYS include step-by-step guidance in implementation_details
- - ALWAYS specify parameters with types and ranges
+ - ALWAYS specify parameters as a simple list of parameter names
     
  EXAMPLE COMPONENT WITH FULL DETAILS:
  {{
@@ -825,7 +813,6 @@ Example of VALID response structure:
      "description": "Steer to avoid crowding local flockmates",
      "implementation": "Calculate repulsion from nearby particles inversely proportional to distance",
      "priority": 1.5,
-     "force_formula": "force = sum((pos - neighbor_pos) / dist^2) for all neighbors; normalize and scale",
      "implementation_details": [
          "1. Loop through all particles to find neighbors",
          "2. For each neighbor within separation_radius, calculate repulsion vector",
@@ -833,11 +820,11 @@ Example of VALID response structure:
          "4. Sum all repulsion vectors and normalize",
          "5. Scale by separation_weight and return as force"
      ],
-     "parameters": {{
-         "separation_radius": {{"type": "ti.f32", "min": 20.0, "max": 50.0}},
-         "separation_weight": {{"type": "ti.f32", "min": 1.0, "max": 3.0}},
-         "min_distance": {{"type": "ti.f32", "min": 5.0, "max": 15.0}}
-     }},
+     "parameters": [
+         "separation_radius",
+         "separation_weight", 
+         "min_distance"
+     ],
      "required_states": null,
      "applies_to_species": null
  }}

@@ -1,5 +1,4 @@
 
-import os
 import time
 import logging
 from typing import Dict, List, Optional, Any
@@ -98,10 +97,9 @@ class TemporalUpdateInfo(BaseModel):
 
 class StateAnalysisResponse(BaseModel):
     needs_states: bool = Field(description="Whether this behavior requires custom states")
-    global_states: List[StateField] = Field(default_factory=list, description="Global states needed")
-    particle_states: List[StateField] = Field(default_factory=list, description="Per-particle states needed")
-    species_states: List[StateField] = Field(default_factory=list, description="Per-species states needed")
-    temporal_updates: List[TemporalUpdateInfo] = Field(default_factory=list, description="Temporal state updates needed")
+    global_states: Dict[str, StateField] = Field(default_factory=dict, description="Global states needed as dictionary")
+    particle_states: Dict[str, StateField] = Field(default_factory=dict, description="Per-particle states needed as dictionary")
+    species_states: Dict[str, StateField] = Field(default_factory=dict, description="Per-species states needed as dictionary")
 
 
 class Synthesizer:
@@ -226,13 +224,14 @@ CRITICAL: The following properties are ALREADY AVAILABLE on every particle and m
 
 DO NOT create states for any of these existing properties!
 
+IMPORTANT: Use official Taichi types from https://docs.taichi-lang.org/api/taichi/types/
+
 {self._get_expert_type_guidance(expert_type)}
 
 Analyze the behavior and determine:
 1. What global states are needed (system-wide parameters like gravity strength, time of day)
 2. What particle states are needed (per-particle data like energy, home position - but NOT mass, pos, vel, etc.)
 3. What species states are needed (per-species configuration)
-4. What temporal updates are needed (states that change over time)
 
 For physics-related states, use proper ranges:
 - Gravity: 0.0 to 1000.0 (initial: 300.0)
@@ -240,24 +239,8 @@ For physics-related states, use proper ranges:
 - Energy: 0.0 to 100.0 (initial: 80.0)
 - Time/phase: 0.0 to 1.0
 
-For temporal behaviors like "particles lose energy over time", "fade gradually", or "day/night cycles":
-- Create the appropriate state (e.g., energy as particle state, time_of_day as global state)
-- Include a temporal_update entry describing how it changes over time
-
-For temporal updates, the update_expression should be a valid Taichi expression that computes the new value.
-Examples:
-- For energy decay: "energy * 0.99" (multiplies current energy by 0.99)
-- For time cycles: "(frame / 3600.0) % 1.0" (cycles every 3600 frames)  
-- For linear decrease: "energy - 0.01" (decreases by 0.01 per frame)
-- For clamped increase: "min(1.0, charge + 0.1)" (increases but caps at 1.0)
-
-IMPORTANT: The update expression should be the RIGHT-HAND SIDE of an assignment only.
-Do NOT include the full path like "tv.s.llm_particle.field[i].energy"
-Just provide the expression like "energy * 0.99" or "(frame / 100.0) % 1.0"
-
 Return a structured response with the states organized by category.
-For each state, specify the Taichi type, min/max values if applicable, and a clear description.
-For temporal updates, provide the state name and a VALID update expression that can be assigned."""
+For each state, specify the Taichi type, min/max values if applicable, and a clear description."""
         )
         
         # Create trace node for state analysis
@@ -291,10 +274,9 @@ For temporal updates, provide the state name and a VALID update expression that 
                             raw_response=str(result.output),
                             parsed_response={
                                 "needs_states": state_analysis.needs_states,
-                                "global_states": [state.model_dump() for state in state_analysis.global_states],
-                                "particle_states": [state.model_dump() for state in state_analysis.particle_states],
-                                "species_states": [state.model_dump() for state in state_analysis.species_states],
-                                "temporal_updates": [update.model_dump() for update in state_analysis.temporal_updates]
+                                "global_states": {name: state.model_dump() for name, state in state_analysis.global_states.items()},
+                                "particle_states": {name: state.model_dump() for name, state in state_analysis.particle_states.items()},
+                                "species_states": {name: state.model_dump() for name, state in state_analysis.species_states.items()}
                             }
                         )
                         llm_node.llm_call = llm_data
@@ -310,30 +292,20 @@ For temporal updates, provide the state name and a VALID update expression that 
                         "needs_states": state_analysis.needs_states,
                         "global_states": len(state_analysis.global_states),
                         "particle_states": len(state_analysis.particle_states),
-                        "species_states": len(state_analysis.species_states),
-                        "temporal_updates": len(state_analysis.temporal_updates),
-                        "temporal_update_details": [
-                            {
-                                "state": update.state_name,
-                                "expression": update.update_expression,
-                                "description": update.description
-                            }
-                            for update in state_analysis.temporal_updates
-                        ]
+                        "species_states": len(state_analysis.species_states)
                     }
             
                 # Convert to StateDefinition objects
                 states_dict = {
                     'global': {},
                     'particle': {},
-                    'species': {},
-                    'temporal_updates': []
+                    'species': {}
                 }
                 
                 # Process global states
-                for state_info in state_analysis.global_states:
-                    states_dict['global'][state_info.name] = StateDefinition(
-                        name=state_info.name,
+                for state_name, state_info in state_analysis.global_states.items():
+                    states_dict['global'][state_name] = StateDefinition(
+                        name=state_name,
                         category='global',
                         type=state_info.type,
                         min=state_info.min if state_info.min is not None else 0.0,
@@ -344,12 +316,12 @@ For temporal updates, provide the state name and a VALID update expression that 
                 
                 # Process particle states, filtering out built-in properties
                 BUILTIN_PARTICLE_PROPS = {'pos', 'vel', 'mass', 'size', 'speed', 'species', 'active', 'ppos', 'pvel'}
-                for state_info in state_analysis.particle_states:
-                    if state_info.name.lower() in BUILTIN_PARTICLE_PROPS:
-                        logger.warning(f"Skipping built-in particle property '{state_info.name}' from state analysis")
+                for state_name, state_info in state_analysis.particle_states.items():
+                    if state_name.lower() in BUILTIN_PARTICLE_PROPS:
+                        logger.warning(f"Skipping built-in particle property '{state_name}' from state analysis")
                         continue
-                    states_dict['particle'][state_info.name] = StateDefinition(
-                        name=state_info.name,
+                    states_dict['particle'][state_name] = StateDefinition(
+                        name=state_name,
                         category='particle',
                         type=state_info.type,
                         min=state_info.min if state_info.min is not None else 0.0,
@@ -359,9 +331,9 @@ For temporal updates, provide the state name and a VALID update expression that 
                     )
                 
                 # Process species states
-                for state_info in state_analysis.species_states:
-                    states_dict['species'][state_info.name] = StateDefinition(
-                        name=state_info.name,
+                for state_name, state_info in state_analysis.species_states.items():
+                    states_dict['species'][state_name] = StateDefinition(
+                        name=state_name,
                         category='species',
                         type=state_info.type,
                         min=state_info.min if state_info.min is not None else 0.0,
@@ -370,19 +342,15 @@ For temporal updates, provide the state name and a VALID update expression that 
                         initial=state_info.initial
                     )
                 
-                # Process temporal updates
-                states_dict['temporal_updates'] = state_analysis.temporal_updates
-                
                 logger.info(f"States needed - Global: {len(states_dict['global'])}, "
                            f"Particle: {len(states_dict['particle'])}, "
-                           f"Species: {len(states_dict['species'])}, "
-                           f"Temporal: {len(states_dict['temporal_updates'])}")
+                           f"Species: {len(states_dict['species'])}")
                 
                 return states_dict
                 
             except Exception as e:
                 logger.warning(f"State analysis failed: {e}, proceeding without custom states")
-                return {'global': {}, 'particle': {}, 'species': {}, 'temporal_updates': []}
+                return {'global': {}, 'particle': {}, 'species': {}}
     
     async def synthesize_behavior(
         self,
@@ -400,7 +368,7 @@ For temporal updates, provide the state name and a VALID update expression that 
         # Skip state analysis if context already provides states
         if skip_state_analysis or (context and context.get('states_already_created')):
             logger.info("Skipping state analysis - states already created")
-            states_analysis = {'global': {}, 'particle': {}, 'species': {}, 'temporal_updates': []}
+            states_analysis = {'global': {}, 'particle': {}, 'species': {}}
         else:
             # First, analyze what states are needed
             states_analysis = await self.analyze_states_needed(description)
@@ -771,12 +739,12 @@ if distance < detection_radius:  # Now safe to use
                 
                 if available_states.get('global'):
                     system_prompt += f"\n\nGlobal states: {', '.join(available_states['global'])}"
-                    system_prompt += "\nAccess with: tv.s.llm_global.field[0].state_name"
+                    system_prompt += "\nAccess with: tv.s.llm_global.field[0].STATE_NAME"
                     system_prompt += "\nNOTE: These are for global parameters, NOT for animation timing!"
                 
                 if available_states.get('particle'):
                     system_prompt += f"\n\nParticle states: {', '.join(available_states['particle'])}"
-                    system_prompt += "\nAccess with: tv.s.llm_particle.field[particle_idx].state_name"
+                    system_prompt += "\nAccess with: tv.s.llm_particle.field[particle_idx].STATE_NAME"
                     system_prompt += "\nNOTE: For drawing, you may want to loop through particles or use specific indices"
                 
                 if not any(available_states.values()):
@@ -834,7 +802,7 @@ if distance < detection_radius:  # Now safe to use
         
         # Add pattern type context if provided
         if context and context.get('pattern_type'):
-            system_prompt += f"\n\n## PATTERN TYPE\n"
+            system_prompt += "\n\n## PATTERN TYPE\n"
             system_prompt += f"This behavior is part of a {context['pattern_type']} pattern.\n"
             if context['pattern_type'] == 'cellular_automaton':
                 system_prompt += "Use count_neighbors() and apply_rules() helpers for Game of Life logic.\n"
@@ -873,13 +841,13 @@ The following states are available and MUST be used in your implementation:
 """
             if available_states.get('global'):
                 system_prompt += f"\nGlobal states: {', '.join(available_states['global'])}"
-                system_prompt += "\nAccess with: tv.s.llm_global.field[0].state_name"
+                system_prompt += "\nAccess with: tv.s.llm_global.field[0].STATE_NAME"
             if available_states.get('particle'):
                 system_prompt += f"\nParticle states: {', '.join(available_states['particle'])}"
-                system_prompt += "\nAccess with: tv.s.llm_particle.field[particle_idx].state_name"
+                system_prompt += "\nAccess with: tv.s.llm_particle.field[particle_idx].STATE_NAME"
             if available_states.get('species'):
                 system_prompt += f"\nSpecies states: {', '.join(available_states['species'])}"
-                system_prompt += "\nAccess with: tv.s.llm_species.field[species].state_name"
+                system_prompt += "\nAccess with: tv.s.llm_species.field[species].STATE_NAME"
             # Temporal states are now part of global states (removed temporal category)
             
             system_prompt += "\n\nYour implementation MUST use these states to implement the requested behavior."
@@ -1009,15 +977,8 @@ The following states are available and MUST be used in your implementation:
                            for i in range(species_info.total_count)}
                 )
                 
-                # Create temporal update kernel if needed
+                # Temporal updates removed - handled by individual experts
                 temporal_update = None
-                if states_analysis.get('temporal_updates'):
-                    from .models import TemporalUpdate
-                    # Convert temporal updates to frame updates
-                    frame_updates = {}
-                    for update in states_analysis['temporal_updates']:
-                        frame_updates[update.state_name] = update.update_expression
-                    temporal_update = TemporalUpdate(frame_updates=frame_updates)
                 
                 # Create response with helper functions if any
                 response = BehaviorSynthesisResponse(
@@ -1037,7 +998,7 @@ The following states are available and MUST be used in your implementation:
                 
             except Exception as e:
                 logger.error(f"Synthesis failed: {e}")
-                logger.error(f"Full traceback:", exc_info=True)
+                logger.error("Full traceback:", exc_info=True)
                 # Update trace node with error if it exists
                 if llm_node:
                     llm_node.error = str(e)
@@ -1132,7 +1093,7 @@ IMPORTANT:
 """
         
         if species_config:
-            system_prompt += f"\nSpecies Information:\n"
+            system_prompt += "\nSpecies Information:\n"
             system_prompt += f"- Total species: {len(species_config.species_ids)}\n"
             if species_config.species_names:
                 for sid, name in species_config.species_names.items():
@@ -1243,7 +1204,7 @@ TEMPORAL UPDATE GUIDELINES:
    ```
 
 IMPORTANT:
-- Access states via tv.s.llm_particle.field[i].state_name
+- Access states via tv.s.llm_particle.field[i].STATE_NAME
 - Always clamp values to their valid ranges
 - Only set active = 0.0 when particle truly dies (energy=0, max age)
 - Consider species-specific dynamics where appropriate
@@ -1367,12 +1328,12 @@ Consider:
         # Build expert-type specific guidance
         expert_guidance = ""
         if expert_type == 'temporal_update':
-            expert_guidance = f"""
+            expert_guidance = """
 TEMPORAL UPDATE SPECIFIC RULES:
 - This is a TEMPORAL UPDATE function - it updates states over time
 - ABSOLUTELY NO particle parameters: @ti.func def expert_name():
 - ABSOLUTELY NO return statement - this is a void function
-- Access time-based states from global: tv.s.llm_global.field[0].state_name  # (day_phase, time, etc.)
+- Access time-based states from global: tv.s.llm_global.field[0].STATE_NAME  # (day_phase, time, etc.)
 - Common pattern: increment/decrement state values over time
 - Example: day_phase = (day_phase + 0.001) % 1.0
 
@@ -1390,13 +1351,13 @@ def expert_name():
         tv.s.llm_global.field[0].day_phase = 0.0"""
         
         elif expert_type == 'state_update':
-            expert_guidance = f"""
+            expert_guidance = """
 STATE UPDATE SPECIFIC RULES:
 - This is a STATE UPDATE function - it modifies particle or global states
 - ABSOLUTELY NO particle parameters: @ti.func def expert_name():
 - ABSOLUTELY NO return statement - this is a void function
 - Loop over particles internally if needed: for i in range(tv.pn):
-- Access particle states: tv.s.llm_particle.field[i].state_name
+- Access particle states: tv.s.llm_particle.field[i].STATE_NAME
 
 CORRECT STATE UPDATE (GENERATE THIS):
 @ti.func
@@ -1420,9 +1381,9 @@ CRITICAL STATE ACCESS RULES:
 {state_info}
 
 IMPORTANT: You can ONLY use the states listed above! Access patterns:
-- Time-based states: tv.s.llm_global.field[0].state_name (for animations/time like day_phase, time, etc.)
-- Global states: tv.s.llm_global.field[0].state_name (for global parameters)
-- Particle states: tv.s.llm_particle.field[i].state_name (per-particle data)
+- Time-based states: tv.s.llm_global.field[0].STATE_NAME (for animations/time like day_phase, time, etc.)
+- Global states: tv.s.llm_global.field[0].STATE_NAME (for global parameters)
+- Particle states: tv.s.llm_particle.field[i].STATE_NAME (per-particle data)
 - NEVER use tv.s.time[None] or any other made-up state access
 - NEVER use llm_global for temporal/animation states!
 
