@@ -1,6 +1,6 @@
 # Tölvera Natural Language Interface
 
-This branch specifically focusing on extending Tölvera with a natural language interface for generating complex particle behaviors, simulations, and alife patterns from text descriptions.
+This branch specifically focuses on extending Tölvera with a natural language interface for generating complex particle behaviors, simulations, and alife patterns from text descriptions.
 
 ## What You Can Create
 
