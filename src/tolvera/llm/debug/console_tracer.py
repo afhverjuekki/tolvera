@@ -30,6 +30,8 @@ class ConsoleTracer:
         "success": "✅",
         "running": "⏳",
         # Refinement icons
+        "analysis": "🔍",
+        "implementation": "⚙️",
         "refinement": "🔧",
         "error_correction": "⚡",
         "behavior_modification": "✨",
@@ -127,6 +129,10 @@ class ConsoleTracer:
             elif 'color_resolution' in node.name.lower():
                 color_name = node.metadata.get("color_name", "unknown")
                 name = self._color(f"Color Resolution LLM Call ({model}) → '{color_name}'", "yellow")
+            elif 'analyze_sketch' in node.name.lower():
+                name = self._color(f"Stage 1 Analysis LLM Call ({model})", "magenta")
+            elif 'implement_refinement' in node.name.lower():
+                name = self._color(f"Stage 2 Implementation LLM Call ({model})", "blue")
             else:
                 name = self._color(f"LLM Call ({model})", "magenta")
         elif node.type == "routing":
@@ -138,6 +144,12 @@ class ConsoleTracer:
             name = self._color(f"Resolving Color: '{color_name}'", "yellow")
         elif node.type == "temporal_update":
             name = self._color(f"Temporal Update: {node.name}", "cyan")
+        elif node.type == "analysis":
+            icon = self.ICONS.get("analysis", "🔍")
+            name = self._color(f"Stage 1 Analysis: {node.name}", "magenta")
+        elif node.type == "implementation":
+            icon = self.ICONS.get("implementation", "⚙️")
+            name = self._color(f"Stage 2 Implementation: {node.name}", "blue")
         elif node.type == "refinement":
             # Check refinement subtype
             if "error_correction" in node.name:
@@ -196,6 +208,26 @@ class ConsoleTracer:
                             extra = f" → rgb({r:.2f}, {g:.2f}, {b:.2f})"
                         else:
                             extra = f" → {parsed.get('color_name', 'unknown')}"
+                elif 'analyze_sketch' in node.name.lower() and node.llm_call.parsed_response:
+                    parsed = node.llm_call.parsed_response
+                    if isinstance(parsed, dict):
+                        plan_length = len(parsed.get('implementation_plan', ''))
+                        errors_found = parsed.get('errors_found', '')
+                        if plan_length > 0:
+                            extra = f" → {plan_length} char plan"
+                            if errors_found:
+                                extra += " (errors found)"
+                        else:
+                            extra = " → analysis complete"
+                elif 'implement_refinement' in node.name.lower() and node.llm_call.parsed_response:
+                    parsed = node.llm_call.parsed_response
+                    if isinstance(parsed, dict):
+                        changes = parsed.get('changes_summary', '')
+                        if changes:
+                            changes_preview = changes[:30] + "..." if len(changes) > 30 else changes
+                            extra = f" → {changes_preview}"
+                        else:
+                            extra = " → implementation complete"
             elif node.type == "decomposition" and "components" in node.output_data:
                 count = len(node.output_data.get("components", []))
                 extra = f" → {count} components"
@@ -210,6 +242,10 @@ class ConsoleTracer:
             self._show_state_analysis_output(node, depth + 1)
         elif node.type == "color_resolution" and node.output_data:
             self._show_color_resolution_output(node, depth + 1)
+        elif node.type == "analysis" and (node.output_data or (node.llm_call and node.llm_call.parsed_response)):
+            self._show_analysis_output(node, depth + 1)
+        elif node.type == "implementation" and (node.output_data or (node.llm_call and node.llm_call.parsed_response)):
+            self._show_implementation_output(node, depth + 1)
         elif node.type == "refinement" and node.output_data:
             self._show_refinement_output(node, depth + 1)
         elif node.type == "sketch_repair" and node.output_data:
@@ -462,6 +498,81 @@ class ConsoleTracer:
                 print(f"{indent}{self._color('Error:', 'red')} {error_msg}")
             if output.get("exception"):
                 print(f"{indent}{self._color('Type:', 'dim')} Exception during repair process")
+    
+    def _show_analysis_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        
+        # Check both output_data and LLM parsed response
+        data = node.output_data or {}
+        if node.llm_call and node.llm_call.parsed_response:
+            llm_data = node.llm_call.parsed_response
+            if isinstance(llm_data, dict):
+                data.update(llm_data)
+        
+        if not data:
+            return
+            
+        print(f"{indent}{self._color('🔍 Stage 1 Analysis Results:', 'bold')}")
+        
+        # Show implementation plan
+        implementation_plan = data.get('implementation_plan', '')
+        if implementation_plan:
+            plan_preview = implementation_plan[:200] + "..." if len(implementation_plan) > 200 else implementation_plan
+            print(f"{indent}  {self._color('Implementation Plan:', 'cyan')}")
+            print(f"{indent}    {self._color(plan_preview, 'dim')}")
+            print(f"{indent}    {self._color(f'[{len(implementation_plan)} total characters]', 'dim')}")
+        
+        # Show errors found
+        errors_found = data.get('errors_found', '')
+        if errors_found:
+            print(f"{indent}  {self._color('⚠️  Errors Found:', 'red')}")
+            errors_preview = errors_found[:150] + "..." if len(errors_found) > 150 else errors_found
+            print(f"{indent}    {self._color(errors_preview, 'red')}")
+        
+        # Show architectural needs
+        architectural_needs = data.get('architectural_needs', '')
+        if architectural_needs:
+            print(f"{indent}  {self._color('🏗️  Architectural Needs:', 'yellow')}")
+            arch_preview = architectural_needs[:150] + "..." if len(architectural_needs) > 150 else architectural_needs
+            print(f"{indent}    {self._color(arch_preview, 'yellow')}")
+    
+    def _show_implementation_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        
+        # Check both output_data and LLM parsed response
+        data = node.output_data or {}
+        if node.llm_call and node.llm_call.parsed_response:
+            llm_data = node.llm_call.parsed_response
+            if isinstance(llm_data, dict):
+                data.update(llm_data)
+        
+        if not data:
+            return
+            
+        print(f"{indent}{self._color('⚙️ Stage 2 Implementation Results:', 'bold')}")
+        
+        # Show changes summary
+        changes_summary = data.get('changes_summary', '')
+        if changes_summary:
+            print(f"{indent}  {self._color('✨ Changes Made:', 'green')}")
+            changes_preview = changes_summary[:200] + "..." if len(changes_summary) > 200 else changes_summary
+            print(f"{indent}    {self._color(changes_preview, 'green')}")
+        
+        # Show refined code stats
+        refined_code = data.get('refined_code', '')
+        if refined_code:
+            code_lines = len(refined_code.split('\n'))
+            code_chars = len(refined_code)
+            print(f"{indent}  {self._color('Refined Code:', 'blue')}")
+            print(f"{indent}    {self._color(f'Lines: {code_lines}', 'dim')} | {self._color(f'Characters: {code_chars}', 'dim')}")
+            
+            # Show first few lines as preview
+            first_lines = refined_code.split('\n')[:3]
+            for line in first_lines:
+                if line.strip():  # Skip empty lines
+                    line_preview = line[:80] + "..." if len(line) > 80 else line
+                    print(f"{indent}    {self._color(line_preview, 'dim')}")
+                    break  # Show only first non-empty line
     
     def _print_details(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)

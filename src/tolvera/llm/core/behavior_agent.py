@@ -73,6 +73,10 @@ class BehaviorAgent:
         self.kernel_generator = IntegrationKernelGenerator()
         self.sketch_generator = SketchGenerator()
         
+        # Initialize SketchRefiner for architectural enhancement
+        from .sketch_refiner import SketchRefiner
+        self.sketch_refiner = SketchRefiner(model_name, api_key)
+        
         self.experts: List[ExpertInfo] = []
         self.expert_weights: Dict[str, float] = {}
         
@@ -1968,6 +1972,70 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
             drawing_kernel=drawing_kernel_code,
             has_non_visual_experts=has_non_visual_experts
         )
+        
+        # STAGE 2: Apply architectural refinement to transform simple sketches into sophisticated simulations
+        logger.info("Applying architectural refinement to enhance sketch sophistication")
+        
+        # Get collector for tracing
+        from ..debug.tracing import get_collector
+        collector = get_collector()
+        
+        # Wrap the entire architectural refinement in a trace node
+        with collector.trace_node("architectural_refinement", "refinement", 
+                                  description=description,
+                                  stage="sketch_enhancement") as refinement_node:
+            try:
+                # Detect if this sketch would benefit from architectural enhancement
+                pattern_info = self.sketch_refiner.detect_architectural_pattern(description, sketch)
+                
+                # Add pattern detection metadata to the trace
+                if refinement_node:
+                    refinement_node.metadata = {
+                        'pattern': pattern_info['primary_pattern'],
+                        'confidence': pattern_info['confidence'],
+                        'needs_refinement': pattern_info['needs_refinement']
+                    }
+                
+                if pattern_info['needs_refinement'] and pattern_info['primary_pattern']:
+                    logger.info(f"Detected {pattern_info['primary_pattern']} pattern (confidence: {pattern_info['confidence']:.2f})")
+                    logger.info("Applying architectural refinement to enhance sophistication")
+                    
+                    refinement_result = await self.sketch_refiner.refine_to_architecture(
+                        sketch_code=sketch,
+                        description=description,
+                        pattern=pattern_info['primary_pattern']
+                    )
+                    
+                    if refinement_result['success']:
+                        sketch = refinement_result['refined_code']
+                        logger.info(f"Architectural refinement applied: {refinement_result['changes_made']}")
+                        if refinement_result.get('warnings'):
+                            logger.warning(f"Refinement warnings: {refinement_result['warnings']}")
+                        
+                        # Update trace with success information
+                        if refinement_node:
+                            refinement_node.output_data = {
+                                'changes_made': refinement_result['changes_made'],
+                                'warnings': refinement_result.get('warnings'),
+                                'refined': True
+                            }
+                    else:
+                        logger.warning(f"Architectural refinement failed: {refinement_result.get('error', 'Unknown error')}")
+                        if refinement_node:
+                            refinement_node.set_error(refinement_result.get('error', 'Unknown error'))
+                else:
+                    logger.info("No architectural enhancement needed - sketch is already appropriate")
+                    if refinement_node:
+                        refinement_node.output_data = {
+                            'refined': False,
+                            'reason': 'No enhancement needed'
+                        }
+                    
+            except Exception as e:
+                logger.warning(f"Architectural refinement failed: {e}")
+                if refinement_node:
+                    refinement_node.set_error(str(e))
+                # Continue with original sketch if refinement fails
         
         # Save if filename provided or use_timestamp is True
         if filename or use_timestamp:

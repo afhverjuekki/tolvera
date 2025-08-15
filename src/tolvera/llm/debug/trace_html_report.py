@@ -130,8 +130,12 @@ class TraceHTMLReporter:
                         <span>Drawing Expert Synthesis</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 2px;"></div>
+                        <span>Analysis (Stage 1)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #7C4DFF; border-radius: 2px;"></div>
-                        <span>Refinement</span>
+                        <span>Implementation (Stage 2)</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #F44336; border-radius: 2px;"></div>
@@ -797,6 +801,10 @@ class TraceHTMLReporter:
             return "Utility Expert Synthesis Prompt"
         elif "kernel" in prompt_lower and "integrate" in prompt_lower:
             return "Kernel Integration Prompt"
+        elif "stage 1" in prompt_lower and "analyze" in prompt_lower and "implementation plan" in prompt_lower:
+            return "Two-Stage Analysis Prompt (Stage 1)"
+        elif "stage 2" in prompt_lower and "implement" in prompt_lower and "refactoring plan" in prompt_lower:
+            return "Two-Stage Implementation Prompt (Stage 2)"
         elif "refining tölvera particle simulations" in prompt_lower or ("refine" in prompt_lower and "sketch" in prompt_lower):
             return "Refinement Prompt"
         # Check for drawing ONLY if it's explicitly about visual effects, not just if the word appears
@@ -837,7 +845,9 @@ class TraceHTMLReporter:
             'synthesis_temporal': '#FFC107', # Amber - for temporal update synthesis
             'synthesis_utility': '#795548',  # Brown - for utility expert synthesis
             'synthesis_drawing': '#E91E63',  # Pink - for drawing expert synthesis
-            'refinement': '#7C4DFF',         # Deep purple - for refinements
+            'analysis_stage': '#9C27B0',     # Purple - for Stage 1 analysis
+            'implementation_stage': '#7C4DFF', # Deep purple - for Stage 2 implementation
+            'refinement': '#7C4DFF',         # Deep purple - for refinements (legacy)
             'error_correction': '#F44336',   # Red - for error corrections
             'default': '#607D8B'             # Gray - fallback
         }
@@ -865,9 +875,28 @@ class TraceHTMLReporter:
             is_refinement = 'refinement' in call.get('name', '').lower() or call.get('parent', {}).get('type') == 'refinement'
             is_error_correction = 'error_correction' in call.get('name', '').lower()
             is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
+            is_analysis_stage = 'analyze_sketch' in call.get('name', '').lower() or call.get('type') == 'analysis'
+            is_implementation_stage = 'implement_refinement' in call.get('name', '').lower() or call.get('type') == 'implementation'
             
             # Determine call type and assign appropriate color
-            if is_refinement:
+            if is_analysis_stage:
+                # For Stage 1 analysis, show the analysis type
+                parsed = call.get('llm_call', {}).get('parsed_response', {})
+                if parsed and parsed.get('implementation_plan'):
+                    timeline_label = "analysis → plan"
+                else:
+                    timeline_label = "analysis"
+                color = color_scheme['analysis_stage']
+            elif is_implementation_stage:
+                # For Stage 2 implementation, show the changes
+                parsed = call.get('llm_call', {}).get('parsed_response', {})
+                if parsed and parsed.get('changes_summary'):
+                    changes = parsed['changes_summary'][:20] + "..." if len(parsed['changes_summary']) > 20 else parsed['changes_summary']
+                    timeline_label = f"implement → {changes}"
+                else:
+                    timeline_label = "implementation"
+                color = color_scheme['implementation_stage']
+            elif is_refinement:
                 # For refinement, show the type and request
                 if is_error_correction:
                     timeline_label = "error_fix"
@@ -997,6 +1026,8 @@ class TraceHTMLReporter:
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower()
             is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
+            is_analysis_stage = 'analyze_sketch' in call.get('name', '').lower() or call.get('type') == 'analysis'
+            is_implementation_stage = 'implement_refinement' in call.get('name', '').lower() or call.get('type') == 'implementation'
             
             # Check for utility/temporal expert synthesis
             expert_type = input_data.get('expert_type') or call.get('metadata', {}).get('expert_type', '')
@@ -1096,6 +1127,26 @@ class TraceHTMLReporter:
                         expert_name = f"sketch_repair_failed → {error[:50]}..." if error else "sketch_repair_failed"
                 else:
                     expert_name = 'sketch_repair_initiated'
+            elif is_analysis_stage:
+                # This is a Stage 1 analysis call
+                code = ''  # Analysis doesn't generate code, creates a plan
+                if parsed_response:
+                    plan_length = len(parsed_response.get('implementation_plan', ''))
+                    errors_found = parsed_response.get('errors_found', '')
+                    if plan_length > 0:
+                        expert_name = f"analysis → plan ({plan_length} chars, {len(errors_found) > 0 and 'errors found' or 'no errors'})"
+                    else:
+                        expert_name = "analysis → planning"
+                else:
+                    expert_name = 'analysis'
+            elif is_implementation_stage:
+                # This is a Stage 2 implementation call
+                code = parsed_response.get('refined_code', '') if parsed_response else ''
+                if parsed_response and parsed_response.get('changes_summary'):
+                    changes = parsed_response['changes_summary'][:50] + "..." if len(parsed_response['changes_summary']) > 50 else parsed_response['changes_summary']
+                    expert_name = f"implementation → {changes}"
+                else:
+                    expert_name = 'implementation'
             elif is_refinement:
                 # This is a refinement call
                 code = parsed_response.get('refined_code', '') if parsed_response else ''
@@ -1230,6 +1281,9 @@ class TraceHTMLReporter:
                     <!-- Temporal/Utility Expert Details (if this is a temporal/utility synthesis) -->
                     {self._generate_temporal_utility_details(parsed_response, input_data, expert_type, is_temporal or is_utility) if (is_temporal or is_utility) else ''}
                     
+                    <!-- Two-Stage Refinement Details (if this is analysis or implementation) -->
+                    {self._generate_two_stage_details(parsed_response, input_data, is_analysis_stage, is_implementation_stage) if (is_analysis_stage or is_implementation_stage) else ''}
+                    
                     <!-- Sketch Repair Details (if this is a sketch repair call) -->
                     {self._generate_sketch_repair_details(call.get('output_data', {}), input_data, is_sketch_repair) if is_sketch_repair else ''}
                     
@@ -1267,6 +1321,8 @@ class TraceHTMLReporter:
                             <div class="metadata-item">
                                 <span class="metadata-label">Type</span>
                                 <span class="metadata-value">{
+                                    'Analysis (Stage 1)' if is_analysis_stage else
+                                    'Implementation (Stage 2)' if is_implementation_stage else
                                     'Temporal Update' if is_temporal else
                                     'Utility Expert' if is_utility else
                                     'State Init' if is_state_init else
@@ -1730,6 +1786,114 @@ class TraceHTMLReporter:
                 '''
         
         section += '</div></div>'
+        return section
+    
+    def _generate_two_stage_details(self, parsed_response: Dict[str, Any], input_data: Dict[str, Any], is_analysis: bool, is_implementation: bool) -> str:
+        """Generate detailed HTML section for two-stage refinement processes."""
+        if not (is_analysis or is_implementation):
+            return ''
+        
+        if is_analysis:
+            section = '''
+            <div class="analysis-stage-section">
+                <div class="section-title">🔍 Stage 1: Analysis Details</div>
+                <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+            '''
+            
+            # Show what's being analyzed
+            if input_data.get('description'):
+                description = input_data['description']
+                section += f'''
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: var(--bg-secondary); border-radius: 4px;">
+                        <strong>Analyzing Sketch for:</strong> {html.escape(description[:200])}{'...' if len(description) > 200 else ''}
+                    </div>
+                '''
+            
+            # Show analysis results
+            if parsed_response:
+                implementation_plan = parsed_response.get('implementation_plan', '')
+                errors_found = parsed_response.get('errors_found', '')
+                architectural_needs = parsed_response.get('architectural_needs', '')
+                
+                if implementation_plan:
+                    plan_preview = implementation_plan[:300] + "..." if len(implementation_plan) > 300 else implementation_plan
+                    section += f'''
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 10px 0; color: var(--accent);">Implementation Plan</h4>
+                            <div style="padding: 10px; background-color: var(--bg-secondary); border-left: 3px solid var(--accent); border-radius: 4px;">
+                                {html.escape(plan_preview)}
+                            </div>
+                        </div>
+                    '''
+                
+                if errors_found:
+                    section += f'''
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 10px 0; color: #F44336;">Errors Found</h4>
+                            <div style="padding: 10px; background-color: #FFEBEE; border-left: 3px solid #F44336; border-radius: 4px;">
+                                {html.escape(errors_found)}
+                            </div>
+                        </div>
+                    '''
+                
+                if architectural_needs:
+                    section += f'''
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 10px 0; color: #FF9800;">Architectural Needs</h4>
+                            <div style="padding: 10px; background-color: #FFF3E0; border-left: 3px solid #FF9800; border-radius: 4px;">
+                                {html.escape(architectural_needs)}
+                            </div>
+                        </div>
+                    '''
+            
+            section += '</div></div>'
+        
+        elif is_implementation:
+            section = '''
+            <div class="implementation-stage-section">
+                <div class="section-title">⚙️ Stage 2: Implementation Details</div>
+                <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+            '''
+            
+            # Show what's being implemented
+            if input_data.get('description'):
+                description = input_data['description']
+                section += f'''
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: var(--bg-secondary); border-radius: 4px;">
+                        <strong>Implementing for:</strong> {html.escape(description[:200])}{'...' if len(description) > 200 else ''}
+                    </div>
+                '''
+            
+            # Show implementation results
+            if parsed_response:
+                changes_summary = parsed_response.get('changes_summary', '')
+                refined_code = parsed_response.get('refined_code', '')
+                
+                if changes_summary:
+                    section += f'''
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 10px 0; color: var(--accent);">Changes Summary</h4>
+                            <div style="padding: 10px; background-color: #E8F5E9; border-left: 3px solid #4CAF50; border-radius: 4px;">
+                                {html.escape(changes_summary)}
+                            </div>
+                        </div>
+                    '''
+                
+                if refined_code:
+                    code_lines = len(refined_code.split('\n'))
+                    code_chars = len(refined_code)
+                    section += f'''
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 10px 0; color: var(--accent);">Refined Code Stats</h4>
+                            <div style="display: flex; gap: 20px; color: var(--text-secondary);">
+                                <span>Lines: {code_lines}</span>
+                                <span>Characters: {code_chars}</span>
+                            </div>
+                        </div>
+                    '''
+            
+            section += '</div></div>'
+        
         return section
     
     def _format_code(self, code: str) -> str:

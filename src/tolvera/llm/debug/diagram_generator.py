@@ -35,6 +35,8 @@ class MermaidDiagramGenerator:
             "    classDef state_analysis fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;",
             "    classDef color_resolution fill:#fff3e0,stroke:#ff5722,stroke-width:2px;",
             "    classDef temporal_update fill:#fffde7,stroke:#f9a825,stroke-width:2px;",
+            "    classDef analysis fill:#f0e6ff,stroke:#9c27b0,stroke-width:2px;",
+            "    classDef implementation fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
             "    classDef refinement fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
             "    classDef error_correction fill:#ffebee,stroke:#f44336,stroke-width:3px;",
             "    classDef sketch_repair fill:#fff3e0,stroke:#ff9800,stroke-width:2px;",
@@ -56,7 +58,7 @@ class MermaidDiagramGenerator:
         known_types = {
             'synthesis', 'decomposition', 'llm_call', 'routing', 
             'parsing', 'drawing', 'state_analysis', 'color_resolution', 'temporal_update',
-            'refinement', 'error_correction', 'behavior_modification', 'sketch_repair',
+            'analysis', 'implementation', 'refinement', 'error_correction', 'behavior_modification', 'sketch_repair',
             'demo', 'error', 'success'
         }
         
@@ -77,6 +79,10 @@ class MermaidDiagramGenerator:
                     lines.append(f"    class {node_id} {expert_type}_expert")
                 else:
                     lines.append(f"    class {node_id} synthesis")
+            elif node.type == "analysis":
+                lines.append(f"    class {node_id} analysis")
+            elif node.type == "implementation":
+                lines.append(f"    class {node_id} implementation")
             elif node.type == "refinement":
                 # Check for error correction refinement
                 if "error_correction" in node.name:
@@ -209,8 +215,61 @@ class MermaidDiagramGenerator:
             if expert_type:
                 label += f"<br/>{expert_type}"
             
+        elif node.type == "analysis":
+            # Two-stage refinement: Stage 1 analysis
+            if node.output_data:
+                plan_length = len(node.output_data.get('implementation_plan', ''))
+                errors_found = node.output_data.get('errors_found', '')
+                label += f"<br/>Stage 1: Analysis"
+                if plan_length > 0:
+                    label += f"<br/>{plan_length} char plan"
+                if errors_found:
+                    label += f"<br/>Errors detected"
+            else:
+                label += "<br/>Stage 1: Analysis"
+                
+        elif node.type == "implementation":
+            # Two-stage refinement: Stage 2 implementation
+            if node.output_data:
+                changes = node.output_data.get('changes_summary', '')
+                code_length = len(node.output_data.get('refined_code', ''))
+                label += f"<br/>Stage 2: Implementation"
+                if changes:
+                    changes_preview = changes[:30] + "..." if len(changes) > 30 else changes
+                    label += f"<br/>{self._escape_mermaid_text(changes_preview)}"
+                if code_length > 0:
+                    label += f"<br/>{code_length} chars"
+            else:
+                label += "<br/>Stage 2: Implementation"
+                
         elif node.type == "llm_call" and node.llm_call:
-            if 'decompose' in node.name.lower() or (node.parent_id and 'decompose' in node.parent_id):
+            if 'analyze_sketch' in node.name.lower():
+                # Stage 1 LLM call
+                parsed = node.llm_call.parsed_response
+                if parsed and isinstance(parsed, dict):
+                    plan_length = len(parsed.get('implementation_plan', ''))
+                    errors_found = parsed.get('errors_found', '')
+                    label += f"<br/>Analysis LLM Call"
+                    if plan_length > 0:
+                        label += f"<br/>→ {plan_length} char plan"
+                    if errors_found:
+                        label += f"<br/>→ Errors found"
+                else:
+                    label += "<br/>Analysis LLM Call"
+            elif 'implement_refinement' in node.name.lower():
+                # Stage 2 LLM call
+                parsed = node.llm_call.parsed_response
+                if parsed and isinstance(parsed, dict):
+                    changes = parsed.get('changes_summary', '')
+                    if changes:
+                        changes_preview = changes[:25] + "..." if len(changes) > 25 else changes
+                        label += f"<br/>Implementation LLM Call"
+                        label += f"<br/>→ {self._escape_mermaid_text(changes_preview)}"
+                    else:
+                        label += f"<br/>Implementation LLM Call"
+                else:
+                    label += "<br/>Implementation LLM Call"
+            elif 'decompose' in node.name.lower() or (node.parent_id and 'decompose' in node.parent_id):
                 parsed = node.llm_call.parsed_response
                 if parsed and isinstance(parsed, dict):
                     components = parsed.get("components", [])
@@ -329,6 +388,8 @@ class MermaidDiagramGenerator:
             "drawing": ("[(", ")]"),  # Cylindrical
             "state_analysis": ("([", "])"),  # Stadium shape for state_analysis
             "temporal_update": ("((", "))"),  # Double circle
+            "analysis": ("((", "))"),  # Double circle for analysis
+            "implementation": ("[/", "\\]"),  # Parallelogram for implementation
             "refinement": ("[/", "\\]"),  # Parallelogram
             "sketch_repair": ("{{", "}}"),  # Hexagon
         }
@@ -413,7 +474,49 @@ class MermaidDiagramGenerator:
             # Handle LLM calls
             llm_node = event_node
             
-            if 'decompose' in llm_node.name.lower():
+            if 'analyze_sketch' in llm_node.name.lower():
+                # Stage 1: Analysis
+                lines.append("    User->>+Refiner: Request two-stage refinement")
+                lines.append("    Refiner->>+LLM: Stage 1: Analyze sketch")
+                
+                if llm_node.llm_call and llm_node.llm_call.parsed_response:
+                    parsed = llm_node.llm_call.parsed_response
+                    if isinstance(parsed, dict):
+                        plan_length = len(parsed.get('implementation_plan', ''))
+                        errors_found = parsed.get('errors_found', '')
+                        if plan_length > 0:
+                            lines.append(f"    LLM-->>-Refiner: Analysis complete ({plan_length} chars)")
+                        else:
+                            lines.append("    LLM-->>-Refiner: Analysis complete")
+                        if errors_found:
+                            lines.append("    Note over Refiner: Errors detected in sketch")
+                    else:
+                        lines.append("    LLM-->>-Refiner: Analysis complete")
+                else:
+                    lines.append("    LLM-->>-Refiner: Analysis complete")
+                    
+            elif 'implement_refinement' in llm_node.name.lower():
+                # Stage 2: Implementation
+                lines.append("    Refiner->>+LLM: Stage 2: Implement plan")
+                
+                if llm_node.llm_call and llm_node.llm_call.parsed_response:
+                    parsed = llm_node.llm_call.parsed_response
+                    if isinstance(parsed, dict):
+                        changes = parsed.get('changes_summary', '')
+                        if changes:
+                            changes_preview = changes[:40] + "..." if len(changes) > 40 else changes
+                            lines.append(f"    LLM-->>-Refiner: {self._escape_mermaid_text(changes_preview)}")
+                        else:
+                            lines.append("    LLM-->>-Refiner: Implementation complete")
+                        lines.append("    Refiner-->>-User: Refined sketch ready")
+                    else:
+                        lines.append("    LLM-->>-Refiner: Implementation complete")
+                        lines.append("    Refiner-->>-User: Refined sketch ready")
+                else:
+                    lines.append("    LLM-->>-Refiner: Implementation complete")
+                    lines.append("    Refiner-->>-User: Refined sketch ready")
+                    
+            elif 'decompose' in llm_node.name.lower():
                 lines.append("    Agent->>+Decomposer: Analyze behavior complexity")
                 lines.append("    Decomposer->>+LLM: Decompose request")
                 

@@ -33,6 +33,9 @@ def main(**kwargs):
     # === State Initialization ===
 {state_code}
     
+    # === Environmental Fields ===
+{environmental_fields}
+    
     # === Particle Force Experts ===
     # These functions calculate forces acting on individual particles
 {expert_code}
@@ -135,6 +138,7 @@ if __name__ == "__main__":
         drawing_code: str = "",
         drawing_kernel: str = "",
         respawn_code: str = "",
+        environmental_fields: str = "",
         pre_draw_calls: List[str] = None,
         post_draw_calls: List[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -156,6 +160,7 @@ if __name__ == "__main__":
             drawing_code: Drawing behavior functions
             drawing_kernel: Drawing kernel that calls visual experts
             respawn_code: Respawn functions for food/resources
+            environmental_fields: Environmental fields (pheromones, trails, food sources)
             pre_draw_calls: Drawing calls before particles
             post_draw_calls: Drawing calls after particles
             metadata: Optional metadata to include
@@ -220,6 +225,7 @@ if __name__ == "__main__":
             config_code=config_code.strip(),
             init_code=self._indent(init_code.strip(), 4),
             state_code=self._indent(state_code.strip() if state_code else "# No custom states needed", 4),
+            environmental_fields=self._indent(environmental_fields if environmental_fields else "# No environmental fields", 4),
             expert_code=self._indent("\n\n".join(experts), 4),
             kernel_code=self._indent(kernel, 4),
             temporal_code=self._indent(temporal_code if temporal_code else "# No temporal updates needed", 4),
