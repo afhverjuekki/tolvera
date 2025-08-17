@@ -34,8 +34,8 @@ class ModelFactory:
         'gemini': 'gemini-2.0-flash',
         # 'google': 'gemini-2.0-flash',
         'openai': 'gpt-5-mini',
-        'anthropic': 'claude-3-5-sonnet-latest',
-        'mistral': 'mistral-large-latest',
+        'anthropic': 'claude-sonnet-4-0',
+        'mistral': 'mistral-medium-2508',
         'huggingface': 'Qwen/QwQ-32B-Preview',
         'ollama': 'llama3.2',
     }
