@@ -942,7 +942,7 @@ if dist > 0.001:
         if context and 'implementation_details' in context:
             prompt_sections.append("\nFOLLOW THESE SPECIFIC IMPLEMENTATION STEPS PROVIDED BY THE DECOMPOSER:")
             for i, detail in enumerate(context['implementation_details'], 1):
-                prompt_sections.append(f"{i}. {detail}")
+                prompt_sections.append(f"{detail}")
         
         prompt_sections.append("")
         

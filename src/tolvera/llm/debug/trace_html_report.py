@@ -869,7 +869,9 @@ class TraceHTMLReporter:
             expert_name = input_data.get('expert_name', '')
             
             # Check if this is a decomposition call
-            is_decomposition = call.get('name') == 'llm_decompose' or 'decompose' in call.get('name', '').lower()
+            is_decomposition = (call.get('type') == 'decomposition' or 
+                              call.get('name') == 'llm_decompose' or 
+                              'decompose' in call.get('name', '').lower())
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower() or call.get('parent', {}).get('type') == 'refinement'
@@ -1028,7 +1030,9 @@ class TraceHTMLReporter:
             synthesis_expert_name = input_data.get('expert_name', '')
             
             # Handle different types of calls (including non-LLM calls like sketch repair)
-            is_decomposition = call.get('name') == 'llm_decompose' or 'decompose' in call.get('name', '').lower()
+            is_decomposition = (call.get('type') == 'decomposition' or 
+                              call.get('name') == 'llm_decompose' or 
+                              'decompose' in call.get('name', '').lower())
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower()
@@ -1049,8 +1053,15 @@ class TraceHTMLReporter:
             if is_decomposition:
                 # This is a decomposition call
                 code = ''  # Decomposition doesn't generate code
+                
+                # For decomposition nodes, check both parsed_response (LLM calls) and output_data (direct decomposition)
+                components = []
                 if parsed_response and parsed_response.get('components'):
                     components = parsed_response.get('components', [])
+                elif call.get('output_data') and call.get('output_data').get('components'):
+                    components = call.get('output_data').get('components', [])
+                
+                if components:
                     
                     # Show expert types breakdown
                     expert_types = {}
@@ -1367,6 +1378,10 @@ class TraceHTMLReporter:
         
         # Collect LLM call nodes
         if node.get('type') == 'llm_call' and node.get('llm_call'):
+            calls.append(node)
+        
+        # Collect decomposition nodes that contain important trace data
+        elif node.get('type') == 'decomposition' and node.get('output_data'):
             calls.append(node)
         
         # Also collect refinement parent nodes to preserve hierarchy

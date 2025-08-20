@@ -27,7 +27,7 @@ class SpeciesNameMapping(BaseModel):
     species_id: int = Field(description="Species ID (0-based)")
     name: str = Field(description="Name of the species")
 
-class SpeciesColorMapping(BaseModel):
+class SpeciesColorDescriptionMapping(BaseModel):
     """Mapping of species ID to color description"""
     species_id: int = Field(description="Species ID (0-based)")
     color_description: str = Field(description="Color description (e.g., 'red', 'blue', 'tangerine')")
@@ -36,7 +36,7 @@ class SpeciesConfiguration(BaseModel):
     """Species configuration with colors and names"""
     total_count: int = Field(description="Total number of species")
     species_names: List[SpeciesNameMapping] = Field(default_factory=list, description="Species names with IDs")
-    species_color_descriptions: List[SpeciesColorMapping] = Field(default_factory=list, description="Species colors with IDs")
+    species_color_descriptions: List[SpeciesColorDescriptionMapping] = Field(default_factory=list, description="Species colors with IDs")
 
 
 class BehaviorComponent(BaseModel):

@@ -178,7 +178,7 @@ class SketchRefiner:
         
         # Log the assembled system prompt
         logger.info(f"[SKETCH_REFINER] Implementation Agent System Prompt assembled: {len(system_prompt)} chars")
-        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        logger.debug(f"[SKETCH_REFINER] System prompt: {system_prompt}")
         if logger.isEnabledFor(logging.DEBUG):
             # In debug mode, log the full prompt
             logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
