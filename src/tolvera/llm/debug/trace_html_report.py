@@ -1010,6 +1010,13 @@ class TraceHTMLReporter:
         
         for i, call in enumerate(llm_calls):
             llm_data = call.get('llm_call', {})
+            
+            # Handle refinement parent nodes specially
+            if call.get('type') == 'refinement' and call.get('name') == 'two_stage_refinement':
+                # This is a two-stage refinement parent node
+                sections.append(self._generate_refinement_parent_section(call, i))
+                continue
+            
             if not llm_data:
                 continue
             
@@ -1354,11 +1361,17 @@ class TraceHTMLReporter:
         return "".join(sections)
     
     def _collect_llm_calls(self, node: Dict[str, Any], calls: Optional[List] = None) -> List[Dict[str, Any]]:
-        """Recursively collect all LLM call nodes."""
+        """Recursively collect all LLM call nodes and refinement parent nodes."""
         if calls is None:
             calls = []
         
+        # Collect LLM call nodes
         if node.get('type') == 'llm_call' and node.get('llm_call'):
+            calls.append(node)
+        
+        # Also collect refinement parent nodes to preserve hierarchy
+        elif node.get('type') == 'refinement' and node.get('name') == 'two_stage_refinement':
+            # Include the parent node to show refinement structure
             calls.append(node)
         
         for child in node.get('children', []):
@@ -1934,6 +1947,163 @@ class TraceHTMLReporter:
             formatted_lines.append(line)
         
         return '\n'.join(formatted_lines)
+    
+    def _generate_refinement_parent_section(self, call: Dict[str, Any], index: int) -> str:
+        """Generate HTML section for two-stage refinement parent node."""
+        input_data = call.get('input_data', {})
+        output_data = call.get('output_data', {})
+        description = input_data.get('description', 'Refinement request')
+        duration = call.get('duration_ms', 0)
+        
+        # Extract information about the two stages from children
+        children = call.get('children', [])
+        analysis_stage = None
+        implementation_stage = None
+        
+        for child in children:
+            if child.get('type') == 'analysis' or 'analyze_sketch' in child.get('name', ''):
+                analysis_stage = child
+            elif child.get('type') == 'implementation' or 'implement_refinement' in child.get('name', ''):
+                implementation_stage = child
+        
+        # Build summary information
+        stages_completed = 0
+        if analysis_stage:
+            stages_completed += 1
+        if implementation_stage:
+            stages_completed += 1
+        
+        success = call.get('status') == 'success'
+        status_class = 'success' if success else 'error'
+        
+        section = f"""
+        <div class="llm-call">
+            <div class="llm-header">
+                <div class="llm-title">
+                    <span class="llm-icon">🔄</span>
+                    <span class="llm-description">Two-Stage Refinement</span>
+                    <span class="llm-arrow">→</span>
+                    <span class="llm-result">{stages_completed}/2 stages</span>
+                </div>
+                <div>
+                    <span class="llm-duration">{duration:.0f}ms</span>
+                    <span class="expand-icon">▶</span>
+                </div>
+            </div>
+            
+            <div class="llm-content">
+                <!-- Refinement Type Badge -->
+                <div style="margin-bottom: 15px;">
+                    <span style="padding: 4px 10px; background: #ede7f6; color: #7c4dff; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                        Two-Stage Refinement
+                    </span>
+                </div>
+                
+                <!-- Request Description -->
+                <div class="collapsible-section">
+                    <div class="collapsible-header">
+                        <span>📋 Refinement Request</span>
+                        <span class="expand-icon">▶</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <pre>{html.escape(description)}</pre>
+                    </div>
+                </div>
+                
+                <!-- Stage Summary -->
+                <div class="collapsible-section">
+                    <div class="collapsible-header">
+                        <span>🎯 Stage Summary</span>
+                        <span class="expand-icon">▶</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="padding: 10px;">
+        """
+        
+        # Add analysis stage info
+        if analysis_stage:
+            analysis_data = analysis_stage.get('output_data', {})
+            if analysis_stage.get('llm_call') and analysis_stage['llm_call'].get('parsed_response'):
+                analysis_data.update(analysis_stage['llm_call']['parsed_response'])
+            
+            plan_length = len(analysis_data.get('implementation_plan', ''))
+            errors_found = analysis_data.get('errors_found', '')
+            
+            section += f"""
+                            <div style="margin-bottom: 10px; padding: 8px; background-color: #f0e6ff; border-left: 3px solid #9c27b0; border-radius: 4px;">
+                                <strong>✅ Stage 1: Analysis</strong>
+                                <div style="font-size: 13px; color: #666; margin-top: 5px;">
+                                    Plan: {plan_length} characters
+                                    {f"<br>⚠️ Errors detected: {len(errors_found) > 0}" if errors_found else ""}
+                                </div>
+                            </div>
+            """
+        else:
+            section += """
+                            <div style="margin-bottom: 10px; padding: 8px; background-color: #ffebee; border-left: 3px solid #f44336; border-radius: 4px;">
+                                <strong>❌ Stage 1: Analysis</strong>
+                                <div style="font-size: 13px; color: #666; margin-top: 5px;">Not completed</div>
+                            </div>
+            """
+        
+        # Add implementation stage info
+        if implementation_stage:
+            impl_data = implementation_stage.get('output_data', {})
+            if implementation_stage.get('llm_call') and implementation_stage['llm_call'].get('parsed_response'):
+                impl_data.update(implementation_stage['llm_call']['parsed_response'])
+            
+            changes_summary = impl_data.get('changes_summary', '')
+            refined_code = impl_data.get('refined_code', '')
+            
+            section += f"""
+                            <div style="margin-bottom: 10px; padding: 8px; background-color: #e8f5e9; border-left: 3px solid #4caf50; border-radius: 4px;">
+                                <strong>✅ Stage 2: Implementation</strong>
+                                <div style="font-size: 13px; color: #666; margin-top: 5px;">
+                                    Changes: {len(changes_summary)} chars
+                                    <br>Code: {len(refined_code)} chars
+                                </div>
+                            </div>
+            """
+        else:
+            section += """
+                            <div style="margin-bottom: 10px; padding: 8px; background-color: #ffebee; border-left: 3px solid #f44336; border-radius: 4px;">
+                                <strong>❌ Stage 2: Implementation</strong>
+                                <div style="font-size: 13px; color: #666; margin-top: 5px;">Not completed</div>
+                            </div>
+            """
+        
+        section += """
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Metadata -->
+                <div class="metadata-section">
+                    <div class="section-title">📊 Metadata</div>
+                    <div class="metadata-grid">
+                        <div class="metadata-item">
+                            <span class="metadata-label">Type</span>
+                            <span class="metadata-value">Two-Stage Refinement</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Duration</span>
+                            <span class="metadata-value">""" + f"{duration:.0f}ms" + """</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Stages</span>
+                            <span class="metadata-value">""" + f"{stages_completed}/2 completed" + """</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Status</span>
+                            <span class="metadata-value """ + status_class + """">""" + call.get('status', 'unknown') + """</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        
+        return section
     
     def _dict_to_trace_node(self, data: Dict[str, Any]):
         """Convert dictionary data to TraceNode object for diagram generation."""

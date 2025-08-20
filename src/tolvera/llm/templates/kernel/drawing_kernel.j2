@@ -1,0 +1,6 @@
+@ti.kernel
+def {{ function_name }}():
+    """Drawing kernel that executes visual behaviors."""
+    {% for expert_name in visual_expert_names %}
+    {{ expert_name }}()  # Execute drawing function
+    {% endfor %}

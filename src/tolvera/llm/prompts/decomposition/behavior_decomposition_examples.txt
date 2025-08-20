@@ -1,0 +1,69 @@
+## KEY EXAMPLES
+
+### Example 1: Basic Ecosystem
+**Input**: "red predators chase blue prey that try to escape"
+**Expected Output**:
+```json
+{
+  "interpretation": "Classic predator-prey ecosystem with two species and opposing behaviors",
+  "behavior_category": "particle_system",
+  "species_info": {
+    "total_count": 2,
+    "species_names": [
+      {"species_id": 0, "name": "predator"},
+      {"species_id": 1, "name": "prey"}
+    ],
+    "species_color_descriptions": [
+      {"species_id": 0, "color_description": "red"},
+      {"species_id": 1, "color_description": "blue"}
+    ]
+  },
+  "components": [
+    {
+      "expert_name": "predator_hunt",
+      "expert_type": "force",
+      "description": "Predators actively hunt nearest prey",
+      "implementation": "locate nearest prey particle and apply pursuit force",
+      "applies_to_species": [0],
+      "implementation_details": [
+        "1. Find nearest particle with species == 1 within hunt_radius",
+        "2. Calculate direction vector from predator to prey",
+        "3. Apply force proportional to 1/distance with maximum cap",
+        "4. Include acceleration boost when very close to prey"
+      ],
+      "parameters": ["hunt_radius", "chase_strength", "min_distance"]
+    },
+    {
+      "expert_name": "prey_flee", 
+      "expert_type": "force",
+      "description": "Prey escape from predators",
+      "implementation": "detect nearest predator and apply escape force",
+      "applies_to_species": [1],
+      "implementation_details": [
+        "1. Find nearest particle with species == 0 within awareness_radius", 
+        "2. Calculate escape direction (away from predator)",
+        "3. Apply strong repulsion force inversely proportional to distance",
+        "4. Add slight random component to avoid predictable patterns"
+      ],
+      "parameters": ["awareness_radius", "escape_strength", "panic_threshold"]
+    }
+  ]
+}
+```
+
+### Example 2: Complex Multi-Component
+**Input**: "fish school together and avoid predators while searching for food"
+**Expected Output**:
+- **3 schooling components**: cohesion, alignment, separation (classic boids)
+- **1 predator avoidance**: flee behavior
+- **1 food seeking**: attraction to food sources
+- **species_info**: fish=0, predators=1, food=2
+- **implementation_details**: Detailed step-by-step algorithms for each
+
+### Example 3: Cellular Automata
+**Input**: "particles form cellular automaton where cells live or die based on neighbors"
+**Expected Output**:
+- **required_states**: grid_x, grid_y, is_alive, neighbor_count
+- **components**: grid_update, neighbor_count, life_rules
+- **expert_type**: state_update and temporal_update
+- **implementation_details**: Conway's Game of Life rules

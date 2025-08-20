@@ -8,9 +8,11 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from .prompt_loader import get_prompt_loader
 
 from ..debug.tracing import get_collector, LLMCallData
 from .model_factory import ModelFactory
+from .conversation_manager import ConversationManager
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,12 @@ class SketchRefiner:
         
         # Create single-stage refinement agent for backward compatibility
         self.refinement_agent = self._create_single_stage_refinement_agent()
+        
+        # Initialize conversation manager for contextual memory
+        self.conversation_manager = ConversationManager(
+            max_history_length=10,
+            max_context_tokens=2000
+        )
     
     def _load_exemplars(self):
         """Load full exemplar sketches as reference."""
@@ -78,7 +86,7 @@ class SketchRefiner:
         exemplars = {}
         exemplar_files = {
             'slime': 'slime.py',
-            'pheromone': 'pheromone.py', 
+            'boids': 'boids.py', 
             'particle_life': 'particle-life.py'
         }
         
@@ -135,117 +143,20 @@ class SketchRefiner:
     def _create_analysis_agent(self) -> Agent:
         """Create the Stage 1 analysis agent."""
         
-        system_prompt = f"""## ROLE
-You are an EXPERT TÖLVERA SKETCH ARCHITECT and COMPUTATIONAL SYSTEMS ANALYST with deep expertise in:
-- Tölvera particle system architecture and design patterns
-- Taichi GPU programming optimization and error detection
-- Artificial life simulation architectures (slime molds, cellular automata, particle life)
-- Multi-agent system design and emergent behavior engineering
-- Real-time interactive simulation frameworks and render loop orchestration
-
-Your specialization is in transforming basic particle sketches into sophisticated, architecturally sound simulations that demonstrate emergent complexity from simple rules.
-
-## OBJECTIVE
-Your primary objective is to analyze draft Tölvera sketches and create comprehensive architectural refactoring plans that will transform basic particle behaviors into rich, interactive, emergent systems. You must identify structural deficiencies, syntax errors, and missing architectural components that prevent the sketch from achieving its full potential.
-
-## TASK AT HAND
-You must perform a thorough architectural analysis by:
-
-1. **Error Detection**: Identify ALL syntax errors, especially Taichi-specific issues like return statements in conditionals
-2. **Architectural Gap Analysis**: Determine what environmental fields, utility kernels, and state management are missing
-3. **Expert Function Assessment**: Evaluate if force calculations are mathematically sound and behaviorally appropriate
-4. **Render Loop Structure Analysis**: Check if the simulation loop is properly orchestrated for real-time interaction
-5. **Emergent Behavior Potential**: Assess whether the current structure can produce complex, interesting behaviors
-6. **Refactoring Plan Creation**: Generate a detailed, actionable plan for transforming the sketch
-
-## KEY EXAMPLES
-
-### Example 1: Basic Gravity to Rich Ecosystem
-**Input Analysis**: "Simple gravity sketch with basic particle falling"
-**Architectural Needs Identified**:
-- Environmental fields for spatial interactions
-- Multiple species with different behaviors
-- Energy systems and resource competition
-- Boundary handling and spatial partitioning
-**Plan Output**: "1. Add environmental pheromone field (512x512 ti.field) 2. Implement 3 species with predator-prey dynamics 3. Add energy depletion and feeding behaviors 4. Create spatial hash for efficient neighbor detection"
-
-### Example 2: Broken Syntax to Working Simulation
-**Input Analysis**: "Sketch has return statements inside conditionals causing Taichi crashes"
-**Errors Found**:
-- Return statements in species-specific branches
-- Undefined variables in conditional scopes
-- Missing edge case handling for zero distances
-**Plan Output**: "1. Refactor all expert functions to use single return pattern 2. Declare all variables before conditionals 3. Add division-by-zero protection 4. Implement proper species filtering logic"
-
-### Example 3: Static Behavior to Dynamic Emergence
-**Input Analysis**: "Particles move randomly but no interesting patterns emerge"
-**Enhancement Plan**:
-- Add memory states for particle history
-- Implement trail deposition and following
-- Create feedback loops between individual and collective behavior
-**Plan Output**: "1. Add trail field for pheromone deposition 2. Implement trail-following behavior with random exploration 3. Add evaporation and diffusion kernels 4. Create positive feedback loops for path reinforcement"
-
-## SUCCESS VS. FAILURE CRITERIA
-
-### SUCCESS CRITERIA:
-✅ **Comprehensive Error Detection**: Identifies ALL Taichi syntax issues, especially return statement problems
-✅ **Architectural Vision**: Proposes sophisticated patterns (environmental fields, interaction matrices, emergent systems)
-✅ **Implementation Specificity**: Provides concrete, actionable steps with exact code patterns to implement
-✅ **Emergent Complexity**: Plans for behaviors that are more interesting than simple sum of parts
-✅ **Performance Awareness**: Considers GPU optimization and real-time interaction requirements
-✅ **Pattern Recognition**: Correctly identifies which architectural patterns fit the user's description
-✅ **Feasibility Assessment**: Ensures proposed enhancements are technically implementable in Tölvera
-
-### FAILURE CRITERIA:
-❌ **Surface-Level Analysis**: Only identifying obvious issues without deeper architectural insights
-❌ **Vague Recommendations**: Providing general suggestions without specific implementation guidance
-❌ **Missing Syntax Errors**: Failing to catch critical Taichi compatibility issues
-❌ **Over-Engineering**: Proposing overly complex solutions that don't match the user's intent
-❌ **Incomplete Context**: Not considering how components interact within the full simulation ecosystem
-❌ **Performance Blind Spots**: Ignoring GPU memory constraints or computational complexity
-❌ **Pattern Misalignment**: Suggesting architectural patterns that don't fit the behavior description
-
-CONTEXT:
-You will be given:
-1. The User's Goal: A natural language description of the desired simulation.
-2. The Draft Sketch: The initial, potentially broken code generated by the first stage of the pipeline.
-
-GUIDANCE: High-Quality Architectural Patterns
-
-Study these exemplar sketches for architectural patterns:
-
-=== SLIME.PY EXEMPLAR ===
-{self.exemplars.get('slime', '# Slime exemplar not loaded')}
-
-=== PHEROMONE.PY EXEMPLAR ===
-{self.exemplars.get('pheromone', '# Pheromone exemplar not loaded')}
-
-=== PARTICLE-LIFE.PY EXEMPLAR ===
-{self.exemplars.get('particle_life', '# Particle life exemplar not loaded')}
-
-Key patterns to look for:
-- Environmental Fields: Global ti.fields that create a shared world
-- Utility Kernels: Separate @ti.kernel functions for system-level logic
-- Render Loop Orchestration: Using @tv.render as the main loop
-- Rich State Management: Deep, descriptive particle states
-- Interaction Matrices: 2D ti.field for complex species interactions
-- Classic Emergence: Multiple simple experts producing complex behavior
-
-TAICHI SYNTAX RULES (CRITICAL):
-{self.taichi_crashes}
-
-YOUR MISSION: Analyze and Plan
-
-Create a detailed implementation plan that will transform the draft sketch into a dynamic, interactive, and emergent system.
-
-Your plan must include:
-1. Error Analysis: Identify ALL syntax errors, especially Taichi-specific issues
-2. Missing Architecture: What environmental fields, utility kernels, and states are needed?
-3. Expert Function Modifications: How should the force calculations be enhanced?
-4. Render Loop Structure: What's the correct orchestration order?
-5. State Expansion: What particle/global/species states need to be added?
-
-Be specific and detailed. This plan will be used to implement the refactoring."""
+        # Load analysis prompt using PromptLoader
+        loader = get_prompt_loader()
+        system_prompt = loader.load_prompt("refinement/sketch_analysis_system.txt",
+                                          slime_exemplar=self.exemplars.get('slime', '# Slime exemplar not loaded'),
+                                          boids_exemplar=self.exemplars.get('boids', '# Pheromone exemplar not loaded'),
+                                          particle_life_exemplar=self.exemplars.get('particle_life', '# Particle life exemplar not loaded'),
+                                          taichi_crashes=self.taichi_crashes)
+        
+        # Log the assembled system prompt
+        logger.info(f"[SKETCH_REFINER] Analysis Agent System Prompt assembled: {len(system_prompt)} chars")
+        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            # In debug mode, log the full prompt
+            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -258,144 +169,19 @@ Be specific and detailed. This plan will be used to implement the refactoring.""
     def _create_implementation_agent(self) -> Agent:
         """Create the Stage 2 implementation agent."""
         
-        system_prompt = f"""## ROLE
-You are an EXPERT TÖLVERA SKETCH IMPLEMENTATION SPECIALIST and TAICHI CODE ARCHITECT with deep expertise in:
-- Taichi GPU programming language syntax and optimization patterns
-- Tölvera particle system implementation and architectural patterns
-- Real-time simulation programming with proper render loop orchestration
-- Artificial life system implementation (slime molds, cellular automata, ecosystem simulations)
-- Interactive visualization and emergent behavior programming
-
-Your specialization is in transforming architectural plans into flawless, executable Tölvera sketches that demonstrate sophisticated emergent behaviors through clean, efficient code.
-
-## OBJECTIVE
-Your primary objective is to implement comprehensive refactoring plans by producing complete, syntactically perfect, and architecturally sound Tölvera sketches. You must transform analysis plans into working code that not only fixes errors but enhances the simulation with sophisticated patterns that produce emergent complexity.
-
-## TASK AT HAND
-You must implement refactoring plans by executing these specific steps:
-
-1. **Syntax Error Elimination**: Fix ALL identified Taichi compatibility issues, especially return statement patterns
-2. **Architectural Implementation**: Add all specified environmental fields, utility kernels, and state management systems
-3. **Expert Function Enhancement**: Implement mathematically sound force calculations with proper edge case handling
-4. **Render Loop Orchestration**: Structure the simulation loop for optimal real-time performance and interaction
-5. **State System Integration**: Implement comprehensive state management for particles, species, and global parameters
-6. **Code Quality Assurance**: Ensure all code follows Taichi best practices and Tölvera conventions
-
-## KEY EXAMPLES
-
-### Example 1: Implementing Pheromone Trail System
-**Plan**: "Add pheromone field and trail-following behavior"
-**Implementation**:
-```python
-# Environmental field
-pheromone_field = ti.field(dtype=ti.f32, shape=(512, 512))
-
-@ti.kernel
-def deposit_pheromones():
-    for i in range(tv.pn):
-        if tv.p.field[i].active > 0:
-            x = int(tv.p.field[i].pos.x)
-            y = int(tv.p.field[i].pos.y)
-            if 0 <= x < 512 and 0 <= y < 512:
-                pheromone_field[x, y] += 0.1
-
-@ti.func
-def follow_pheromone_trail(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    force = ti.math.vec2(0.0, 0.0)
-    # Sample pheromone gradient and follow it
-    # Implementation with proper bounds checking
-    return force
-```
-
-### Example 2: Fixing Return Statement Errors
-**Plan**: "Remove return statements from conditionals in expert functions"
-**Implementation**:
-```python
-# BEFORE (crashes):
-@ti.func
-def species_behavior(...) -> ti.math.vec2:
-    if species == 0:
-        return chase_force()  # CRASH!
-    else:
-        return flee_force()   # CRASH!
-
-# AFTER (works):
-@ti.func
-def species_behavior(...) -> ti.math.vec2:
-    force = ti.math.vec2(0.0, 0.0)  # Always declare first
-    if species == 0:
-        force = chase_calculation  # SET, don't return
-    elif species == 1:
-        force = flee_calculation   # SET, don't return
-    return force  # Single return at end
-```
-
-### Example 3: Complete Ecosystem Architecture
-**Plan**: "Implement predator-prey ecosystem with energy and reproduction"
-**Implementation**:
-```python
-# Complete working sketch with:
-# - Environmental fields for resources
-# - Energy-based behaviors
-# - Reproduction mechanics
-# - Proper render loop with all kernels
-# - Interactive controls
-```
-
-## SUCCESS VS. FAILURE CRITERIA
-
-### SUCCESS CRITERIA:
-✅ **Syntactic Perfection**: Code compiles without errors and follows all Taichi language constraints
-✅ **Plan Fidelity**: All elements from the implementation plan are correctly implemented
-✅ **Architectural Completeness**: Environmental fields, utility kernels, and state systems are fully implemented
-✅ **Mathematical Accuracy**: Force calculations are mathematically sound and produce believable behaviors
-✅ **Performance Optimization**: Code is structured for efficient GPU execution and real-time interaction
-✅ **Emergent Complexity**: Implementation produces interesting, complex behaviors from simple rules
-✅ **Code Quality**: Clean, readable code that follows Tölvera and Taichi best practices
-
-### FAILURE CRITERIA:
-❌ **Syntax Errors**: Any Taichi compilation errors, especially return statement violations
-❌ **Incomplete Implementation**: Missing components specified in the implementation plan
-❌ **Mathematical Errors**: Division by zero, NaN values, or unstable numerical calculations
-❌ **Performance Issues**: Inefficient algorithms that can't run smoothly in real-time
-❌ **Architectural Inconsistencies**: Components that don't integrate properly with Tölvera's ecosystem
-❌ **Behavior Mismatch**: Implementation that doesn't produce the behaviors described in user's goal
-❌ **Code Quality Issues**: Hard-to-read, poorly structured, or uncommented complex sections
-
-CONTEXT:
-You will receive:
-1. An implementation plan created from analyzing the sketch
-2. The original draft sketch that needs refactoring
-3. The user's description of what they want
-
-REFERENCE PATTERNS:
-
-=== TAICHI FUNDAMENTALS ===
-{self.taichi_fundamentals}
-
-=== MOVEMENT PATTERNS ===
-{self.movement_patterns}
-
-=== FLOCKING PATTERNS ===
-{self.flocking_patterns}
-
-YOUR MISSION: Implement the Refactoring
-
-Following the provided plan, you must:
-1. Fix ALL errors identified in the plan
-2. Add ALL architectural elements specified
-3. Implement enhanced expert functions
-4. Structure the render loop properly
-5. Ensure the code is syntactically perfect
-
-CRITICAL RULES:
-- NEVER use return statements inside conditionals
-- Always check for division by zero
-- Declare ALL variables before conditionals
-- Use ti.math.vec2() for force vectors
-- Follow exact Taichi syntax from the patterns
-
-Provide the COMPLETE refactored sketch, not just changes."""
+        # Load implementation prompt using PromptLoader
+        loader = get_prompt_loader()
+        system_prompt = loader.load_prompt("refinement/sketch_implementation_system.txt",
+                                          taichi_fundamentals=self.taichi_fundamentals,
+                                          movement_patterns=self.movement_patterns,
+                                          flocking_patterns=self.flocking_patterns)
+        
+        # Log the assembled system prompt
+        logger.info(f"[SKETCH_REFINER] Implementation Agent System Prompt assembled: {len(system_prompt)} chars")
+        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            # In debug mode, log the full prompt
+            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -408,148 +194,18 @@ Provide the COMPLETE refactored sketch, not just changes."""
     def _create_single_stage_refinement_agent(self) -> Agent:
         """Create the single-stage refinement agent for quick fixes and repairs."""
         
-        system_prompt = f"""## ROLE
-You are an EXPERT TÖLVERA SKETCH REFINEMENT SPECIALIST and TAICHI ERROR RESOLUTION EXPERT with deep expertise in:
-- Taichi GPU programming error patterns and fixes
-- Tölvera particle system debugging and optimization
-- Real-time simulation error recovery and performance tuning
-- Function signature analysis and call-site verification
-- Cross-referencing function definitions with their usage patterns
-- Incremental code refinement and feature addition
-- Python debugging and error pattern recognition
-
-Your specialization is in quickly refining and repairing Tölvera sketches based on user feedback or error logs, making targeted fixes while preserving existing functionality. You excel at identifying discrepancies between function definitions and their call sites.
-
-## OBJECTIVE
-Your primary objective is to perform targeted refinements and repairs on Tölvera sketches. You must fix errors, apply user-requested changes, and enhance functionality while maintaining all existing behaviors and ensuring the sketch runs without crashes. You must verify that every function call passes the exact parameters expected by the function's signature - no more, no less, in the correct order and types.
-
-## TASK AT HAND
-You must refine or repair sketches by:
-
-1. **Error Analysis**: If error logs are provided, identify the exact error type and location
-2. **Function Signature Verification**: Cross-reference ALL function calls with their definitions to ensure parameter count, order, and types match exactly
-3. **Targeted Fixes**: Apply minimal, precise changes to fix issues without breaking other parts
-4. **Feature Addition**: Add requested features while preserving existing functionality
-5. **Taichi Compliance**: Ensure all code follows Taichi constraints (no returns in conditionals, etc.)
-6. **Force Balancing**: Adjust force magnitudes and parameters as requested
-7. **Validation**: Verify the refined code will run without errors
-
-## KEY EXAMPLES
-
-### Example 1: Fixing Return Statement Errors
-**Error**: "Return inside non-static if"
-**Fix Pattern**:
-```python
-# BEFORE (crashes):
-if species == 0:
-    return chase_force()  # CRASH!
-
-# AFTER (works):
-force = ti.math.vec2(0.0, 0.0)
-if species == 0:
-    force = chase_force()
-return force
-```
-
-### Example 2: Adjusting Force Magnitudes
-**Request**: "Make gravity stronger"
-**Change**:
-```python
-# BEFORE:
-force.y -= 300.0 * mass
-
-# AFTER:
-force.y -= 600.0 * mass  # Doubled gravity strength
-```
-
-### Example 3: Adding New Behavior
-**Request**: "Also make particles repel each other"
-**Addition**: Add new expert function and integrate it into the kernel
-
-### Example 4: Fixing Function Signature Mismatches (CRITICAL)
-**Error**: "TypeError: function expects 5 arguments but got 2"
-**Analysis**: The function call doesn't match the function definition
-**The Sketch's Code**:
-```python
-@ti.func
-def particle_life_interactions(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    # Function expects 5 parameters: pos, vel, mass, species, particle_idx
-    force = ti.math.vec2(0.0, 0.0)
-    # ... function logic ...
-    return force
-
-@ti.kernel
-def apply_all_experts():
-    for i in range(tv.pn):
-        for j in range(tv.pn):
-            if i != j:
-                # INCORRECT CALL: Passing entire particle structs instead of individual fields
-                total_force += particle_life_interactions(tv.p.field[i], tv.p.field[j]) * 1.0
-                # This passes 2 arguments (two particle structs) but function expects 5 scalar/vector values!
-```
-
-**Your Analysis and Correction**:
-The error is in the apply_all_experts kernel. The call to particle_life_interactions is incorrect because:
-1. The function is defined to accept 5 specific parameters: pos, vel, mass, species, particle_idx
-2. The call is passing 2 particle structs: tv.p.field[i] and tv.p.field[j]
-3. This is a parameter count mismatch AND a type mismatch
-
-**The corrected function call should be**:
-```python
-@ti.kernel
-def apply_all_experts():
-    for i in range(tv.pn):
-        # Extract particle i's properties
-        pos_i = tv.p.field[i].pos
-        vel_i = tv.p.field[i].vel
-        mass_i = tv.p.field[i].mass
-        species_i = tv.p.field[i].species
+        # Load single-stage refinement prompt using PromptLoader
+        loader = get_prompt_loader()
+        system_prompt = loader.load_prompt("refinement/single_state_refinement_system.txt",
+                                          taichi_crashes=self.taichi_crashes if hasattr(self, 'taichi_crashes') else '',
+                                          taichi_fundamentals=self.taichi_fundamentals if hasattr(self, 'taichi_fundamentals') else '')
         
-        # Calculate forces from particle_life_interactions
-        total_force = particle_life_interactions(pos_i, vel_i, mass_i, species_i, i)
-        
-        # Apply the force
-        tv.p.field[i].vel += total_force * 0.01
-```
-
-**Key Principle**: ALWAYS modify the function CALL to match the function DEFINITION, never the other way around.
-
-## SUCCESS VS. FAILURE CRITERIA
-
-### SUCCESS CRITERIA:
-✅ **Error Resolution**: All reported errors are fixed correctly
-✅ **Function Signature Matching**: ALL function calls match their definitions exactly (parameter count, types, order)
-✅ **Request Fulfillment**: User's refinement request is fully implemented
-✅ **Functionality Preservation**: All existing behaviors continue to work
-✅ **Taichi Compliance**: Code follows all Taichi language constraints
-✅ **Clean Integration**: New features integrate smoothly with existing code
-✅ **Performance Maintenance**: Refinements don't degrade performance
-✅ **Complete Code**: Always return the COMPLETE refined sketch
-
-### FAILURE CRITERIA:
-❌ **Signature Mismatch**: Function calls that don't match the function's defined parameters
-❌ **Modifying Definitions**: Changing function definitions instead of fixing call sites
-❌ **Partial Fixes**: Only fixing some errors while leaving others
-❌ **Breaking Changes**: Refinements that break existing functionality
-❌ **Incomplete Code**: Returning only changed sections instead of complete sketch
-❌ **Syntax Errors**: Introducing new Taichi compilation errors
-❌ **Misunderstood Requests**: Implementing something different than requested
-❌ **Lost Features**: Accidentally removing existing behaviors
-❌ **Performance Degradation**: Changes that make the simulation run poorly
-
-CRITICAL TAICHI RULES:
-- NEVER use return statements inside conditional blocks
-- Always declare result variables at the start of functions
-- Use ti.math.vec2() for force calculations
-- Handle division by zero explicitly
-- Use Taichi math functions (ti.sin, ti.cos) not Python's math module
-
-{self.taichi_crashes if hasattr(self, 'taichi_crashes') else ''}
-
-REFERENCE PATTERNS:
-{self.taichi_fundamentals if hasattr(self, 'taichi_fundamentals') else ''}
-
-Always return the COMPLETE refined sketch code, not just the changes."""
+        # Log the assembled system prompt
+        logger.info(f"[SKETCH_REFINER] Single-Stage Agent System Prompt assembled: {len(system_prompt)} chars")
+        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            # In debug mode, log the full prompt
+            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -593,6 +249,9 @@ Analyze the sketch against the user's goal and the architectural patterns in the
             
             try:
                 with collector.trace_node("analysis_llm_call", "llm_call", model=self.model_name) as llm_node:
+                    # Log the user prompt being sent
+                    logger.info(f"[SKETCH_REFINER] Running analysis with user prompt: {len(prompt)} chars")
+                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.analysis_agent.run(prompt)
                     
@@ -609,7 +268,7 @@ Analyze the sketch against the user's goal and the architectural patterns in the
                         provider=self.provider,
                         user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
                         system_prompt="Analysis agent system prompt",
-                        full_prompt="",
+                        full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response=analysis
                     )
                     if llm_node:
@@ -666,6 +325,9 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
             
             try:
                 with collector.trace_node("implementation_llm_call", "llm_call", model=self.model_name) as llm_node:
+                    # Log the user prompt being sent
+                    logger.info(f"[SKETCH_REFINER] Running implementation with user prompt: {len(prompt)} chars")
+                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.implementation_agent.run(prompt)
                     
@@ -681,7 +343,7 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
                         provider=self.provider,
                         user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
                         system_prompt="Implementation agent system prompt",
-                        full_prompt="",
+                        full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response={'changes_summary': result.output.changes_summary}
                     )
                     if llm_node:
@@ -848,15 +510,22 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
             ]
             has_signature_issue = error_info and any(pattern in error_info.lower() for pattern in signature_error_patterns)
             
+            # Build conversation context
+            conversation_context = self.conversation_manager.get_conversation_context()
+            
             prompt = f"""Refine this Tölvera sketch based on the user's request.
 
-CURRENT SKETCH:
+{conversation_context}
+
+## CURRENT REQUEST
+{refinement_request}
+
+## CURRENT SKETCH
 ```python
 {sketch_code}
 ```
 
-USER REQUEST: {refinement_request}
-"""
+IMPORTANT: Review the conversation history above to understand the user's evolving requirements and avoid repeating previous mistakes or undoing previous improvements."""
             
             if error_info:
                 prompt += f"""
@@ -891,6 +560,9 @@ Return the COMPLETE refined sketch code.
             try:
                 with collector.trace_node("refinement_llm_call", "llm_call",
                                         model=self.model_name) as llm_node:
+                    # Log the user prompt being sent
+                    logger.info(f"[SKETCH_REFINER] Running single-stage refinement with user prompt: {len(prompt)} chars")
+                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.refinement_agent.run(prompt)
                     
@@ -912,7 +584,7 @@ Return the COMPLETE refined sketch code.
                         provider=self.provider,
                         user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
                         system_prompt="Single-stage refinement agent",
-                        full_prompt="",
+                        full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response={
                             'changes_made': changes_made,
                             'warnings': warnings
@@ -920,6 +592,16 @@ Return the COMPLETE refined sketch code.
                     )
                     if llm_node:
                         llm_node.llm_call = llm_data
+                    
+                    # Store conversation entry for context
+                    interaction_type = "repair" if error_info else "refinement"
+                    self.conversation_manager.add_conversation_entry(
+                        user_request=refinement_request,
+                        agent_response_summary=changes_made,
+                        interaction_type=interaction_type,
+                        success=True,
+                        pydantic_messages=result.new_messages() if hasattr(result, 'new_messages') else None
+                    )
                     
                     return {
                         'success': True,
@@ -932,6 +614,16 @@ Return the COMPLETE refined sketch code.
                 logger.error(f"Refinement failed: {e}")
                 if node:
                     node.set_error(str(e))
+                
+                # Store failed conversation entry for context
+                interaction_type = "repair" if error_info else "refinement"
+                self.conversation_manager.add_conversation_entry(
+                    user_request=refinement_request,
+                    agent_response_summary=f"Failed: {str(e)}",
+                    interaction_type=interaction_type,
+                    success=False,
+                    error_info=str(e)
+                )
                     
                 return {
                     'success': False,
@@ -1013,19 +705,19 @@ Remember: You are an expert at fixing Taichi and Tölvera errors. Apply precise 
 
 ### Common Signature Mismatch Patterns
 
-1. **Passing Structs Instead of Fields**
+1. Passing Structs Instead of Fields
    WRONG: particle_interactions(tv.p.field[i], tv.p.field[j])
    RIGHT: particle_interactions(tv.p.field[i].pos, tv.p.field[i].vel, tv.p.field[i].mass, tv.p.field[i].species, i)
 
-2. **Wrong Parameter Order**
+2. Wrong Parameter Order
    WRONG: calculate_force(mass, vel, pos, species)
    RIGHT: calculate_force(pos, vel, mass, species)  # Match the definition order
 
-3. **Missing Parameters**
+3. Missing Parameters
    WRONG: apply_behavior(pos, vel)
    RIGHT: apply_behavior(pos, vel, mass, species, particle_idx)
 
-4. **Extra Parameters**
+4. Extra Parameters
    WRONG: simple_gravity(pos, vel, mass, species, extra_param)
    RIGHT: simple_gravity(pos, vel, mass)  # Only pass what's expected
 
@@ -1116,3 +808,8 @@ force = expert_func(pos_i, vel_i, mass_i, species_i, i)
             warnings.append("Tölvera initialization not found")
         
         return "; ".join(warnings) if warnings else None
+    
+    def clear_conversation_history(self) -> None:
+        """Clear conversation history. Used when resetting the UI."""
+        self.conversation_manager.clear_history()
+        logger.info("SketchRefiner conversation history cleared")

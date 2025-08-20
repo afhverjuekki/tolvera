@@ -22,6 +22,7 @@ from ..debug.tracing import get_collector, LLMCallData
 from .species_analyzer import SpeciesAnalyzer
 from .species_manager import SpeciesManager
 from .prompts import ContextAwarePromptBuilder
+from .prompt_loader import get_prompt_loader
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +83,12 @@ class ConfigurationResponse(BaseModel):
 
 class StateField(BaseModel):
     name: str = Field(description="Name of the state field")
+    category: str = Field(description="Category: 'global', 'particle', or 'species'")
     type: str = Field(description="Taichi type (e.g., 'ti.f32', 'ti.i32', 'ti.math.vec2')")
-    min: Optional[float] = Field(None, description="Minimum value for numeric types")
-    max: Optional[float] = Field(None, description="Maximum value for numeric types")
+    min: Optional[float] = Field(default=None, description="Minimum value for numeric types")
+    max: Optional[float] = Field(default=None, description="Maximum value for numeric types")
     description: str = Field(description="What this state represents")
-    initial: Optional[float] = Field(None, description="Initial value")
+    initial: Optional[float] = Field(default=None, description="Initial value")
 
 
 class TemporalUpdateInfo(BaseModel):
@@ -97,9 +99,7 @@ class TemporalUpdateInfo(BaseModel):
 
 class StateAnalysisResponse(BaseModel):
     needs_states: bool = Field(description="Whether this behavior requires custom states")
-    global_states: Dict[str, StateField] = Field(default_factory=dict, description="Global states needed as dictionary")
-    particle_states: Dict[str, StateField] = Field(default_factory=dict, description="Per-particle states needed as dictionary")
-    species_states: Dict[str, StateField] = Field(default_factory=dict, description="Per-species states needed as dictionary")
+    states: List[StateField] = Field(default_factory=list, description="List of states needed for this behavior")
 
 
 class Synthesizer:
@@ -207,145 +207,31 @@ Focus on helper states and flags:
         # Build state analysis prompt with expert type context
         prompt = self.prompt_builder.build_state_analysis_prompt(description, expert_type=expert_type)
         
+        # Load state analysis prompts using PromptLoader
+        loader = get_prompt_loader()
+        
+        # Combine the state analysis prompts
+        system_prompt_parts = [
+            loader.load_prompt("synthesis/state_analysis_system.txt"),
+            loader.load_prompt("synthesis/state_analysis_examples.txt"),
+            loader.load_prompt("synthesis/state_analysis_criteria.txt", 
+                              expert_type_guidance=self._get_expert_type_guidance(expert_type))
+        ]
+        
+        system_prompt = "\n\n".join(system_prompt_parts)
+        
+        # Log the assembled prompt
+        logger.info(f"[SYNTHESIZER] State Analysis System Prompt assembled: {len(system_prompt)} chars")
+        logger.debug(f"[SYNTHESIZER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            # In debug mode, log the full prompt
+            logger.debug(f"[SYNTHESIZER] Full system prompt:\n{system_prompt}")
+        
         # Create structured agent for state analysis
         agent = Agent(
             self.model,
             output_type=StateAnalysisResponse,
-            system_prompt=f"""
-## ROLE
-You are an EXPERT PARTICLE SYSTEM ANALYST and COMPUTATIONAL PHYSICIST specializing in particle behavior analysis and state management. You have deep expertise in:
-- Particle system architectures and state requirements
-- Taichi framework and its type system (ti.f32, ti.i32, ti.math.vec2)
-- Force-based physics simulations and their data dependencies
-- Behavioral modeling and the states required to implement complex behaviors
-- Memory optimization and avoiding redundant state creation
-
-## OBJECTIVE
-Your objective is to analyze natural language behavior descriptions and determine the MINIMAL SET of custom states required to implement those behaviors, while avoiding duplication of built-in particle properties and ensuring computational efficiency.
-
-## TASK AT HAND
-For each behavior description, you must:
-1. **Analyze Behavior Requirements**: Identify what data the behavior needs to track
-2. **Check Built-in Properties**: Verify that required data isn't already available
-3. **Categorize States**: Determine if states are global, per-particle, or per-species
-4. **Specify Types and Ranges**: Choose appropriate Taichi types with realistic bounds
-5. **Minimize State Creation**: Only create states that are absolutely necessary
-6. **Validate Consistency**: Ensure needs_states flag matches actual state requirements
-
-## KEY EXAMPLES
-
-### Example 1: Simple Behavior (No Custom States)
-**Input**: "particles fall with gravity"
-**Analysis**: Gravity only needs pos, vel, mass (all built-in)
-**Expected Output**:
-```json
-{{
-  "needs_states": false,
-  "global_states": {{}},
-  "particle_states": {{}},
-  "species_states": {{}}
-}}
-```
-
-### Example 2: Energy-Based Behavior
-**Input**: "particles lose energy over time and return home when tired"
-**Analysis**: Needs energy tracking + home position memory
-**Expected Output**:
-```json
-{{
-  "needs_states": true,
-  "global_states": {{}},
-  "particle_states": {{
-    "energy": {{
-      "name": "energy",
-      "type": "ti.f32", 
-      "min": 0.0,
-      "max": 100.0,
-      "description": "Particle energy level that depletes over time",
-      "initial": 80.0
-    }},
-    "home_pos": {{
-      "name": "home_pos",
-      "type": "ti.math.vec2",
-      "min": 0.0,
-      "max": 1.0, 
-      "description": "Original position to return to when tired",
-      "initial": null
-    }}
-  }},
-  "species_states": {{}}
-}}
-```
-
-### Example 3: Day/Night Cycle
-**Input**: "behavior changes based on day and night cycle"
-**Analysis**: Needs global time-of-day tracking
-**Expected Output**:
-```json
-{{
-  "needs_states": true,
-  "global_states": {{
-    "day_phase": {{
-      "name": "day_phase",
-      "type": "ti.f32",
-      "min": 0.0,
-      "max": 1.0,
-      "description": "Current time of day (0.0=midnight, 0.5=noon)",
-      "initial": 0.25
-    }}
-  }},
-  "particle_states": {{}},
-  "species_states": {{}}
-}}
-```
-
-## SUCCESS VS. FAILURE CRITERIA
-
-### SUCCESS CRITERIA:
-✅ **Consistency Check**: needs_states=true only when states are actually created
-✅ **No Duplication**: Never creates states for built-in properties (pos, vel, mass, size, species, active)
-✅ **Minimal State Set**: Only creates states that are absolutely necessary
-✅ **Proper Types**: Uses correct Taichi types (ti.f32, ti.i32, ti.math.vec2)
-✅ **Realistic Ranges**: Min/max values make physical/logical sense
-✅ **Descriptive Names**: State names clearly indicate their purpose (snake_case)
-✅ **Correct Categories**: Global for system-wide, particle for per-particle, species for per-species
-✅ **Sensible Defaults**: Initial values are reasonable starting points
-
-### FAILURE CRITERIA:
-❌ **Inconsistent Flags**: needs_states=true but all state dictionaries are empty
-❌ **Duplicate Built-ins**: Creating states for pos, vel, mass, size, species, active
-❌ **Over-Engineering**: Creating unnecessary states for simple behaviors
-❌ **Wrong Types**: Using inappropriate Taichi types or Python types
-❌ **Invalid Ranges**: Min > max, or ranges that don't make sense
-❌ **Vague Names**: Generic names like 'state1' or 'data'
-❌ **Wrong Categories**: Putting system-wide data in particle_states
-❌ **Missing Descriptions**: Not explaining what each state represents
-
-CRITICAL BUILT-IN PROPERTIES (NEVER RECREATE):
-- pos, vel (position, velocity) - ti.math.vec2
-- mass - ti.f32  
-- size - ti.f32
-- speed - ti.f32 (calculated from vel.norm())
-- species - ti.i32
-- active - ti.f32
-- ppos, pvel (previous position/velocity) - ti.math.vec2
-
-{self._get_expert_type_guidance(expert_type)}
-
-STATE CATEGORIES:
-- **global_states**: System-wide parameters (gravity_strength, day_phase, temperature)
-- **particle_states**: Per-particle data (energy, home_pos, memory, flags) 
-- **species_states**: Per-species configuration (aggression, speed_modifier, behavior_weights)
-
-COMMON STATE PATTERNS:
-- **Energy/Resource**: ti.f32, 0.0-100.0, initial=80.0
-- **Memory Positions**: ti.math.vec2, 0.0-1.0 (normalized coordinates)
-- **Time/Phase Cycles**: ti.f32, 0.0-1.0 (0=start, 1=end of cycle)
-- **Counters**: ti.i32, 0-1000 
-- **Boolean Flags**: ti.i32, 0-1 (Taichi doesn't have ti.bool)
-- **System Forces**: ti.f32, 0.0-1000.0 (force magnitudes)
-
-Your analysis must be CONSERVATIVE - only add states that are truly necessary for the behavior."""
+            system_prompt=system_prompt
         )
         
         # Create trace node for state analysis
@@ -355,6 +241,10 @@ Your analysis must be CONSERVATIVE - only add states that are truly necessary fo
                 # Create nested LLM call node
                 with collector.trace_node("llm_state_analysis", "llm_call",
                                          model=self.model_name) as llm_node:
+                    # Log the user prompt being sent
+                    logger.info(f"[SYNTHESIZER] Running state analysis with user prompt: {len(prompt)} chars")
+                    logger.debug(f"[SYNTHESIZER] User prompt: {prompt}")
+                    
                     # Run state analysis with structured output
                     result = await agent.run(prompt)
                     state_analysis = result.output
@@ -379,25 +269,28 @@ Your analysis must be CONSERVATIVE - only add states that are truly necessary fo
                             raw_response=str(result.output),
                             parsed_response={
                                 "needs_states": state_analysis.needs_states,
-                                "global_states": {name: state.model_dump() for name, state in state_analysis.global_states.items()},
-                                "particle_states": {name: state.model_dump() for name, state in state_analysis.particle_states.items()},
-                                "species_states": {name: state.model_dump() for name, state in state_analysis.species_states.items()}
+                                "states": [state.model_dump() for state in state_analysis.states]
                             }
                         )
                         llm_node.llm_call = llm_data
                 
+                # Count states by category
+                global_count = sum(1 for s in state_analysis.states if s.category == 'global')
+                particle_count = sum(1 for s in state_analysis.states if s.category == 'particle')
+                species_count = sum(1 for s in state_analysis.states if s.category == 'species')
+                
                 logger.info(f"State analysis: needs_states={state_analysis.needs_states}, "
-                           f"global={len(state_analysis.global_states)}, "
-                           f"particle={len(state_analysis.particle_states)}, "
-                           f"species={len(state_analysis.species_states)}")
+                           f"global={global_count}, "
+                           f"particle={particle_count}, "
+                           f"species={species_count}")
                 
                 # Update trace node with results
                 if analysis_node:
                     analysis_node.output_data = {
                         "needs_states": state_analysis.needs_states,
-                        "global_states": len(state_analysis.global_states),
-                        "particle_states": len(state_analysis.particle_states),
-                        "species_states": len(state_analysis.species_states)
+                        "global_states": global_count,
+                        "particle_states": particle_count,
+                        "species_states": species_count
                     }
             
                 # Convert to StateDefinition objects
@@ -407,39 +300,21 @@ Your analysis must be CONSERVATIVE - only add states that are truly necessary fo
                     'species': {}
                 }
                 
-                # Process global states
-                for state_name, state_info in state_analysis.global_states.items():
-                    states_dict['global'][state_name] = StateDefinition(
-                        name=state_name,
-                        category='global',
-                        type=state_info.type,
-                        min=state_info.min if state_info.min is not None else 0.0,
-                        max=state_info.max if state_info.max is not None else 1.0,
-                        description=state_info.description,
-                        initial=state_info.initial
-                    )
-                
-                # Process particle states, filtering out built-in properties
+                # Process states from the list
                 BUILTIN_PARTICLE_PROPS = {'pos', 'vel', 'mass', 'size', 'speed', 'species', 'active', 'ppos', 'pvel'}
-                for state_name, state_info in state_analysis.particle_states.items():
-                    if state_name.lower() in BUILTIN_PARTICLE_PROPS:
+                
+                for state_info in state_analysis.states:
+                    category = state_info.category
+                    state_name = state_info.name
+                    
+                    # Skip built-in particle properties
+                    if category == 'particle' and state_name.lower() in BUILTIN_PARTICLE_PROPS:
                         logger.warning(f"Skipping built-in particle property '{state_name}' from state analysis")
                         continue
-                    states_dict['particle'][state_name] = StateDefinition(
+                    
+                    states_dict[category][state_name] = StateDefinition(
                         name=state_name,
-                        category='particle',
-                        type=state_info.type,
-                        min=state_info.min if state_info.min is not None else 0.0,
-                        max=state_info.max if state_info.max is not None else 1.0,
-                        description=state_info.description,
-                        initial=state_info.initial
-                    )
-                
-                # Process species states
-                for state_name, state_info in state_analysis.species_states.items():
-                    states_dict['species'][state_name] = StateDefinition(
-                        name=state_name,
-                        category='species',
+                        category=category,
                         type=state_info.type,
                         min=state_info.min if state_info.min is not None else 0.0,
                         max=state_info.max if state_info.max is not None else 1.0,
@@ -527,282 +402,15 @@ Your analysis must be CONSERVATIVE - only add states that are truly necessary fo
         else:
             system_prompt = base_prompt
         
-        # Add specific instructions for expert functions
-        system_prompt += f"""
-## EXPERT FUNCTION REQUIREMENTS
-Generate a complete Taichi expert function.
-Force experts: (pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2
-Interaction experts: (p1: ti.template(), p2: ti.template()) -> ti.math.vec2
-Drawing/Visual experts: () # NO PARAMETERS, NO RETURN TYPE - pure drawing function
-
-Species IDs range from 0 to {species_info.total_count - 1}.
-
-## VISUAL/DRAWING EXPERT SYNTHESIS
-For pure drawing behaviors (e.g., "draw a red rectangle"):
-1. Generate a @ti.func expert that performs the drawing
-2. Use tv.px drawing operations (rect, circle, line, etc.)
-3. DO NOT return anything - void function, no return statement
-4. Drawing operations should use screen coordinates
-5. NO PARAMETERS - drawing functions take no arguments
-
-Example visual expert WITH temporal state:
-@ti.func
-def draw_rectangle():
-    # CRITICAL: Time-based animation states are now in llm_global!
-    # For oscillating/blinking effects, check global states
-    phase = tv.s.llm_global.field[0].phase  # Access animation state from global
-    
-    # Draw a red rectangle with oscillating opacity
-    x = tv.x // 2 - 100
-    y = tv.y // 2 - 50
-    width = 200
-    height = 100
-    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
-    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
-    tv.px.rect(x, y, width, height, color)
-    # No return statement - this is a void function
-
-Example visual expert WITHOUT temporal state (fallback to frame counter):
-@ti.func
-def draw_rectangle():
-    # No temporal states available, use frame counter
-    frame = tv.ctx.i[None]
-    phase = (frame % 150) / 150.0  # 2.5 second cycle at 60fps
-    
-    # Draw with oscillating opacity
-    x = tv.x // 2 - 100
-    y = tv.y // 2 - 50
-    width = 200
-    height = 100
-    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
-    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
-    tv.px.rect(x, y, width, height, color)
-
-## HELPER FUNCTION SYNTHESIS
-If your expert needs complex operations, you SHOULD generate helper functions.
-RULES FOR HELPERS:
-1. Generate helpers for operations like finding nearest entities, computing distances, etc.
-2. ANY HELPER YOU GENERATE MUST BE CALLED BY YOUR EXPERT - no unused helpers!
-3. Helpers should be @ti.func functions that can be called from the expert
-4. Include helpers in the 'helper_functions' field of your response
-5. Expert code MUST call the helpers it generates
-
-COMMON HELPERS TO GENERATE:
-- For food/resource behaviors: generate consume_food helper
-- For toroidal worlds: generate wrap_distance helper  
-- For wandering: generate random_wander helper
-- For finding targets: generate find_nearest_target helper
-
-Example helpers for food consumption:
-helper_functions: [
-    {{
-        "name": "consume_food",
-        "code": "@ti.func\ndef consume_food(particle_idx: ti.i32, consumption_radius: ti.f32) -> ti.i32:\n    '''Check for food particles to consume'''\n    consumed = 0\n    my_pos = tv.p.field[particle_idx].pos\n    for j in range(tv.pn):\n        if tv.p.field[j].species == 2 and tv.p.field[j].active > 0:  # Food is species 2\n            dist = (tv.p.field[j].pos - my_pos).norm()\n            if dist < consumption_radius:\n                tv.p.field[j].active = 0.0  # Consume it\n                consumed = 1\n                break\n    return consumed"
-    }},
-    {{
-        "name": "wrap_distance", 
-        "code": "@ti.func\ndef wrap_distance(p1: ti.math.vec2, p2: ti.math.vec2) -> ti.math.vec2:\n    '''Calculate shortest vector in toroidal world'''\n    diff = p2 - p1\n    if ti.abs(diff.x) > tv.x * 0.5:\n        if diff.x > 0:\n            diff.x -= tv.x\n        else:\n            diff.x += tv.x\n    if ti.abs(diff.y) > tv.y * 0.5:\n        if diff.y > 0:\n            diff.y -= tv.y\n        else:\n            diff.y += tv.y\n    return diff"
-    }}
-]
-
-Then in expert code:
-# Check for food consumption
-if species == 0 or species == 1:  # Consumers
-    consumed = consume_food(particle_idx, 5.0)
-    
-# Use wrapped distance for toroidal topology
-diff = wrap_distance(pos, target_pos)
-dist = diff.norm()
-if dist > 0.001:
-    force = (diff / dist) * 250.0
-
-## CRITICAL TAICHI RULES - THESE PATTERNS WILL CRASH IF WRONG:
-
-### VECTOR OPERATIONS - USE CORRECT SYNTAX:
-❌ WRONG - These methods DON'T EXIST and will crash:
-```python
-vec.normalized()  # ERROR: 'vec2' has no attribute 'normalized'
-ti.Vector([x,y]).norm()  # ERROR: 'Vector' has no attribute 'norm'
-```
-
-✅ CORRECT - Use these patterns:
-```python
-# For ti.math.vec2 (PREFERRED in Tölvera):
-force = ti.math.vec2(0.0, 0.0)
-diff = p2.pos - p1.pos
-dist = diff.norm()  # Works for ti.math.vec2
-if dist > 0.001:  # ALWAYS check before division
-    direction = diff / dist  # Manual normalization
-
-# Alternative with ti.math functions:
-direction = ti.math.normalize(diff)  # Built-in
-length = ti.math.length(diff)  # Built-in
-```
-
-### MATH FUNCTIONS - USE TAICHI VERSIONS:
-❌ WRONG:
-```python
-import math
-angle = math.sin(t)  # ERROR in Taichi scope
-```
-
-✅ CORRECT:
-```python
-angle = ti.sin(t)
-dist = ti.sqrt(x*x + y*y)
-cos_val = ti.cos(angle)
-random_val = ti.random()  # NOT random.random()
-```
-
-1. USE CORRECT VARIABLE NAMES - particle_idx NOT i:
-❌ WRONG - Using undefined 'i' variable:
-```python
-for j in range(tv.pn):
-    if i != j:  # ERROR: NameError: name 'i' is not defined
-```
-
-✅ CORRECT - Use the particle_idx parameter:
-```python
-def expert_function(pos, vel, mass, species, particle_idx):
-    for j in range(tv.pn):
-        if particle_idx != j:  # CORRECT: use the parameter
-```
-
-IMPORTANT: The current particle's index is passed as 'particle_idx' parameter, never as 'i'!
-
-2. NEVER RETURN INSIDE CONDITIONALS - THIS IS THE #1 CAUSE OF CRASHES:
-
-❌ WRONG - THESE EXACT PATTERNS CRASH WITH "Return inside non-static if":
-```python
-# Example 1: Early return for species check - CRASHES!
-if species == 0:
-    return ti.math.vec2(0.0, 0.0)  # CRASH!
-
-# Example 2: Predator that doesn't hunt - CRASHES!
-if species != 1:  # If not a predator
-    return ti.math.vec2(0.0, 0.0)  # CRASH!
-    
-# Example 3: Multiple returns in branches - CRASHES!
-if species == 0:
-    return chase_force  # CRASH!
-else:
-    return flee_force  # CRASH!
-```
-
-✅ CORRECT - ALWAYS USE THESE PATTERNS:
-```python
-# Example 1: Predator hunt behavior - CORRECT PATTERN
-@ti.func
-def predator_hunt(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    # ALWAYS declare result variable FIRST
-    force = ti.math.vec2(0.0, 0.0)  # Default: no force
-    
-    # Check species and MODIFY force, don't return!
-    if species == 0:  # Only predators hunt
-        hunt_radius = 150.0
-        nearest_prey = -1
-        min_dist = hunt_radius
+        # Add specific instructions for expert functions using PromptLoader
+        loader = get_prompt_loader()
         
-        for j in range(tv.pn):
-            if tv.p.field[j].species == 1:  # Look for prey
-                dist = (tv.p.field[j].pos - pos).norm()
-                if dist < min_dist:
-                    min_dist = dist
-                    nearest_prey = j
+        # Load expert synthesis requirements and critical rules
+        expert_requirements = loader.load_prompt("synthesis/expert_synthesis_requirements.txt", 
+                                                 species_count=species_info.total_count - 1)
+        taichi_rules = loader.load_prompt("synthesis/taichi_critical_rules.txt")
         
-        if nearest_prey != -1:
-            direction = (tv.p.field[nearest_prey].pos - pos).normalized()
-            force = direction * 300.0  # Set force, don't return!
-    
-    # SINGLE RETURN at the END
-    return force
-
-# Example 2: Prey flee behavior - CORRECT PATTERN  
-@ti.func
-def prey_flee(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    # Declare result FIRST
-    flee_force = ti.math.vec2(0.0, 0.0)
-    
-    # Only prey flee (species 1)
-    if species == 1:
-        for j in range(tv.pn):
-            if tv.p.field[j].species == 0:  # Check for predators
-                diff = pos - tv.p.field[j].pos
-                dist = diff.norm()
-                if dist < 100.0 and dist > 0.01:
-                    flee_force = diff.normalized() * 400.0
-                    break  # Found a predator, flee from it
-    
-    # SINGLE RETURN at END
-    return flee_force
-
-# Example 3: Multi-species behavior - CORRECT PATTERN
-@ti.func  
-def species_behavior(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    # ALWAYS start with default result
-    result = ti.math.vec2(0.0, 0.0)
-    
-    # Use if/elif to set result, NEVER return inside!
-    if species == 0:
-        # Predator behavior
-        result = calculate_hunt_force(pos, vel)  # Set result
-    elif species == 1:
-        # Prey behavior  
-        result = calculate_flee_force(pos, vel)  # Set result
-    elif species == 2:
-        # Neutral behavior
-        result = calculate_wander_force(pos, vel)  # Set result
-    
-    # ONLY ONE RETURN at the very END
-    return result
-```
-
-REMEMBER: Every single return statement MUST be at the END of the function, NEVER inside if/for/while blocks!
-
-2. CRITICAL VARIABLE DECLARATION RULE - ALWAYS DECLARE BEFORE CONDITIONALS:
-❌ WRONG - Variable defined inside conditional (COMPILATION ERROR!):
-```python
-if species == 0:
-    alpha = 1.0      # ERROR: alpha not defined before if!
-    strength = 150.0 # ERROR: strength not defined before if!
-else:
-    alpha = 0.0      # ERROR: these will cause compilation failure!
-    strength = 50.0  # ERROR: variables must exist before conditionals!
-# Using variables here will CRASH
-color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # CRASH: alpha not defined
-force = direction * strength  # CRASH: strength not defined
-```
-
-✅ CORRECT - ALWAYS declare variables with defaults FIRST:
-```python
-# ALWAYS declare ALL variables with default values BEFORE any conditionals
-alpha = 0.0      # Default value declared FIRST
-strength = 50.0  # Default value declared FIRST
-visibility = 1.0 # Default value declared FIRST
-
-# Now you can modify them in conditionals
-if species == 0:
-    alpha = 1.0       # Now we can modify existing variable
-    strength = 150.0  # Now we can modify existing variable
-    visibility = 0.0  # Now we can modify existing variable
-
-# Safe to use - variables are always defined
-color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # OK: alpha always defined
-force = direction * strength  # OK: strength always defined
-```
-
-3. DEFINE ALL VARIABLES BEFORE USE:
-❌ NEVER use undefined variables like:
-if distance < undefined_radius:  # ERROR: undefined_radius not defined
-
-✅ ALWAYS define constants at the start:
-detection_radius = 100.0  # Define first
-if distance < detection_radius:  # Now safe to use
-
-3. USE ONLY AVAILABLE RESOURCES:
-- Only use helper functions that are listed in AVAILABLE HELPER FUNCTIONS
-- Only use states that are listed in available_states
-- Define all constants and parameters locally in your function"""
+        system_prompt += f"\n\n{expert_requirements}\n\n{taichi_rules}"
         
         # Add specific expert name requirement if provided
         if expert_name:
@@ -957,6 +565,13 @@ The following states are available and MUST be used in your implementation:
             
             system_prompt += "\n\nYour implementation MUST use these states to implement the requested behavior."
         
+        # Log the assembled system prompt
+        logger.info(f"[SYNTHESIZER] Expert Synthesis System Prompt assembled: {len(system_prompt)} chars")
+        logger.debug(f"[SYNTHESIZER] System prompt preview (first 500 chars): {system_prompt[:500]}")
+        if logger.isEnabledFor(logging.DEBUG):
+            # In debug mode, log the full prompt
+            logger.debug(f"[SYNTHESIZER] Full system prompt:\n{system_prompt}")
+        
         # Create agent for this synthesis
         agent = Agent(
             self.model,
@@ -993,6 +608,10 @@ The following states are available and MUST be used in your implementation:
             )
             
             try:
+                # Log the user prompt being sent
+                logger.info(f"[SYNTHESIZER] Running expert synthesis with user prompt: {len(user_prompt)} chars")
+                logger.debug(f"[SYNTHESIZER] User prompt: {user_prompt}")
+                
                 # Time the API call
                 start_time = time.time()
                 result = await agent.run(user_prompt)

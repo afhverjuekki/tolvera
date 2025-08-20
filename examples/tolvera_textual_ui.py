@@ -1132,6 +1132,7 @@ class CreativeLoadingWidget(Widget):
         self.animation_frame = 0
         self.animation_timer: Optional[Timer] = None
         self.static_message: Optional[str] = None
+        self.color_mode: str = "default"  # Can be "default", "refinement", or "repair"
         
         # Different animation sequences for variety
         self.animations = [
@@ -1206,22 +1207,39 @@ class CreativeLoadingWidget(Widget):
             spinner_char = current_anim[self.animation_frame]
             message = self.messages[self.current_message]
             
+            # Choose colors based on mode
+            if self.color_mode == "refinement":
+                # Purple theme for refinement (matching the chat panel color)
+                spinner_color = "#7209B7"
+                message_color = "#D4ADFC"
+                static_color = "#9B59B6"
+            elif self.color_mode == "repair":
+                # Orange/amber theme for repair (warning/fix theme)
+                spinner_color = "#FF6B35"
+                message_color = "#FFB570"
+                static_color = "#FF8C42"
+            else:
+                # Default cyan theme for generation
+                spinner_color = "#00F5FF"
+                message_color = "#00D9FF"
+                static_color = "#00F5FF"
+            
             # Update spinner with color - single horizontal line
             spinner_widget = self.query_one("#loading-spinner", Static)
             # Create a horizontal pattern with the spinner character
             horizontal_spinner = f"  {spinner_char}  {spinner_char}  {spinner_char}  {spinner_char}  {spinner_char}  "
-            spinner_widget.update(f"[bold #00F5FF]{horizontal_spinner}[/]")
+            spinner_widget.update(f"[bold {spinner_color}]{horizontal_spinner}[/]")
             
             # Update static message if set
             static_widget = self.query_one("#loading-static-message", Static)
             if self.static_message:
-                static_widget.update(f"[#00F5FF]{self.static_message}[/]")
+                static_widget.update(f"[{static_color}]{self.static_message}[/]")
             else:
                 static_widget.update("")
             
             # Always update creative message for animation
             creative_widget = self.query_one("#loading-creative-message", Static)
-            creative_widget.update(f"[#00D9FF]{message}[/]")
+            creative_widget.update(f"[{message_color}]{message}[/]")
             
         except Exception:
             # Fallback if queries fail
@@ -1850,8 +1868,13 @@ class TolveraTextualUI(App):
             # Log not available yet (during initialization)
             pass
     
-    def show_loading(self, message: str = "Processing..."):
-        """Show the loading overlay with custom message."""
+    def show_loading(self, message: str = "Processing...", color_mode: str = "default"):
+        """Show the loading overlay with custom message and color theme.
+        
+        Args:
+            message: The message to display
+            color_mode: Color theme - "default" (cyan), "refinement" (purple), or "repair" (orange)
+        """
         try:
             # Show overlay
             loading = self.query_one("#loading-overlay", Container)
@@ -1859,8 +1882,9 @@ class TolveraTextualUI(App):
             
             # Start the animation and set the static message
             creative_widget = self.query_one("CreativeLoadingWidget")
-            # Set a static message for this loading session
+            # Set a static message and color mode for this loading session
             creative_widget.static_message = message
+            creative_widget.color_mode = color_mode
             creative_widget.start_animation()
         except Exception:
             pass
@@ -1871,6 +1895,7 @@ class TolveraTextualUI(App):
             # Stop animation first
             creative_widget = self.query_one("CreativeLoadingWidget")
             creative_widget.stop_animation()
+            creative_widget.color_mode = "default"  # Reset color mode
             
             # Hide overlay
             loading = self.query_one("#loading-overlay", Container)
@@ -2079,12 +2104,13 @@ class TolveraTextualUI(App):
             result = await self.behavior_agent.add_behavior(description, weight=1.0)
             self.log_message(f"🐠 Behaviors evolved: {result['experts_added']} expert organisms")
             
-            # Generate sketch
-            _, sketch_path = self.behavior_agent.generate_sketch(
-                description="Generated via Textual UI",
+            # Generate sketch using async version to enable architectural refinement
+            _, sketch_path = await self.behavior_agent.generate_sketch_async(
+                description=description,
                 filename="textual_sketch",
                 use_timestamp=True,
-                validate=False
+                validate=False,
+                auto_fix=True
             )
             
             self.current_sketch_path = sketch_path
@@ -2294,6 +2320,9 @@ class TolveraTextualUI(App):
     async def apply_refinement_worker(self, request: str):
         """Apply refinement to the current sketch asynchronously."""
         try:
+            # Show loading indicator with purple theme for refinement
+            self.show_loading("Refining sketch...", color_mode="refinement")
+            
             self.log_message(f"🧬 Evolving behaviors: {request}")
             
             # Get current code editor
@@ -2358,6 +2387,9 @@ class TolveraTextualUI(App):
                     with open(self.current_sketch_path, 'w') as f:
                         f.write(result['refined_code'])
                 
+                # Accept the refinement to set it as the new baseline for stateful diffing
+                code_editor.accept_refinement()
+                
                 # Reset error state and disable repair button after successful refinement
                 self.has_execution_error = False
                 self.last_error_logs = ""
@@ -2373,6 +2405,8 @@ class TolveraTextualUI(App):
         except Exception as e:
             self.log_message(f"❌ Refinement error: {e}")
         finally:
+            # Hide loading indicator
+            self.hide_loading()
             # Schedule focus restoration on main thread
             self.call_later(self.restore_focus_after_refinement)
     
@@ -2465,6 +2499,10 @@ class TolveraTextualUI(App):
         self.current_sketch_code = ""
         self.chat_history = []
         
+        # Clear SketchRefiner conversation history
+        if self.sketch_refiner:
+            self.sketch_refiner.clear_conversation_history()
+        
         self.log_message("🌊 Digital ocean cleared")
     
     @on(Button.Pressed, "#diff-btn")
@@ -2553,6 +2591,9 @@ class TolveraTextualUI(App):
     async def apply_repair_worker(self):
         """Apply automatic repair to the current sketch based on error logs."""
         try:
+            # Show loading indicator with orange theme for repair
+            self.show_loading("Repairing code...", color_mode="repair")
+            
             # Use trace context manager for repair operation
             if hasattr(self, 'collector') and self.collector and self.collector.enabled:
                 with self.collector.trace_node(
@@ -2570,6 +2611,8 @@ class TolveraTextualUI(App):
         except Exception as e:
             self.log_message(f"❌ Repair error: {e}")
         finally:
+            # Hide loading indicator
+            self.hide_loading()
             # Schedule focus restoration on main thread
             self.call_later(self.restore_focus_after_repair)
     
@@ -2633,6 +2676,9 @@ class TolveraTextualUI(App):
                 if self.current_sketch_path:
                     with open(self.current_sketch_path, 'w') as f:
                         f.write(result['refined_code'])
+                
+                # Accept the repair to set it as the new baseline for stateful diffing
+                code_editor.accept_refinement()
                 
                 # Complete trace with success
                 if repair_trace:

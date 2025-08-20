@@ -522,7 +522,7 @@ class BehaviorRequirementsAnalyzer:
     
     def _extract_decomposed_requirements(self, decomposed_behavior: Any, requirements: BehaviorRequirements) -> None:
         """Extract requirements from decomposed behavior."""
-        if hasattr(decomposed_behavior, 'suggested_states'):
+        if hasattr(decomposed_behavior, 'suggested_states') and decomposed_behavior.suggested_states is not None:
             for state_tuple in decomposed_behavior.suggested_states:
                 # Handle new 5-tuple format: (name, category, type, min, max)
                 if len(state_tuple) >= 5:

@@ -1,0 +1,7 @@
+@tv.render
+def render():
+    """Simple render loop."""
+    apply_all_experts()  # Calculate forces and update positions
+    tv.p()  # Handle boundaries and speed limits
+    tv.px.particles(tv.p, tv.s.species())
+    return tv.px

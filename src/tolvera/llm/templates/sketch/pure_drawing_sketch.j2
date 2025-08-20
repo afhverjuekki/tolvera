@@ -1,0 +1,35 @@
+"""
+Auto-generated Tölvera pure drawing sketch: {{ description }}
+Generated: {{ timestamp }}
+"""
+
+import taichi as ti
+from tolvera import Tolvera, run
+
+def main(**kwargs):
+    """Main function for pure drawing sketch."""
+    # === Configuration ===
+    # Pure drawing mode - minimal setup
+    kwargs['width'] = kwargs.get('width', 1920)
+    kwargs['height'] = kwargs.get('height', 1080)
+    kwargs['pn'] = 1  # Minimal particles (not used)
+    kwargs['sn'] = 1  # Minimal species (not used)
+    
+    # Create Tölvera instance
+    tv = Tolvera(**kwargs)
+    
+    # === Drawing Functions ===
+{{ drawing_code | indent(4, True) }}
+    
+    @tv.render
+    def _():
+        # Clear screen
+        tv.px.clear()
+        
+        # Execute drawing
+        draw()
+        
+        return tv.px
+
+if __name__ == "__main__":
+    run(main)

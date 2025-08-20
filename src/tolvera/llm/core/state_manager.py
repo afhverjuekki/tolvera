@@ -1,5 +1,7 @@
 import logging
 from typing import Dict, List, Any, Optional, Tuple
+from jinja2 import Environment, FileSystemLoader
+import os
 import taichi as ti
 from .models import StateDefinition
 
@@ -28,6 +30,10 @@ class StateManager:
             'particle': {},
             'species': {}
         }
+        
+        # Set up Jinja2 environment
+        templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
+        self.env = Environment(loader=FileSystemLoader(templates_dir))
         
         logger.info(f"Initialized StateManager for Tölvera with {self.tv.pn} particles")
     

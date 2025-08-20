@@ -1,0 +1,94 @@
+@ti.kernel
+def apply_all_experts():
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            pos = tv.p.field[i].pos
+            vel = tv.p.field[i].vel
+            mass = tv.p.field[i].mass
+            species = tv.p.field[i].species
+
+            # Initialize total force
+            total_force = ti.math.vec2(0.0, 0.0)
+            
+            {% if single_expert_names or has_species_specific %}
+            # Single-particle behaviors
+            {% if has_species_specific %}
+            {% for species_id, experts in species_expert_map.items() %}
+            {% if experts %}
+            {% set species_name = species_config.species_names.get(species_id, 'species_' + species_id|string) if species_config and species_config.species_names else 'species_' + species_id|string %}
+            {% if species_id == 2 and 'food' in species_name.lower() %}
+            if species == {{ species_id }}:  # {{ species_name }} (stationary)
+                # Food particles don't move
+                total_force = ti.math.vec2(0.0, 0.0)
+            {% else %}
+            if species == {{ species_id }}:  # {{ species_name }}
+                {% for expert_name in experts %}
+                {% set weight = expert_weights.get(expert_name, 1.0) %}
+                total_force += {{ expert_name }}(pos, vel, mass, species, i) * {{ weight }}
+                {% endfor %}
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+            
+            # Behaviors that apply to all species
+            {% for expert_name in all_species_experts %}
+            {% set weight = expert_weights.get(expert_name, 1.0) %}
+            total_force += {{ expert_name }}(pos, vel, mass, species, i) * {{ weight }}
+            {% endfor %}
+            {% else %}
+            {% for expert_name in single_expert_names %}
+            {% set weight = expert_weights.get(expert_name, 1.0) %}
+            total_force += {{ expert_name }}(pos, vel, mass, species, i) * {{ weight }}
+            {% endfor %}
+            {% endif %}
+            {% endif %}
+            
+            {% if interaction_expert_names %}
+            # Apply interaction experts
+            for j in range(tv.pn):
+                if i != j and tv.p.field[j].active > 0:
+                    species_j = tv.p.field[j].species
+                    
+                    {% for expert_name in interaction_expert_names %}
+                    {% set weight = expert_weights.get(expert_name, 1.0) %}
+                    {% if species_conditions and expert_name in species_conditions %}
+                    {% set species_list = species_conditions[expert_name] %}
+                    {% if species_list %}
+                    # {{ expert_name }} applies to specific species
+                    {% set condition_parts = [] %}
+                    {% for sid in species_list %}
+                    {% set _ = condition_parts.append('species == ' + sid|string) %}
+                    {% endfor %}
+                    if {{ condition_parts | join(' or ') }}:
+                        total_force += {{ expert_name }}(tv.p.field[i], tv.p.field[j]) * {{ weight }}
+                    {% else %}
+                    total_force += {{ expert_name }}(tv.p.field[i], tv.p.field[j]) * {{ weight }}
+                    {% endif %}
+                    {% elif species_config and species_config.interaction_pairs %}
+                    {% set conditions = [] %}
+                    {% for s1, s2 in species_config.interaction_pairs %}
+                    {% set _ = conditions.append('(species == ' + s1|string + ' and species_j == ' + s2|string + ')') %}
+                    {% if s1 != s2 %}
+                    {% set _ = conditions.append('(species == ' + s2|string + ' and species_j == ' + s1|string + ')') %}
+                    {% endif %}
+                    {% endfor %}
+                    {% if conditions %}
+                    if {{ conditions | join(' or ') }}:
+                        total_force += {{ expert_name }}(tv.p.field[i], tv.p.field[j]) * {{ weight }}
+                    {% else %}
+                    total_force += {{ expert_name }}(tv.p.field[i], tv.p.field[j]) * {{ weight }}
+                    {% endif %}
+                    {% else %}
+                    total_force += {{ expert_name }}(tv.p.field[i], tv.p.field[j]) * {{ weight }}
+                    {% endif %}
+                    {% endfor %}
+            {% endif %}
+
+            # Apply force (F = ma, so a = F/m)
+            dt = 0.016  # 60 FPS timestep
+            acceleration = total_force / mass if mass > 0 else total_force
+            tv.p.field[i].vel += acceleration * dt
+            tv.p.field[i].vel *= 0.98  # Small damping for stability
+
+            # Update position from velocity (CRITICAL for movement)
+            tv.p.field[i].pos += tv.p.field[i].vel * tv.p.field[i].speed * dt

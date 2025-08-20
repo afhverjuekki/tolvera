@@ -1,0 +1,55 @@
+# === State Initialization ===
+{% if global_states %}
+# Global states
+if 'llm_global' not in tv.s:
+    global_states = {
+        {% for name, state in global_states.items() %}
+        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
+        {% endfor %}
+    }
+    tv.s.set('llm_global', {
+        'state': global_states,
+        'shape': 1,
+        'osc': ('get', 'set'),
+        'randomise': {{ global_randomise | lower }}
+    })
+{% endif %}
+
+{% if particle_states %}
+# Particle states
+if 'llm_particle' not in tv.s:
+    particle_states = {
+        {% for name, state in particle_states.items() %}
+        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
+        {% endfor %}
+    }
+    tv.s.set('llm_particle', {
+        'state': particle_states,
+        'shape': tv.pn,
+        'osc': ('get',),
+        'randomise': {{ particle_randomise | lower }}
+    })
+{% endif %}
+
+{% if species_states %}
+# Species states
+if 'llm_species' not in tv.s:
+    species_states = {
+        {% for name, state in species_states.items() %}
+        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
+        {% endfor %}
+    }
+    tv.s.set('llm_species', {
+        'state': species_states,
+        'shape': tv.sn,
+        'osc': ('get', 'set'),
+        'randomise': {{ species_randomise | lower }}
+    })
+{% endif %}
+
+{% if init_values %}
+# Initialize state values
+{% for init_code in init_values %}
+{{ init_code }}
+{% endfor %}
+{% endif %}

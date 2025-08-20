@@ -138,6 +138,7 @@ class ColorResolver:
     async def _resolve_with_llm(self, color_name: str) -> List[float]:
         """Use LLM to resolve complex color names to RGBA."""
         from pydantic_ai import Agent
+        from .prompt_loader import get_prompt_loader
         from ..debug.tracing import get_collector, LLMCallData
         from .model_factory import ModelFactory
         import os
@@ -166,22 +167,9 @@ class ColorResolver:
                 logger.warning(f"No LLM model available: {e}. Using fallback for '{color_name}'")
                 return self.COMMON_COLORS.get(color_name.lower(), [0.7, 0.7, 0.7, 1.0])
         
-        system_prompt = """You are a color expert. Convert color names to RGBA values.
-            
-            Rules:
-            - Output red, green, blue as floats from 0.0 to 1.0
-            - Alpha is always 1.0 unless transparency is mentioned
-            - Be accurate with color names (e.g., 'lime green' is bright green with yellow tint)
-            - Consider modifiers like 'light', 'dark', 'bright', 'pale', 'neon'
-            
-            Examples:
-            - "red" -> r=1.0, g=0.2, b=0.2
-            - "lime green" -> r=0.5, g=1.0, b=0.2
-            - "aqua" -> r=0.0, g=1.0, b=1.0
-            - "crimson" -> r=0.86, g=0.08, b=0.24
-            - "coral" -> r=1.0, g=0.5, b=0.31
-            - "turquoise" -> r=0.25, g=0.88, b=0.82
-            """
+        # Load color resolution prompt using PromptLoader
+        loader = get_prompt_loader()
+        system_prompt = loader.load_prompt("utilities/color_resolution.txt")
         
         agent = Agent(
             model,

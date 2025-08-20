@@ -1,0 +1,86 @@
+## EXPERT FUNCTION REQUIREMENTS
+Generate a complete Taichi expert function.
+Force experts: (pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2
+Interaction experts: (p1: ti.template(), p2: ti.template()) -> ti.math.vec2
+Drawing/Visual experts: () # NO PARAMETERS, NO RETURN TYPE - pure drawing function
+
+Species IDs range from 0 to {species_count}.
+
+## VISUAL/DRAWING EXPERT SYNTHESIS
+For pure drawing behaviors (e.g., "draw a red rectangle"):
+1. Generate a @ti.func expert that performs the drawing
+2. Use tv.px drawing operations (rect, circle, line, etc.)
+3. DO NOT return anything - void function, no return statement
+4. Drawing operations should use screen coordinates
+5. NO PARAMETERS - drawing functions take no arguments
+
+Example visual expert WITH temporal state:
+@ti.func
+def draw_rectangle():
+    # CRITICAL: Time-based animation states are now in llm_global!
+    # For oscillating/blinking effects, check global states
+    phase = tv.s.llm_global.field[0].phase  # Access animation state from global
+    
+    # Draw a red rectangle with oscillating opacity
+    x = tv.x // 2 - 100
+    y = tv.y // 2 - 50
+    width = 200
+    height = 100
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
+    tv.px.rect(x, y, width, height, color)
+    # No return statement - this is a void function
+
+Example visual expert WITHOUT temporal state (fallback to frame counter):
+@ti.func
+def draw_rectangle():
+    # No temporal states available, use frame counter
+    frame = tv.ctx.i[None]
+    phase = (frame % 150) / 150.0  # 2.5 second cycle at 60fps
+    
+    # Draw with oscillating opacity
+    x = tv.x // 2 - 100
+    y = tv.y // 2 - 50
+    width = 200
+    height = 100
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
+    tv.px.rect(x, y, width, height, color)
+
+## HELPER FUNCTION SYNTHESIS
+If your expert needs complex operations, you SHOULD generate helper functions.
+RULES FOR HELPERS:
+1. Generate helpers for operations like finding nearest entities, computing distances, etc.
+2. ANY HELPER YOU GENERATE MUST BE CALLED BY YOUR EXPERT - no unused helpers!
+3. Helpers should be @ti.func functions that can be called from the expert
+4. Include helpers in the 'helper_functions' field of your response
+5. Expert code MUST call the helpers it generates
+
+COMMON HELPERS TO GENERATE:
+- For food/resource behaviors: generate consume_food helper
+- For toroidal worlds: generate wrap_distance helper  
+- For wandering: generate random_wander helper
+- For finding targets: generate find_nearest_target helper
+
+Example helpers for food consumption:
+helper_functions: [
+    {{
+        "name": "consume_food",
+        "code": "@ti.func\ndef consume_food(particle_idx: ti.i32, consumption_radius: ti.f32) -> ti.i32:\n    '''Check for food particles to consume'''\n    consumed = 0\n    my_pos = tv.p.field[particle_idx].pos\n    for j in range(tv.pn):\n        if tv.p.field[j].species == 2 and tv.p.field[j].active > 0:  # Food is species 2\n            dist = (tv.p.field[j].pos - my_pos).norm()\n            if dist < consumption_radius:\n                tv.p.field[j].active = 0.0  # Consume it\n                consumed = 1\n                break\n    return consumed"
+    }},
+    {{
+        "name": "wrap_distance", 
+        "code": "@ti.func\ndef wrap_distance(p1: ti.math.vec2, p2: ti.math.vec2) -> ti.math.vec2:\n    '''Calculate shortest vector in toroidal world'''\n    diff = p2 - p1\n    if ti.abs(diff.x) > tv.x * 0.5:\n        if diff.x > 0:\n            diff.x -= tv.x\n        else:\n            diff.x += tv.x\n    if ti.abs(diff.y) > tv.y * 0.5:\n        if diff.y > 0:\n            diff.y -= tv.y\n        else:\n            diff.y += tv.y\n    return diff"
+    }}
+]
+
+Then in expert code:
+# Check for food consumption
+if species == 0 or species == 1:  # Consumers
+    consumed = consume_food(particle_idx, 5.0)
+    
+# Use wrapped distance for toroidal topology
+diff = wrap_distance(pos, target_pos)
+dist = diff.norm()
+if dist > 0.001:
+    force = (diff / dist) * 250.0

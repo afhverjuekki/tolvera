@@ -1,0 +1,6 @@
+@tv.render
+def render():
+    """Pure drawing render loop."""
+    tv.px.clear()  # Clear screen
+    {{ drawing_function_name }}()  # Execute drawing
+    return tv.px

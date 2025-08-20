@@ -68,7 +68,7 @@ class BehaviorAgent:
         
         from .prompts import ContextAwarePromptBuilder
         prompt_builder = ContextAwarePromptBuilder()
-        self.decomposer = BehaviorDecomposer(model_name, prompt_builder, api_key)
+        self.decomposer = BehaviorDecomposer(model_name, self.provider, prompt_builder, api_key)
         
         self.kernel_generator = IntegrationKernelGenerator()
         self.sketch_generator = SketchGenerator()
@@ -220,13 +220,21 @@ class BehaviorAgent:
                         
                         # Resolve color descriptions to RGBA values
                         resolved_colors = {}
-                        if species_info.species_color_descriptions:
+                        if species_info.species_color_descriptions and species_info.species_color_descriptions is not None:
                             # Pass the synthesizer's model to ColorResolver for LLM color resolution
                             color_resolver = ColorResolver(llm_client=self.synthesizer.model)
-                            # Now it's a list of SpeciesColor objects
+                            # Now it's a list of SpeciesColorMapping objects or dicts
                             for color_mapping in species_info.species_color_descriptions:
-                                species_id = color_mapping.species_id
-                                color_desc = color_mapping.color_description
+                                # Handle both object and dict formats
+                                if hasattr(color_mapping, 'species_id'):
+                                    species_id = color_mapping.species_id
+                                    color_desc = color_mapping.color_description if hasattr(color_mapping, 'color_description') else 'gray'
+                                elif isinstance(color_mapping, dict):
+                                    species_id = color_mapping.get('species_id', 0)
+                                    color_desc = color_mapping.get('color_description', 'gray')
+                                else:
+                                    continue  # Skip invalid items
+                                    
                                 try:
                                     # Use async color resolution if available
                                     resolved_colors[species_id] = await color_resolver.resolve_color_name(color_desc)
@@ -235,10 +243,10 @@ class BehaviorAgent:
                                     logger.warning(f"Failed to resolve color '{color_desc}': {e}")
                                     # Use fallback colors
                                     resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
-                        elif species_info.species_colors:
+                        elif hasattr(species_info, 'species_colors') and species_info.species_colors:
                             # Use directly provided RGBA colors if available
                             for color_mapping in species_info.species_colors:
-                                resolved_colors[color_mapping.species_id] = color_mapping.rgba_values
+                                resolved_colors[color_mapping.get('species_id', 0)] = color_mapping.get('rgba_values', [0.7, 0.7, 0.7, 1.0])
                         else:
                             # Generate default colors
                             color_resolver = ColorResolver()
@@ -246,15 +254,24 @@ class BehaviorAgent:
                         
                         # Convert species names from list to dict
                         species_names_dict = {}
-                        if species_info.species_names:
+                        if species_info.species_names and species_info.species_names is not None:
                             for item in species_info.species_names:
-                                species_names_dict[item.species_id] = item.name
+                                # Handle both object and dict formats
+                                if hasattr(item, 'species_id'):
+                                    species_id = item.species_id
+                                    name = item.name if hasattr(item, 'name') else 'unnamed'
+                                elif isinstance(item, dict):
+                                    species_id = item.get('species_id', 0)
+                                    name = item.get('name', 'unnamed')
+                                else:
+                                    continue  # Skip invalid items
+                                species_names_dict[species_id] = name
 
                         # Convert to SpeciesConfiguration format
                         self.current_species_config = SpeciesConfiguration(
                             species_ids=list(range(species_info.total_count)),
                             species_names=species_names_dict,
-                            interaction_pairs=species_info.interaction_pairs or [],
+                            interaction_pairs=getattr(species_info, 'interaction_pairs', None) or [],
                             species_behaviors=None,
                             requires_all_species=False,
                             colors=resolved_colors
@@ -739,8 +756,8 @@ def {function_name}():
         
         if new.species_names:
             for item in new.species_names:
-                sid = item.species_id
-                name = item.name
+                sid = item.get('species_id', 0)
+                name = item.get('name', 'unnamed')
                 color = self._extract_color_from_name(name)
                 lookup_key = color if color else name
                 
@@ -778,8 +795,8 @@ def {function_name}():
                 if new.species_names:
                     name = ""
                     for item in new.species_names:
-                        if item.species_id == sid:
-                            name = item.name
+                        if item.get('species_id', 0) == sid:
+                            name = item.get('name', 'unnamed')
                             break
                     if name:
                         color_key = self._extract_color_from_name(name)
@@ -950,13 +967,21 @@ def {function_name}():
                         
                         # Resolve color descriptions to RGBA values
                         resolved_colors = {}
-                        if species_info.species_color_descriptions:
+                        if species_info.species_color_descriptions and species_info.species_color_descriptions is not None:
                             # Pass the synthesizer's model to ColorResolver for LLM color resolution
                             color_resolver = ColorResolver(llm_client=self.synthesizer.model)
-                            # Now it's a list of SpeciesColor objects
+                            # Now it's a list of SpeciesColorMapping objects or dicts
                             for color_mapping in species_info.species_color_descriptions:
-                                species_id = color_mapping.species_id
-                                color_desc = color_mapping.color_description
+                                # Handle both object and dict formats
+                                if hasattr(color_mapping, 'species_id'):
+                                    species_id = color_mapping.species_id
+                                    color_desc = color_mapping.color_description if hasattr(color_mapping, 'color_description') else 'gray'
+                                elif isinstance(color_mapping, dict):
+                                    species_id = color_mapping.get('species_id', 0)
+                                    color_desc = color_mapping.get('color_description', 'gray')
+                                else:
+                                    continue  # Skip invalid items
+                                    
                                 try:
                                     # Use async color resolution if available
                                     resolved_colors[species_id] = await color_resolver.resolve_color_name(color_desc)
@@ -965,10 +990,10 @@ def {function_name}():
                                     logger.warning(f"Failed to resolve color '{color_desc}': {e}")
                                     # Use fallback colors
                                     resolved_colors[species_id] = color_resolver.get_default_species_colors(1)[0]
-                        elif species_info.species_colors:
+                        elif hasattr(species_info, 'species_colors') and species_info.species_colors:
                             # Use directly provided RGBA colors if available
                             for color_mapping in species_info.species_colors:
-                                resolved_colors[color_mapping.species_id] = color_mapping.rgba_values
+                                resolved_colors[color_mapping.get('species_id', 0)] = color_mapping.get('rgba_values', [0.7, 0.7, 0.7, 1.0])
                         else:
                             # Generate default colors
                             color_resolver = ColorResolver()
@@ -976,15 +1001,24 @@ def {function_name}():
                         
                         # Convert species names from list to dict
                         species_names_dict = {}
-                        if species_info.species_names:
+                        if species_info.species_names and species_info.species_names is not None:
                             for item in species_info.species_names:
-                                species_names_dict[item.species_id] = item.name
+                                # Handle both object and dict formats
+                                if hasattr(item, 'species_id'):
+                                    species_id = item.species_id
+                                    name = item.name if hasattr(item, 'name') else 'unnamed'
+                                elif isinstance(item, dict):
+                                    species_id = item.get('species_id', 0)
+                                    name = item.get('name', 'unnamed')
+                                else:
+                                    continue  # Skip invalid items
+                                species_names_dict[species_id] = name
 
                         # Convert to SpeciesConfiguration format
                         self.current_species_config = SpeciesConfiguration(
                             species_ids=list(range(species_info.total_count)),
                             species_names=species_names_dict,
-                            interaction_pairs=species_info.interaction_pairs or [],
+                            interaction_pairs=getattr(species_info, 'interaction_pairs', None) or [],
                             species_behaviors=None,
                             requires_all_species=False,
                             colors=resolved_colors

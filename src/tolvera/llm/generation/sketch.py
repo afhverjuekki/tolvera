@@ -1,5 +1,7 @@
 import datetime
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from jinja2 import Environment, FileSystemLoader
+import os
 
 if TYPE_CHECKING:
     from ..core.models import BehaviorSynthesisResponse
@@ -9,120 +11,9 @@ class SketchGenerator:
     """Generates complete Tölvera sketch files from synthesized components."""
     
     def __init__(self):
-        self.template = '''"""
-Auto-generated Tölvera sketch: {description}
-Generated: {timestamp}
-"""
-
-import taichi as ti
-from tolvera import Tolvera, run
-import numpy as np
-
-def main(**kwargs):
-    """Main function for Tölvera sketch."""
-    # === Configuration ===
-    # CRITICAL: Set ALL kwargs BEFORE creating Tölvera instance
-    {config_code}
-    
-    # Create Tölvera instance with properly configured kwargs
-    tv = Tolvera(**kwargs)
-    
-    # === Particle Initialization ===
-{init_code}
-    
-    # === State Initialization ===
-{state_code}
-    
-    # === Environmental Fields ===
-{environmental_fields}
-    
-    # === Particle Force Experts ===
-    # These functions calculate forces acting on individual particles
-{expert_code}
-    
-    # === Integration Kernel ===
-    # Applies all particle forces and updates physics
-{kernel_code}
-    
-    # === Temporal Updates ===
-    # Legacy temporal update kernels (if any)
-{temporal_code}
-    
-    # === Utility Functions ===
-    # State updates, temporal dynamics, and helper functions that don't act on particles
-{utility_code}
-    
-    # === Utility Kernel ===
-    # Executes utility functions for state management
-{utility_kernel}
-    
-    # === Drawing Functions ===
-{drawing_code}
-    
-    # === Drawing Kernel ===
-{drawing_kernel}
-    
-    # === Respawn Functions ===
-{respawn_code}
-    
-    @tv.render
-    def _():
-        tv.px.diffuse(0.99)
-        
-        # Pre-particle drawing
-        {pre_draw_calls}
-        
-        # Apply behaviors and physics
-        {update_calls}
-        
-        # Post-particle drawing
-        {post_draw_calls}
-        
-        # Render particles
-        {render_particles_call}
-        
-        return tv.px
-
-if __name__ == "__main__":
-    run(main)
-'''
-        
-        self.pure_drawing_template = '''"""
-Auto-generated Tölvera pure drawing sketch: {description}
-Generated: {timestamp}
-"""
-
-import taichi as ti
-from tolvera import Tolvera, run
-
-def main(**kwargs):
-    """Main function for pure drawing sketch."""
-    # === Configuration ===
-    # Pure drawing mode - minimal setup
-    kwargs['width'] = kwargs.get('width', 1920)
-    kwargs['height'] = kwargs.get('height', 1080)
-    kwargs['pn'] = 1  # Minimal particles (not used)
-    kwargs['sn'] = 1  # Minimal species (not used)
-    
-    # Create Tölvera instance
-    tv = Tolvera(**kwargs)
-    
-    # === Drawing Functions ===
-{drawing_code}
-    
-    @tv.render
-    def _():
-        # Clear screen
-        tv.px.clear()
-        
-        # Execute drawing
-        draw()
-        
-        return tv.px
-
-if __name__ == "__main__":
-    run(main)
-'''
+        # Set up Jinja2 environment
+        templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
+        self.env = Environment(loader=FileSystemLoader(templates_dir))
     
     def generate(
         self,
@@ -219,24 +110,27 @@ if __name__ == "__main__":
         else:
             render_particles_call = "# No particle rendering (only visual behaviors)"
         
-        return self.template.format(
+        # Load and render template using Jinja2
+        template = self.env.get_template('sketch/main_sketch.j2')
+        
+        return template.render(
             description=description,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             config_code=config_code.strip(),
-            init_code=self._indent(init_code.strip(), 4),
-            state_code=self._indent(state_code.strip() if state_code else "# No custom states needed", 4),
-            environmental_fields=self._indent(environmental_fields if environmental_fields else "# No environmental fields", 4),
-            expert_code=self._indent("\n\n".join(experts), 4),
-            kernel_code=self._indent(kernel, 4),
-            temporal_code=self._indent(temporal_code if temporal_code else "# No temporal updates needed", 4),
-            utility_code=self._indent(utility_code if utility_code else "# No utility functions", 4),
-            utility_kernel=self._indent(utility_kernel if utility_kernel else "# No utility kernel", 4),
-            drawing_code=self._indent(drawing_code if drawing_code else "# No drawing functions", 4),
-            drawing_kernel=self._indent(drawing_kernel if drawing_kernel else "# No drawing kernel", 4),
-            respawn_code=self._indent(respawn_code if respawn_code else "# No respawn functions", 4),
-            pre_draw_calls="\n        ".join(pre_draw_calls),
-            post_draw_calls="\n        ".join(post_draw_calls),
-            update_calls="\n        ".join(update_calls),
+            init_code=init_code.strip() if init_code else "# No initialization code",
+            state_code=state_code.strip() if state_code else "# No custom states needed",
+            environmental_fields=environmental_fields if environmental_fields else "# No environmental fields",
+            expert_code="\n\n".join(experts) if experts else "# No expert functions",
+            kernel_code=kernel,
+            temporal_code=temporal_code if temporal_code else "# No temporal updates needed",
+            utility_code=utility_code if utility_code else "# No utility functions",
+            utility_kernel=utility_kernel if utility_kernel else "# No utility kernel",
+            drawing_code=drawing_code if drawing_code else "# No drawing functions",
+            drawing_kernel=drawing_kernel if drawing_kernel else "# No drawing kernel",
+            respawn_code=respawn_code if respawn_code else "# No respawn functions",
+            pre_draw_calls=pre_draw_calls,
+            post_draw_calls=post_draw_calls,
+            update_calls=update_calls,
             render_particles_call=render_particles_call
         )
     
@@ -297,7 +191,7 @@ if __name__ == "__main__":
             elif hasattr(response.species_config, 'total_count'):
                 species_count = response.species_config.total_count
         
-        # Generate proper kwargs configuration - using correct Tolvera parameter names
+        # Generate proper kwargs configuration - using correct Tölvera parameter names
         config_lines.append("# === CRITICAL: Set ALL kwargs BEFORE creating Tölvera instance ===")
         config_lines.append(f"kwargs['species'] = {species_count}  # Use detected species count")
         
@@ -445,8 +339,11 @@ if __name__ == "__main__":
         Returns:
             Complete pure drawing sketch code
         """
-        return self.pure_drawing_template.format(
+        # Load and render pure drawing template using Jinja2
+        template = self.env.get_template('sketch/pure_drawing_sketch.j2')
+        
+        return template.render(
             description=description,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            drawing_code=self._indent(drawing_code.strip(), 4)
+            drawing_code=drawing_code.strip()
         )

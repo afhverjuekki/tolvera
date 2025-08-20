@@ -1,0 +1,82 @@
+"""
+Auto-generated Tölvera sketch: {{ description }}
+Generated: {{ timestamp }}
+"""
+
+import taichi as ti
+from tolvera import Tolvera, run
+import numpy as np
+
+def main(**kwargs):
+    """Main function for Tölvera sketch."""
+    # === Configuration ===
+    # CRITICAL: Set ALL kwargs BEFORE creating Tölvera instance
+    {{ config_code }}
+    
+    # Create Tölvera instance with properly configured kwargs
+    tv = Tolvera(**kwargs)
+    
+    # === Particle Initialization ===
+{{ init_code | indent(4, True) }}
+    
+    # === State Initialization ===
+{{ state_code | indent(4, True) }}
+    
+    # === Environmental Fields ===
+{{ environmental_fields | indent(4, True) }}
+    
+    # === Particle Force Experts ===
+    # These functions calculate forces acting on individual particles
+{{ expert_code | indent(4, True) }}
+    
+    # === Integration Kernel ===
+    # Applies all particle forces and updates physics
+{{ kernel_code | indent(4, True) }}
+    
+    # === Temporal Updates ===
+    # Legacy temporal update kernels (if any)
+{{ temporal_code | indent(4, True) }}
+    
+    # === Utility Functions ===
+    # State updates, temporal dynamics, and helper functions that don't act on particles
+{{ utility_code | indent(4, True) }}
+    
+    # === Utility Kernel ===
+    # Executes utility functions for state management
+{{ utility_kernel | indent(4, True) }}
+    
+    # === Drawing Functions ===
+{{ drawing_code | indent(4, True) }}
+    
+    # === Drawing Kernel ===
+{{ drawing_kernel | indent(4, True) }}
+    
+    # === Respawn Functions ===
+{{ respawn_code | indent(4, True) }}
+    
+    @tv.render
+    def _():
+        tv.px.diffuse(0.99)
+        
+        # Pre-particle drawing
+        {% for call in pre_draw_calls -%}
+        {{ call }}
+        {% endfor %}
+        
+        # Apply behaviors and physics
+        {% for call in update_calls -%}
+        {{ call }}
+        {% endfor %}
+        
+        # Post-particle drawing
+        {% for call in post_draw_calls -%}
+        {{ call }}
+        {% endfor %}
+        
+        # Render particles
+        {{ render_particles_call }}
+        
+        return tv.px
+
+if __name__ == "__main__":
+    run(main)

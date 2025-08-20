@@ -54,6 +54,70 @@ class ContextAwarePromptBuilder:
     """Builds comprehensive prompts with relevant context for expert synthesis."""
     
     def __init__(self):
+        # Golden examples for intelligent selection
+        self.golden_examples = {
+            'interaction': {
+                'source': 'particle-life.py:120-167',
+                'description': 'Species interaction with matrix lookup and proper variable declaration',
+                'keywords': ['interaction', 'species', 'matrix', 'attract', 'repel', 'chase', 'hunt'],
+                'code': '''@ti.func
+def particle_life_interaction(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            # CRITICAL: Declare variables BEFORE conditionals
+            direction = ti.math.vec2(0.0, 0.0)
+            force_magnitude = 0.0
+            
+            diff = tv.p.field[j].pos - pos
+            dist = diff.norm()
+            
+            if dist > 0.001 and dist < interaction_radius:
+                direction = diff / dist
+                force_magnitude = attraction * (1.0 - dist / interaction_radius)
+                force += direction * force_magnitude
+    return force'''
+            },
+            'flocking': {
+                'source': 'boids.py:143-178',
+                'description': 'Flocking behavior with proper variable declaration and species filtering',
+                'keywords': ['flock', 'boid', 'separation', 'alignment', 'cohesion', 'school', 'swarm'],
+                'code': '''@ti.func
+def separation_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            diff = pos - tv.p.field[j].pos
+            dist = diff.norm()
+            
+            # PROVEN PATTERN: Declare before nested conditional
+            normalized_diff = ti.math.vec2(0.0, 0.0)
+            
+            if dist > 0.001 and dist < separation_radius:
+                normalized_diff = diff / dist
+                force += normalized_diff / dist
+                count += 1
+    
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        force = force / ti.cast(count, ti.f32)
+        result_force = (force - vel) * separation_weight
+    return result_force'''
+            },
+            'simple_force': {
+                'source': 'particle-life.py:170-174',
+                'description': 'Simple single-particle force with direct calculation',
+                'keywords': ['gravity', 'friction', 'drag', 'simple', 'basic'],
+                'code': '''@ti.func
+def friction_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    friction_coefficient = 0.5
+    force = -vel * friction_coefficient
+    return force'''
+            }
+        }
+        
         self.contexts = {
             'core_api': TOLVERA_CORE_API,
             'pixels_api': PIXELS_API,
@@ -176,9 +240,6 @@ INITIALIZATION GUIDELINES:
             contexts.add('temporal_dynamics')
             contexts.add('temporal_patterns_extended')
         
-        if any(word in desc_lower for word in ['flock', 'school', 'swarm', 'cohesion', 'alignment']):
-            contexts.add('flocking')
-            contexts.add('swarm')
         
         if any(word in desc_lower for word in ['cellular', 'automaton', 'game of life', 'conway']):
             contexts.add('cellular')
@@ -187,11 +248,26 @@ INITIALIZATION GUIDELINES:
             contexts.add('drawing')
             contexts.add('drawing_api')
         
-        if any(word in desc_lower for word in ['species', 'predator', 'prey', 'ecosystem']):
-            contexts.add('species_interactions')
-            contexts.add('ecosystem')
         
         return contexts
+    
+    def select_golden_examples(self, description: str) -> Dict[str, str]:
+        """Select the most relevant golden examples based on description keywords."""
+        desc_lower = description.lower()
+        selected = {}
+        
+        for example_name, example_data in self.golden_examples.items():
+            # Check if any keywords match
+            for keyword in example_data['keywords']:
+                if keyword in desc_lower:
+                    selected[example_name] = {
+                        'source': example_data['source'],
+                        'description': example_data['description'],
+                        'code': example_data['code']
+                    }
+                    break
+        
+        return selected
         
     def build_synthesis_prompt(
         self,
@@ -254,98 +330,130 @@ Your primary objective is to synthesize robust, efficient Taichi expert function
 ## TASK AT HAND
 You must analyze the provided behavior description and create expert functions by:
 
-1. **Behavior Classification**: Determine if this is a single-particle force, interaction between particles, temporal update, or visual effect
-2. **Species Detection**: Identify any species mentioned in the description and assign semantic roles (predator, prey, neutral)
-3. **Force Physics Analysis**: Translate the natural language into precise force calculations with appropriate magnitudes
-4. **State Requirement Analysis**: Determine if custom states are needed beyond basic particle properties
-5. **Taichi Code Generation**: Create syntactically correct @ti.func functions following all Taichi constraints
-6. **Integration Specification**: Define how the expert integrates into the particle system's force calculation loop
+1. Behavior Classification: Determine if this is a single-particle force, interaction between particles, temporal update, or visual effect
+2. Species Detection: Identify any species mentioned in the description and assign semantic roles (predator, prey, neutral)
+3. Force Physics Analysis: Translate the natural language into precise force calculations with appropriate magnitudes
+4. State Requirement Analysis: Determine if custom states are needed beyond basic particle properties
+5. Taichi Code Generation: Create syntactically correct @ti.func functions following all Taichi constraints
+6. Integration Specification: Define how the expert integrates into the particle system's force calculation loop
 
 ## KEY EXAMPLES
 
-### Example 1: Single-Particle Gravity
-**Input**: "particles fall with gravity"
-**Analysis**: Basic downward force, no species interaction, universal application
-**Output**:
-```json
-{
-    "experts": [{
-        "name": "gravity",
-        "description": "Applies downward gravitational force to all particles",
-        "is_interaction": false,
-        "weight": 1.0,
-        "computation": {
-            "force_expression": {"x": "0.0", "y": "-300.0 * mass"}
-        }
-    }],
-    "species_config": null
-}
+### Example 1: Single-Particle Force (FROM: particle-life.py:170-174)
+Input: "particles experience friction for stability"
+Analysis: Universal force applied to all particles, no interaction needed
+Working Code:
+```python
+@ti.func
+def friction_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Apply velocity-dependent friction for stability.'''
+    friction_coefficient = 0.5
+    force = -vel * friction_coefficient
+    return force
 ```
+Key Patterns: Simple force calculation, direct return, proper parameter signature
 
-### Example 2: Multi-Species Predator-Prey
-**Input**: "red sharks hunt blue fish that flee when approached"
-**Analysis**: Two species with chase/flee interaction, asymmetric forces
-**Output**:
-```json
-{
-    "experts": [{
-        "name": "predator_prey_interaction",
-        "description": "Sharks hunt fish, fish flee from sharks",
-        "is_interaction": true,
-        "weight": 1.0
-    }],
-    "species_config": {
-        "species_ids": [0, 1],
-        "species_names": {"0": "shark", "1": "fish"},
-        "interaction_pairs": [[0, 1]],
-        "colors": {
-            "0": [1.0, 0.2, 0.2, 1.0],
-            "1": [0.2, 0.4, 1.0, 1.0]
-        }
-    }
-}
+### Example 2: Multi-Species Interaction Expert (FROM: particle-life.py:120-167)
+Input: "species attract or repel each other based on interaction matrix"
+Analysis: Complex species interaction using state matrix, demonstrates proper variable declaration
+Working Code:
+```python
+@ti.func
+def particle_life_interaction(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Calculate attraction/repulsion forces based on species interaction matrix.'''
+    force = ti.math.vec2(0.0, 0.0)
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_pos = tv.p.field[j].pos
+            other_species = tv.p.field[j].species
+            
+            # Get interaction parameters from the matrix
+            attraction = tv.s.llm_species.field[species, other_species].attraction_force
+            interaction_radius = tv.s.llm_species.field[species, other_species].interaction_radius
+            
+            # Calculate distance and direction
+            diff = other_pos - pos
+            dist = diff.norm()
+            
+            # CRITICAL: Declare variables BEFORE conditionals
+            direction = ti.math.vec2(0.0, 0.0)
+            force_magnitude = 0.0
+            
+            if dist > 0.001 and dist < interaction_radius:
+                direction = diff / dist
+                # Apply attraction/repulsion with distance falloff
+                force_magnitude = attraction * (1.0 - dist / interaction_radius)
+                force += direction * force_magnitude
+    
+    return force
 ```
+Key Patterns: Proper particle_idx usage, variable declaration before conditionals, state matrix access
 
-### Example 3: Complex Behavior with States
-**Input**: "particles lose energy as they move and return home when exhausted"
-**Analysis**: Requires energy tracking and home position memory
-**Output**:
-```json
-{
-    "experts": [{
-        "name": "energy_based_movement",
-        "description": "Particles consume energy and return home when tired",
-        "is_interaction": false,
-        "weight": 1.0
-    }],
-    "states_needed": {
-        "particle": {
-            "energy": {"type": "ti.f32", "min": 0.0, "max": 100.0, "initial": 80.0},
-            "home_pos": {"type": "ti.math.vec2", "description": "Particle's home location"}
-        }
-    }
-}
+### Example 3: Flocking with Multiple Behaviors (FROM: boids.py:143-252)
+Input: "particles flock together using separation, alignment, and cohesion"
+Analysis: Multiple behavioral components working together, species filtering
+Working Code:
+```python
+@ti.func
+def separation_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Steer to avoid crowding local flockmates.'''
+    force = ti.math.vec2(0.0, 0.0)
+    separation_radius = tv.s.llm_global.field[0].separation_radius
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_pos = tv.p.field[j].pos
+            diff = pos - other_pos
+            dist = diff.norm()
+            
+            # CRITICAL: Declare normalized_diff before conditional
+            normalized_diff = ti.math.vec2(0.0, 0.0)
+            
+            if dist > 0.001 and dist < separation_radius:
+                # Repel from nearby boids
+                normalized_diff = diff / dist
+                # Weight by inverse distance (closer = stronger repulsion)
+                force += normalized_diff / dist
+                count += 1
+    
+    # Normalize and apply species weight
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        force = force / ti.cast(count, ti.f32)
+        force_norm = force.norm()
+        if force_norm > 0.001:
+            # Normalize and scale
+            force = (force / force_norm) * tv.s.llm_global.field[0].max_speed
+            # Apply steering force
+            result_force = force - vel
+            # Apply species-specific weight
+            result_force *= tv.s.llm_species.field[species].separation_weight
+    
+    return result_force
 ```
+Key Patterns: Variable declared before use, proper force normalization, state access, species-specific parameters
 
 ## SUCCESS VS. FAILURE CRITERIA
 
 ### SUCCESS CRITERIA:
-✅ **Syntactic Correctness**: All Taichi code compiles without syntax errors and follows @ti.func conventions
-✅ **Physical Realism**: Force magnitudes produce believable motion (300-800 for gravity, 200-600 for chase/flee)
-✅ **Edge Case Handling**: Properly handles zero distances, out-of-bounds particles, and invalid species IDs
-✅ **Species Accuracy**: Correctly identifies and implements species-specific behaviors from natural language
-✅ **Performance Optimization**: Uses efficient algorithms suitable for GPU parallel execution
-✅ **State Minimization**: Only creates necessary custom states, leverages existing particle properties
-✅ **Integration Compatibility**: Functions work seamlessly with Tölvera's particle update loop
+✅ Syntactic Correctness: All Taichi code compiles without syntax errors and follows @ti.func conventions
+✅ Physical Realism: Force magnitudes produce believable motion (300-800 for gravity, 200-600 for chase/flee)
+✅ Edge Case Handling: Properly handles zero distances, out-of-bounds particles, and invalid species IDs
+✅ Species Accuracy: Correctly identifies and implements species-specific behaviors from natural language
+✅ Performance Optimization: Uses efficient algorithms suitable for GPU parallel execution
+✅ State Minimization: Only creates necessary custom states, leverages existing particle properties
+✅ Integration Compatibility: Functions work seamlessly with Tölvera's particle update loop
 
 ### FAILURE CRITERIA:
-❌ **Return Statement Errors**: Any return statements inside conditional blocks (causes "Return inside non-static if")
-❌ **Variable Declaration Issues**: Variables declared inside conditionals without default values outside them
-❌ **Wrong Vector Types**: Mixing ti.Vector with ti.math.vec2 or using incorrect method calls
-❌ **Mathematical Errors**: Division by zero, incorrect normalization, or NaN-producing calculations
-❌ **Species Misidentification**: Incorrectly assigning species roles or missing multi-species interactions
-❌ **State Overuse**: Creating unnecessary custom states for properties already available on particles
-❌ **Force Imbalance**: Using inappropriate force magnitudes that produce unrealistic motion""")
+❌ Return Statement Errors: Any return statements inside conditional blocks (causes "Return inside non-static if")
+❌ Variable Declaration Issues: Variables declared inside conditionals without default values outside them
+❌ Wrong Vector Types: Mixing ti.Vector with ti.math.vec2 or using incorrect method calls
+❌ Mathematical Errors: Division by zero, incorrect normalization, or NaN-producing calculations
+❌ Species Misidentification: Incorrectly assigning species roles or missing multi-species interactions
+❌ State Overuse: Creating unnecessary custom states for properties already available on particles
+❌ Force Imbalance: Using inappropriate force magnitudes that produce unrealistic motion""")
         
         # System instruction
         if constrained:
@@ -385,23 +493,23 @@ You must analyze the provided behavior description and create expert functions b
 
 ## FORCE BALANCING GUIDELINES:
 Force magnitudes should create emergent behaviors without being overpowering:
-- **Gravity**: Use strength 300-800, apply as negative Y: ti.math.vec2(0.0, -gravity_strength * mass)
-- **Chase/Hunt**: 400-600 (strong but catchable)
-- **Flee/Escape**: 300-500 (slightly weaker than chase for drama)
-- **Flocking alignment**: 50-200 (gentle influences)
-- **Cohesion**: 100-300 (group together)
-- **Separation**: 100-300 (avoid collisions)
-- **Random movement**: 20-100 (idle behavior, exploration)
-- **Center attraction**: 200-400 (medium strength)
-- **Orbital motion**: 300-500 (tangential force)
-- **Repulsion**: 200-2000 (inverse with distance)
+- Gravity: Use strength 300-800, apply as negative Y: ti.math.vec2(0.0, -gravity_strength * mass)
+- Chase/Hunt: 400-600 (strong but catchable)
+- Flee/Escape: 300-500 (slightly weaker than chase for drama)
+- Flocking alignment: 50-200 (gentle influences)
+- Cohesion: 100-300 (group together)
+- Separation: 100-300 (avoid collisions)
+- Random movement: 20-100 (idle behavior, exploration)
+- Center attraction: 200-400 (medium strength)
+- Orbital motion: 300-500 (tangential force)
+- Repulsion: 200-2000 (inverse with distance)
 
 Detection ranges for interactions:
-- **Predator vision**: 200-300 units
-- **Prey awareness**: 250-350 units (larger for survival)
-- **Flocking neighbors**: 50-100 units
-- **Separation bubble**: 20-40 units
-- **Long-range attraction**: 300-500 units
+- Predator vision: 200-300 units
+- Prey awareness: 250-350 units (larger for survival)
+- Flocking neighbors: 50-100 units
+- Separation bubble: 20-40 units
+- Long-range attraction: 300-500 units
 
 ## CRITICAL TAICHI SYNTAX (MUST FOLLOW TO AVOID CRASHES):
 
@@ -429,7 +537,7 @@ length = ti.math.length(diff)
 
 # For ti.Vector (older style):
 vec = ti.Vector([x, y])
-dist = ti.sqrt(vec[0]**2 + vec[1]**2)  # Manual magnitude
+dist = ti.sqrt(vec[0]2 + vec[1]2)  # Manual magnitude
 ```
 
 ### TAICHI VARIABLE DECLARATION (CRITICAL - CAUSES "NAME NOT DEFINED" ERRORS):
@@ -573,39 +681,58 @@ def chase_behavior(...) -> ti.math.vec2:
         return ti.math.vec2(0.0, 0.0)  # CRASH!
 ```
 
-### ✅ CORRECT PATTERNS - USE THESE:
-```python
-# CORRECT EXAMPLE 1: Predator that only hunts certain species
+### ✅ CORRECT PATTERNS FROM VERIFIED EXEMPLARS:
+
+# GOLDEN PATTERN 1: Variable Declaration (FROM: particle-life.py:139-141)
 @ti.func
-def predator_hunt(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
-    # STEP 1: Always declare result variable FIRST
-    force = ti.math.vec2(0.0, 0.0)  # Default: no hunting
+def particle_life_interaction(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
     
-    # STEP 2: Modify result in conditionals (NO RETURN!)
-    if species == 0:  # Only species 0 are predators
-        hunt_radius = 150.0
-        nearest_prey = -1
-        min_dist = hunt_radius
-        
-        # Find nearest prey (NOTE: no need to check j != particle_idx here since different species)
-        for j in range(tv.pn):
-            if tv.p.field[j].species == 1 and tv.p.field[j].active > 0:
-                dist = (tv.p.field[j].pos - pos).norm()
-                if dist < min_dist:
-                    min_dist = dist
-                    nearest_prey = j
-        
-        # Apply force if prey found
-        if nearest_prey >= 0:
-            prey_pos = tv.p.field[nearest_prey].pos
-            to_prey = prey_pos - pos
-            dist_to_prey = to_prey.norm()
-            if dist_to_prey > 0.001:
-                direction = to_prey / dist_to_prey  # Manual normalize
-                force = direction * 350.0  # SET force, don't return!
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            # CRITICAL: Declare variables BEFORE conditionals - this prevents crashes
+            direction = ti.math.vec2(0.0, 0.0)  # ← MUST declare here
+            force_magnitude = 0.0               # ← MUST declare here
+            
+            diff = tv.p.field[j].pos - pos
+            dist = diff.norm()
+            
+            if dist > 0.001 and dist < interaction_radius:
+                direction = diff / dist  # ← Now safe to assign
+                force_magnitude = attraction * (1.0 - dist / interaction_radius)
+                force += direction * force_magnitude
     
-    # STEP 3: SINGLE return at END
-    return force
+    return force  # Single return only
+
+# GOLDEN PATTERN 2: Complex Conditional Logic (FROM: boids.py:155-156, 345-356) 
+@ti.func
+def separation_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    force = ti.math.vec2(0.0, 0.0)
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            diff = pos - tv.p.field[j].pos
+            dist = diff.norm()
+            
+            # PROVEN PATTERN: Declare before nested conditional
+            normalized_diff = ti.math.vec2(0.0, 0.0)  # ← MUST be here
+            
+            if dist > 0.001 and dist < separation_radius:
+                normalized_diff = diff / dist  # Safe to assign after declaration
+                force += normalized_diff / dist
+                count += 1
+    
+    # PROVEN PATTERN: Multiple variables for final calculation
+    result_force = ti.math.vec2(0.0, 0.0)  # Default result
+    if count > 0:
+        force = force / ti.cast(count, ti.f32)
+        force_norm = force.norm()
+        if force_norm > 0.001:
+            force = (force / force_norm) * max_speed
+            result_force = force - vel  # SET result, don't return
+    
+    return result_force  # Single return pattern
 
 # CORRECT EXAMPLE 2: Flocking behavior - MUST use particle_idx to skip self
 @ti.func
@@ -767,7 +894,7 @@ if dist > 0.001:
                 if 'other_components' in context:
                     prompt_sections.append("\n### Other Components in this Behavior:")
                     for comp in context['other_components']:
-                        prompt_sections.append(f"- **{comp['name']}** ({comp['type']}): {comp['description']}")
+                        prompt_sections.append(f"- {comp['name']} ({comp['type']}): {comp['description']}")
                         if comp.get('implementation_details'):
                             prompt_sections.append(f"  Details: {'; '.join(comp['implementation_details'])}")
                         if comp.get('depends_on'):
@@ -785,12 +912,12 @@ if dist > 0.001:
                     
                     # Add detailed implementation guidance if available
                     if 'implementation_details' in context and context['implementation_details']:
-                        prompt_sections.append("\n**Implementation Steps**:")
+                        prompt_sections.append("\nImplementation Steps:")
                         for detail in context['implementation_details']:
                             prompt_sections.append(f"- {detail}")
                     
                     if 'parameters' in context and context['parameters']:
-                        prompt_sections.append("\n**Required Parameters**:")
+                        prompt_sections.append("\nRequired Parameters:")
                         for param_name in context['parameters']:
                             prompt_sections.append(f"- {param_name}")
                     
@@ -798,7 +925,7 @@ if dist > 0.001:
         
         # Task specification
         prompt_sections.append("## TASK")
-        prompt_sections.append(f"Create expert function(s) for: **{description}**")
+        prompt_sections.append(f"Create expert function(s) for: {description}")
         prompt_sections.append("")
         prompt_sections.append("IMPORTANT REQUIREMENTS:")
         prompt_sections.append("- Function names should NOT have 'expert_' prefix")
@@ -1042,9 +1169,9 @@ Example 2 - Behavior that doesn't need states:
             contexts.append('temporal_dynamics')  # Include comprehensive temporal patterns
             contexts.append('temporal_examples')  # Include temporal examples
         
-        # Cellular automata
-        if any(word in desc_lower for word in ['cellular', 'automaton', 'automata', 'game of life', 'conway', 'grid', 'cells', 'neighbors']):
-            contexts.append('cellular')
+        # # Cellular automata
+        # if any(word in desc_lower for word in ['cellular', 'automaton', 'automata', 'game of life', 'conway', 'grid', 'cells', 'neighbors']):
+        #     contexts.append('cellular')
         
         # Emergent behaviors
         if any(word in desc_lower for word in ['slime', 'physarum', 'ant', 'trail', 'pheromone', 'firefly', 'sync', 'emerge']):
@@ -1059,7 +1186,7 @@ Example 2 - Behavior that doesn't need states:
         # Pixel operations
         if any(word in desc_lower for word in ['trail', 'pheromone', 'draw', 'pixel', 'mark', 'deposit', 'paint']):
             contexts.append('pixels_api')
-            contexts.append('vera_patterns')  # Include trail deposition examples
+            # contexts.append('vera_patterns')  # Include trail deposition examples
         
         # Boundary handling
         if any(word in desc_lower for word in ['bounce', 'wrap', 'edge', 'boundary', 'wall', 'confine']):
@@ -1069,33 +1196,30 @@ Example 2 - Behavior that doesn't need states:
         if any(word in desc_lower for word in ['gravity', 'spring', 'damping', 'force', 'attract', 'repel']):
             contexts.append('vera_patterns')  # Include force patterns
         
-        # Evolution and genetics
-        if any(word in desc_lower for word in ['evolve', 'evolution', 'genetic', 'breed', 'mutate', 'fitness', 'selection']):
-            contexts.append('evolution')
-            contexts.append('alife_patterns')
+        # # Evolution and genetics
+        # if any(word in desc_lower for word in ['evolve', 'evolution', 'genetic', 'breed', 'mutate', 'fitness', 'selection']):
+        #     contexts.append('evolution')
+        #     contexts.append('alife_patterns')
         
-        # Ecosystem behaviors
-        if any(word in desc_lower for word in ['ecosystem', 'predator', 'prey', 'food', 'resource', 'symbiosis', 'parasite']):
-            contexts.append('ecosystem')
-            contexts.append('alife_patterns')
+        # # Ecosystem behaviors
+        # if any(word in desc_lower for word in ['ecosystem', 'predator', 'prey', 'food', 'resource', 'symbiosis', 'parasite']):
+        #     contexts.append('ecosystem')
+        #     contexts.append('alife_patterns')
         
         # Morphogenesis
-        if any(word in desc_lower for word in ['grow', 'growth', 'morph', 'develop', 'differentiate', 'cell', 'divide']):
-            contexts.append('morphogenesis')
-            contexts.append('alife_patterns')
+        # if any(word in desc_lower for word in ['grow', 'growth', 'morph', 'develop', 'differentiate', 'cell', 'divide']):
+        #     contexts.append('morphogenesis')
+        #     contexts.append('alife_patterns')
         
-        # Swarm behaviors
-        if any(word in desc_lower for word in ['swarm', 'ant', 'bee', 'colony', 'hive', 'quorum', 'collective']):
-            contexts.append('swarm')
-            contexts.append('alife_patterns')
+        # # Swarm behaviors
+        # if any(word in desc_lower for word in ['swarm', 'ant', 'bee', 'colony', 'hive', 'quorum', 'collective']):
+        #     contexts.append('swarm')
+        #     contexts.append('alife_patterns')
         
-        # Interactive behaviors
-        if any(word in desc_lower for word in ['interactive', 'iml', 'gesture', 'control', 'map', 'feedback']):
-            contexts.append('iml_patterns')
-        
-        # General artificial life
-        if any(word in desc_lower for word in ['life', 'alive', 'living', 'creature', 'organism', 'artificial life']):
-            contexts.append('alife_patterns')
+        # # Interactive behaviors
+        # if any(word in desc_lower for word in ['interactive', 'iml', 'gesture', 'control', 'map', 'feedback']):
+        #     contexts.append('iml_patterns')
+    
         
         return contexts
     
@@ -1157,7 +1281,7 @@ Example 2 - Behavior that doesn't need states:
         lines = []
         
         if 'global' in states and states['global']:
-            lines.append("**Global States** (access with `tv.s.llm_global.field[0].state_name`):")
+            lines.append("Global States (access with `tv.s.llm_global.field[0].state_name`):")
             for state in states['global']:
                 lines.append(f"- {state}")
             lines.append("")
@@ -1165,13 +1289,13 @@ Example 2 - Behavior that doesn't need states:
         # Temporal states are now part of global states (removed llm_temporal category)
         
         if 'particle' in states and states['particle']:
-            lines.append("**Particle States** (access with `tv.s.llm_particle.field[particle_idx].state_name`):")
+            lines.append("Particle States (access with `tv.s.llm_particle.field[particle_idx].state_name`):")
             for state in states['particle']:
                 lines.append(f"- {state}")
             lines.append("")
         
         if 'species' in states and states['species']:
-            lines.append("**Species States** (access with `tv.s.llm_species.field[species].state_name`):")
+            lines.append("Species States (access with `tv.s.llm_species.field[species].state_name`):")
             for state in states['species']:
                 lines.append(f"- {state}")
         
@@ -1198,18 +1322,53 @@ The kernel should:
 5. Update position
 6. Handle boundaries (bounce with 0.8 restitution)
 
-Use this exact structure:
+Use this GOLDEN PATTERN from particle-life.py (lines 178-215):
 ```python
 @ti.kernel
 def apply_all_experts():
-    dt = 0.016
+    '''Main physics kernel that applies all forces and updates particles.'''
+    dt = 0.016  # 60 FPS timestep
+    damping = tv.s.llm_global.field[0].damping
     
     for i in range(tv.pn):
         if tv.p.field[i].active > 0:
-            # Get particle properties
-            # Apply single-particle experts
-            # Apply interaction experts (if any)
-            # Update velocity and position
-            # Handle boundaries
-```"""
+            pos = tv.p.field[i].pos
+            vel = tv.p.field[i].vel
+            mass = tv.p.field[i].mass
+            species = tv.p.field[i].species
+            
+            # Accumulate all forces
+            total_force = ti.math.vec2(0.0, 0.0)
+            
+            # Main particle life interaction
+            total_force += particle_life_interaction(pos, vel, mass, species, i)
+            
+            # Friction for stability
+            total_force += friction_force(pos, vel, mass, species, i)
+            
+            # CRITICAL: Declare acceleration BEFORE conditional
+            acceleration = ti.math.vec2(0.0, 0.0)
+            
+            # Update velocity (F = ma)
+            if mass > 0:
+                acceleration = total_force / mass
+            else:
+                acceleration = total_force
+                
+            tv.p.field[i].vel += acceleration * dt
+            
+            # Apply damping
+            tv.p.field[i].vel *= damping
+            
+            # Update position
+            tv.p.field[i].pos += tv.p.field[i].vel * tv.p.field[i].speed * dt
+```
+
+CRITICAL PATTERNS:
+- Extract particle properties to local variables first
+- Use proper expert function signatures with all 5 parameters
+- Declare acceleration before conditional usage
+- Apply damping after force integration
+- Use particle index 'i' when calling experts (becomes particle_idx parameter)
+"""
         return prompt

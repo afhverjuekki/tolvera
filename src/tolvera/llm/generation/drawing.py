@@ -1,7 +1,10 @@
 import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from jinja2 import Environment, FileSystemLoader
+import os
 from ..core.prompts import ContextAwarePromptBuilder
+from ..core.prompt_loader import get_prompt_loader
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +180,10 @@ class DrawingSynthesizer:
         self.llm_client = llm_client
         self.classifier = DrawingClassifier()
         self.prompt_builder = ContextAwarePromptBuilder()
+        
+        # Set up Jinja2 environment
+        templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
+        self.env = Environment(loader=FileSystemLoader(templates_dir))
     
     async def synthesize_drawing_expert(
         self,
@@ -235,128 +242,53 @@ class DrawingSynthesizer:
     def _get_drawing_instructions(self, classification: Dict[str, Any]) -> str:
         """Get drawing-specific instructions based on classification"""
         
-        # Common state access instructions
-        state_instructions = """
-### STATE ACCESS PATTERNS
-When using available states, follow these exact access patterns:
-
-**Global States** (system-wide parameters INCLUDING time-based animations):
-- `tv.s.llm_global.field[0].state_name`
-- Example: `gravity = tv.s.llm_global.field[0].gravity_strength`
-- Example: `phase = tv.s.llm_global.field[0].phase`
-- Example: `day_phase = tv.s.llm_global.field[0].day_phase`
-- NOTE: Global states include both physics parameters AND time-based/animation states
-
-**Particle States** (per-particle data):
-- `tv.s.llm_particle.field[particle_idx].state_name`
-- Example: `energy = tv.s.llm_particle.field[i].energy`
-
-**Species States** (per-species configuration):
-- `tv.s.llm_species.field[species_id].state_name`
-- Example: `color = tv.s.llm_species.field[p.species].color`
-
-CRITICAL: Use the EXACT namespace names listed in Available States section above!
-IMPORTANT: For blinking/oscillating/appearing/disappearing effects, use time-based global states (e.g., phase, blink_timer)!
-
-### VARIABLE DECLARATION RULES
-**CRITICAL FOR TAICHI COMPILATION:**
-
-1. **ALL variables must be declared BEFORE conditionals:**
-```python
-# ✅ CORRECT:
-alpha = 0.0  # Default value declared first
-if condition:
-    alpha = 1.0
-else:
-    alpha = 0.5
-
-# ❌ WRONG - COMPILATION ERROR:
-if condition:
-    alpha = 1.0  # ERROR! alpha not defined before if
-else:
-    alpha = 0.5
-```
-
-2. **Initialize with default values:**
-```python
-# ✅ CORRECT pattern:
-force = ti.math.vec2(0.0, 0.0)  # Default
-color = ti.math.vec4(1.0, 1.0, 1.0, 1.0)  # Default
-visibility = 1.0  # Default
-
-if some_condition:
-    force = calculated_force
-    color = ti.math.vec4(1.0, 0.0, 0.0, 0.5)  # Red
-    visibility = 0.0
-```
-
-3. **This applies to ALL variable types:**
-- Scalars: `alpha = 0.0`
-- Vectors: `force = ti.math.vec2(0.0, 0.0)`
-- Colors: `color = ti.math.vec4(1.0, 1.0, 1.0, 1.0)`
-"""
+        # Load state access patterns using PromptLoader
+        loader = get_prompt_loader()
+        state_instructions = loader.load_prompt("drawing/drawing_state_access.txt")
+        
+        # Load drawing instructions template and customize based on classification
+        interaction_type = "Particle-Particle" if classification["requires_interaction"] else "Single Particle"
+        description = "particle-particle visualizations" if classification["requires_interaction"] else "single-particle visualization"
         
         if classification["requires_interaction"]:
-            return f"""## DRAWING KERNEL REQUIREMENTS (Particle-Particle)
-Generate a Taichi kernel for particle-particle visualizations.
-
-Function signature:
-@ti.kernel
+            function_signature = """@ti.kernel
 def draw_<descriptive_name>():
     # Drawing based on relationships between particles
     for i in range(tv.pn):
         if tv.p.field[i].active > 0:
             for j in range(i + 1, tv.pn):
                 if tv.p.field[j].active > 0:
-                    # Draw connection/interaction
-
-IMPORTANT:
-- Use @ti.kernel NOT @ti.func
-- Access particles with tv.p.field[i] and tv.p.field[j]
-- Use Pixels API methods:
-  * tv.px.line(x1, y1, x2, y2, color) for lines
-  * tv.px.circle(x, y, radius, color) for circles
-  * tv.px.rect(x, y, width, height, color) for rectangles
-- NEVER use px.px.rgba[x,y] - this is incorrect!
-- Colors are ti.math.vec4(r, g, b, a) with values 0.0-1.0
-- Cast positions to appropriate types for drawing:
-  x = ti.cast(tv.p.field[i].pos[0], ti.i32)
-- Handle boundaries with modulo: x % tv.x
-- Example:
-  tv.px.line(p1.pos[0], p1.pos[1], p2.pos[0], p2.pos[1], ti.math.vec4(1, 0, 0, 0.5))
-
-{state_instructions}"""
+                    # Draw connection/interaction"""
+            additional_access = " and tv.p.field[j]"
+            example_code = "tv.px.line(p1.pos[0], p1.pos[1], p2.pos[0], p2.pos[1], ti.math.vec4(1, 0, 0, 0.5))"
+            draw_order_info = ""
         else:
-            return f"""## DRAWING KERNEL REQUIREMENTS (Single Particle)
-Generate a Taichi kernel for single-particle visualization.
-
-Function signature:
-@ti.kernel
+            function_signature = """@ti.kernel
 def draw_<descriptive_name>():
     # Drawing effects for particles
     for i in range(tv.pn):
         if tv.p.field[i].active > 0:
             p = tv.p.field[i]
-            # Draw effect for particle
-
-Draw order: {"PRE-particle rendering (background effects)" if classification["draw_order"] == "pre" else "POST-particle rendering (overlay effects)"}
-
-IMPORTANT:
-- Use @ti.kernel NOT @ti.func
-- Access particles with tv.p.field[i]
-- Use Pixels API methods:
-  * tv.px.line(x1, y1, x2, y2, color) for trails
-  * tv.px.circle(x, y, radius, color) for halos/glows
-  * tv.px.rect(x, y, width, height, color) for blocks
-- NEVER use px.px.rgba[x,y] - this is incorrect!
-- Colors are ti.math.vec4(r, g, b, a) or ti.Vector([r, g, b, a])
-- Positions can be float, internally cast by API
-- Example for trails:
+            # Draw effect for particle"""
+            additional_access = ""
+            example_code = """Example for trails:
   tv.px.line(p.pos[0], p.pos[1], p.pos[0] - p.vel[0]*10, p.pos[1] - p.vel[1]*10, color)
 - Example for glow:
-  tv.px.circle(p.pos[0], p.pos[1], 10, ti.math.vec4(1, 1, 0, 0.3))
-
-{state_instructions}"""
+  tv.px.circle(p.pos[0], p.pos[1], 10, ti.math.vec4(1, 1, 0, 0.3))"""
+            draw_order_info = f'Draw order: {"PRE-particle rendering (background effects)" if classification["draw_order"] == "pre" else "POST-particle rendering (overlay effects)"}'
+        
+        # Load and render drawing instructions template using Jinja2
+        template = self.env.get_template('drawing/drawing_instructions.j2')
+        drawing_instructions = template.render(
+            interaction_type=interaction_type,
+            description=description,
+            function_signature=function_signature,
+            additional_access=additional_access,
+            example_code=example_code,
+            draw_order_info=draw_order_info
+        )
+        
+        return f"{drawing_instructions}\n\n{state_instructions}"
     
     def _extract_code(self, response: str) -> str:
         """Extract the function code from LLM response"""

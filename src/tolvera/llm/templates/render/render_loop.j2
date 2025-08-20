@@ -1,0 +1,36 @@
+@tv.render
+def render():
+    """Custom render loop for {{ pattern_type }} pattern."""
+    
+    {% if pixel_field and pixel_field.needs_decay and "decay_pheromones" in available_kernels %}
+    decay_pheromones()
+    {% endif %}
+    {% if pixel_field and pixel_field.needs_diffusion and "diffuse_pheromones" in available_kernels %}
+    diffuse_pheromones()
+    {% endif %}
+    
+    {% if "update_utilities" in available_kernels %}
+    update_utilities()  # Execute utility functions
+    {% endif %}
+    
+    {% if "apply_all_experts" in available_kernels %}
+    apply_all_experts()
+    {% endif %}
+    
+    # Core particle system (toroidal wrapping, speed limiting, boundaries)
+    tv.p()  # Update particle boundaries and speed limits
+    
+    {% if pixel_field and pixel_field.needs_deposition and "deposit_trails" in available_kernels %}
+    deposit_trails()
+    {% endif %}
+    
+    {% if has_drawing_behaviors %}
+    
+    # Apply drawing behaviors
+    apply_drawing_behaviors()
+    {% endif %}
+    
+    # Render particles with species colors
+    tv.px.particles(tv.p, tv.s.species())
+    
+    return tv.px

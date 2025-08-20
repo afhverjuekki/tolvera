@@ -7,6 +7,8 @@ Different patterns require different render sequences for optimal visualization.
 
 import logging
 from typing import List, Dict, Optional, Any
+from jinja2 import Environment, FileSystemLoader
+import os
 from ..core.behavior_requirements import BehaviorRequirements
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,10 @@ class RenderLoopGenerator:
     def __init__(self):
         """Initialize the render loop generator."""
         logger.info("Initialized RenderLoopGenerator")
+        
+        # Set up Jinja2 environment
+        templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
+        self.env = Environment(loader=FileSystemLoader(templates_dir))
     
     def generate_render_loop(
         self,
@@ -108,60 +114,21 @@ class RenderLoopGenerator:
         logger.info(f"Generating render loop for pattern: {pattern_type}")
         logger.info(f"Render sequence: {render_sequence}")
         
-        lines = ["@tv.render", "def render():"]
-        lines.append('    """Custom render loop for {} pattern."""'.format(pattern_type))
+        # Load and render template using Jinja2
+        template = self.env.get_template('render/render_loop.j2')
         
-        # Add pixel field operations if needed
-        if requirements.pixel_field:
-            if requirements.pixel_field.needs_decay and "decay_pheromones" in available_kernels:
-                lines.append("    decay_pheromones()")
-            if requirements.pixel_field.needs_diffusion and "diffuse_pheromones" in available_kernels:
-                lines.append("    diffuse_pheromones()")
-        
-        # Add utility updates (includes temporal updates)
-        if "update_utilities" in available_kernels:
-            lines.append("    update_utilities()  # Execute utility functions")
-        
-        # Apply expert behaviors (includes force calculation and position updates)
-        if "apply_all_experts" in available_kernels:
-            lines.append("    apply_all_experts()")
-        
-        # Core particle system (toroidal wrapping, speed limiting, boundaries)
-        lines.append("    tv.p()  # Update particle boundaries and speed limits")
-        
-        # Add pixel deposition if needed
-        if requirements.pixel_field:
-            if requirements.pixel_field.needs_deposition and "deposit_trails" in available_kernels:
-                lines.append("    deposit_trails()")
-        
-        # Add drawing behaviors if present
-        if has_drawing_behaviors:
-            lines.append("    ")
-            lines.append("    # Apply drawing behaviors")
-            lines.append("    apply_drawing_behaviors()")
-        
-        # Render particles
-        lines.append("    ")
-        lines.append("    # Render particles with species colors")
-        lines.append("    tv.px.particles(tv.p, tv.s.species())")
-        
-        # Return pixel buffer
-        lines.append("    return tv.px")
-        
-        return "\n".join(lines)
+        return template.render(
+            pattern_type=pattern_type,
+            pixel_field=requirements.pixel_field,
+            available_kernels=available_kernels,
+            has_drawing_behaviors=has_drawing_behaviors
+        )
     
     def generate_simple_render_loop(self) -> str:
         """Generate a simple default render loop."""
-        lines = [
-            "@tv.render",
-            "def render():",
-            '    """Simple render loop."""',
-            "    apply_all_experts()  # Calculate forces and update positions",
-            "    tv.p()  # Handle boundaries and speed limits",
-            "    tv.px.particles(tv.p, tv.s.species())",
-            "    return tv.px"
-        ]
-        return "\n".join(lines)
+        # Load and render template using Jinja2
+        template = self.env.get_template('render/simple_render_loop.j2')
+        return template.render()
     
     def get_required_operations(self, pattern_type: str) -> List[str]:
         """
@@ -242,12 +209,9 @@ class RenderLoopGenerator:
         Returns:
             Generated render loop code
         """
-        lines = [
-            "@tv.render",
-            "def render():",
-            '    """Pure drawing render loop."""',
-            "    tv.px.clear()  # Clear screen",
-            f"    {drawing_function_name}()  # Execute drawing",
-            "    return tv.px"
-        ]
-        return "\n".join(lines)
+        # Load and render template using Jinja2
+        template = self.env.get_template('render/pure_drawing_render_loop.j2')
+        
+        return template.render(
+            drawing_function_name=drawing_function_name
+        )

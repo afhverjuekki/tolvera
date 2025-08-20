@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import asyncio
 import os
+import sys
+import logging
 from datetime import datetime
 from pathlib import Path
 from tolvera import Tolvera
@@ -8,6 +10,38 @@ from tolvera.llm import BehaviorAgent
 from tolvera.llm.debug.tracing import get_collector
 from tolvera.llm.debug.console_tracer import enable_console_tracing
 from tolvera.llm.debug.trace_html_report import generate_html_report
+
+
+def configure_debug_mode(enable_debug: bool = False, enable_prompt_debug: bool = False):
+    """Configure debug logging based on command line arguments."""
+    if enable_debug or enable_prompt_debug:
+        # Set up detailed logging
+        log_level = logging.DEBUG if enable_prompt_debug else logging.INFO
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+            datefmt='%H:%M:%S',
+            force=True  # Override any existing configuration
+        )
+        
+        if enable_prompt_debug:
+            # Enable DEBUG level for prompt-related modules
+            logging.getLogger('tolvera.llm.core.prompt_loader').setLevel(logging.DEBUG)
+            logging.getLogger('tolvera.llm.core.synthesizer').setLevel(logging.DEBUG)
+            logging.getLogger('tolvera.llm.core.decomposer').setLevel(logging.DEBUG)
+            logging.getLogger('tolvera.llm.core.sketch_refiner').setLevel(logging.DEBUG)
+            print("\n🔍 PROMPT DEBUG MODE ENABLED - Full prompts will be logged")
+            print("=" * 60)
+        
+        if enable_debug:
+            print("\n🐛 DEBUG MODE ENABLED - Detailed logging active")
+            print("=" * 60)
+    else:
+        # Normal logging configuration
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)s: %(message)s'
+        )
 
 
 def save_trace_with_report(collector, trace, name_prefix):
@@ -57,7 +91,8 @@ async def demo_basic_behaviors():
     # combined_behavior = "draw circle patterns that fills the screen in a beautiful colorful stained glass appearance.  More overlap every few seconds."
     # combined_behavior = "one blue species moves faster during the day than at night.  The red species does the opposite"
     # combined_behavior = "a tangerine species circles around and red rectangle that is drawn in the center of the screen"
-    combined_behavior = "Every couple of seconds draw a tangerine rectangle near the center of the screen but ranomdize where it goes a bit"
+    # combined_behavior = "Every couple of seconds draw a tangerine rectangle near the center of the screen but ranomdize where it goes a bit"
+    combined_behavior = "Complex self organizing behavior between three species."
     
     print(f"\nAdding behavior: {combined_behavior}")
     try:
@@ -701,7 +736,26 @@ async def main():
 
 
 if __name__ == "__main__":
+    import argparse
     from dotenv import load_dotenv
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Tölvera LLM Demo')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--debug-prompts', action='store_true', help='Enable detailed prompt debugging')
+    parser.add_argument('--dry-run', action='store_true', help='Dry run mode - log prompts without LLM calls')
+    args = parser.parse_args()
+    
+    # Configure debug mode
+    configure_debug_mode(enable_debug=args.debug, enable_prompt_debug=args.debug_prompts)
+    
+    # Set dry run environment variable if requested
+    if args.dry_run:
+        os.environ['LLM_DRY_RUN'] = '1'
+        print("\n🏃 DRY RUN MODE - Prompts will be logged but no LLM calls will be made")
+        print("=" * 60)
+    
+    # Load environment variables
     env_path = Path.cwd() / ".env"
     if env_path.exists():
         load_dotenv(env_path)
