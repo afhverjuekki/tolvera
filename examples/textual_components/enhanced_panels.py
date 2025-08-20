@@ -58,20 +58,38 @@ class EnhancedCodeEditor(TextArea):
         self.last_saved = None
         self.modified = False
         
-        # Enhanced diff state
-        self.pre_refinement_code: Optional[str] = None
+        # Enhanced diff state with stateful baseline management
+        self.baseline_code: Optional[str] = None  # Clean baseline code (no markers)
+        self.pre_refinement_code: Optional[str] = None  # Deprecated, kept for compatibility
         self.refined_code_clean: Optional[str] = None  # Store clean refined code
         self.diff_lines: Set[int] = set()
         self.diff_enabled = False
         self.original_theme = "dracula"
         self.diff_data: Dict[int, Dict[str, str]] = {}  # Line number -> diff info
         
+        # Preserve last diff for toggle functionality after acceptance
+        self.last_diff_data: Dict[int, Dict[str, str]] = {}
+        self.last_diff_lines: Set[int] = set()
+        self.last_refined_code_clean: Optional[str] = None
+        self.last_pre_refinement_code: Optional[str] = None
+        
     
     def store_pre_refinement_code(self):
-        """Store the current code before refinement."""
-        self.pre_refinement_code = self.text
+        """Store the current clean code as baseline before refinement."""
+        # Always store clean code as the baseline (remove any existing diff markers)
+        self.baseline_code = self.get_clean_code()
+        # For backward compatibility
+        self.pre_refinement_code = self.baseline_code
         self.diff_lines.clear()
         self.diff_enabled = False
+        
+        # Clear any preserved diff data since we're starting a new refinement
+        # The user should see the current diff, not the previous one
+        if self.last_diff_data:
+            self.last_diff_data.clear()
+            self.last_diff_lines.clear()
+            self.last_refined_code_clean = None
+            self.last_pre_refinement_code = None
     
     def compute_enhanced_diff(self, refined_code: str) -> Dict[int, Dict[str, str]]:
         """
@@ -80,10 +98,12 @@ class EnhancedCodeEditor(TextArea):
         Returns:
             Dict mapping line number -> {old_line, new_line, changes_desc}
         """
-        if not self.pre_refinement_code:
+        # Use the clean baseline code for diff computation
+        baseline = self.baseline_code or self.pre_refinement_code
+        if not baseline:
             return {}
         
-        original_lines = self.pre_refinement_code.splitlines()
+        original_lines = baseline.splitlines()
         refined_lines = refined_code.splitlines()
         
         # Use SequenceMatcher to find differences at line level
@@ -224,38 +244,94 @@ class EnhancedCodeEditor(TextArea):
         self.diff_data.clear()
         self.remove_class("diff-mode")
         
+        # Also clear preserved diff data
+        self.last_diff_data.clear()
+        self.last_diff_lines.clear()
+        self.last_refined_code_clean = None
+        self.last_pre_refinement_code = None
+        
+        # Don't clear baseline_code - it should persist for stateful diffing
         self.pre_refinement_code = None
         self.refined_code_clean = None
     
     def toggle_diff_highlighting(self) -> bool:
         """Toggle enhanced diff highlighting on/off. Returns new state."""
         if self.diff_enabled:
-            # Simply restore the clean refined code we stored earlier
-            if self.refined_code_clean:
-                self.load_text(self.refined_code_clean)
+            # Restore the clean code (current or last)
+            clean_code = self.refined_code_clean or self.last_refined_code_clean
+            if clean_code:
+                self.load_text(clean_code)
             
             self.diff_enabled = False
             self.remove_class("diff-mode")
             return False
-        elif self.pre_refinement_code and self.diff_data and self.refined_code_clean:
-            self.diff_enabled = True
-            self.add_class("diff-mode")
-            # Re-apply the enhanced diff indicators using the clean code
-            self._apply_enhanced_diff_indicators(self.refined_code_clean)
-            return True
+        else:
+            # Try to enable diff highlighting
+            # First check if we have current diff data
+            if self.pre_refinement_code and self.diff_data and self.refined_code_clean:
+                # Current diff available
+                self.diff_enabled = True
+                self.add_class("diff-mode")
+                self._apply_enhanced_diff_indicators(self.refined_code_clean)
+                return True
+            # If no current diff, try to use preserved last diff
+            elif self.last_diff_data and self.last_refined_code_clean:
+                # Use last diff data
+                self.diff_enabled = True
+                self.add_class("diff-mode")
+                # Temporarily restore the last diff state for display
+                original_diff_data = self.diff_data.copy()
+                original_diff_lines = self.diff_lines.copy()
+                
+                self.diff_data = self.last_diff_data
+                self.diff_lines = self.last_diff_lines
+                self._apply_enhanced_diff_indicators(self.last_refined_code_clean)
+                
+                # Restore original state (but keep diff_enabled True)
+                self.diff_data = original_diff_data
+                self.diff_lines = original_diff_lines
+                return True
         return False
+    
+    def accept_refinement(self):
+        """
+        Accept the current refinement and update the baseline for stateful diffing.
+        This should be called after a successful refinement to set the new baseline.
+        """
+        if self.refined_code_clean:
+            # Preserve current diff data for toggle functionality
+            self.last_diff_data = self.diff_data.copy()
+            self.last_diff_lines = self.diff_lines.copy()
+            self.last_refined_code_clean = self.refined_code_clean
+            self.last_pre_refinement_code = self.baseline_code or self.pre_refinement_code
+            
+            # Update the baseline to the clean refined code
+            self.baseline_code = self.refined_code_clean
+            # Clear current diff state - ready for next refinement
+            self.diff_enabled = False
+            self.diff_lines.clear()
+            self.diff_data.clear()
+            self.remove_class("diff-mode")
+            # Keep the clean code displayed
+            self.load_text(self.refined_code_clean)
+            # Clear the current refined code since it's now the baseline
+            self.refined_code_clean = None
+            self.pre_refinement_code = None
     
     def get_diff_summary(self) -> str:
         """Get an enhanced summary of the changes."""
-        if not self.pre_refinement_code:
+        baseline = self.baseline_code or self.pre_refinement_code
+        if not baseline:
             return "No refinement applied yet"
         
-        if not self.diff_data:
+        # Use current diff data if available, otherwise use last diff data
+        diff_data_to_use = self.diff_data if self.diff_data else self.last_diff_data
+        if not diff_data_to_use:
             return "No changes detected"
         
-        added_count = sum(1 for info in self.diff_data.values() if info['type'] == 'added')
-        modified_count = sum(1 for info in self.diff_data.values() if info['type'] == 'modified')
-        deleted_count = sum(1 for info in self.diff_data.values() if info['type'] == 'deleted_before')
+        added_count = sum(1 for info in diff_data_to_use.values() if info['type'] == 'added')
+        modified_count = sum(1 for info in diff_data_to_use.values() if info['type'] == 'modified')
+        deleted_count = sum(1 for info in diff_data_to_use.values() if info['type'] == 'deleted_before')
         
         summary_parts = []
         if added_count > 0:
@@ -266,9 +342,9 @@ class EnhancedCodeEditor(TextArea):
             summary_parts.append(f"{deleted_count} deleted")
         
         if summary_parts:
-            return f"{len(self.diff_data)} lines changed: {', '.join(summary_parts)}"
+            return f"{len(diff_data_to_use)} lines changed: {', '.join(summary_parts)}"
         else:
-            return f"{len(self.diff_data)} lines changed"
+            return f"{len(diff_data_to_use)} lines changed"
     
     def on_text_area_changed(self):
         """Track when the code has been modified."""
@@ -289,46 +365,61 @@ class EnhancedCodeEditor(TextArea):
         if self.diff_enabled and self.refined_code_clean:
             # Return the stored clean version
             return self.refined_code_clean
+        elif self.baseline_code and not self.diff_enabled:
+            # If we have a baseline and no diff is active, return current clean text
+            # This handles cases where diff was accepted and we need clean code
+            return self._strip_diff_markers(self.text)
         else:
             # Strip any enhanced diff markers from current text
-            current_text = self.text
-            lines = current_text.splitlines()
-            clean_lines = []
+            return self._strip_diff_markers(self.text)
+    
+    def _strip_diff_markers(self, text: str) -> str:
+        """
+        Strip all diff markers from the provided text.
+        
+        Args:
+            text: The text to clean
             
-            for line in lines:
-                # Remove enhanced diff markers with new format
-                if '  # 🟢 ADDED →' in line:
-                    clean_line = line.split('  # 🟢 ADDED →')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # 🔴 DELETED →' in line:
-                    clean_line = line.split('  # 🔴 DELETED →')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # 🟡 CHANGED →' in line:
-                    clean_line = line.split('  # 🟡 CHANGED →')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # 🔵 MODIFIED →' in line:
-                    clean_line = line.split('  # 🔵 MODIFIED →')[0].rstrip()
-                    clean_lines.append(clean_line)
-                # Handle old-style markers for backward compatibility
-                elif '  # ✅' in line:
-                    clean_line = line.split('  # ✅')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # ❌' in line:
-                    clean_line = line.split('  # ❌')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # 🔄' in line:
-                    clean_line = line.split('  # 🔄')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif '  # 🟢' in line:
-                    clean_line = line.split('  # 🟢')[0].rstrip()
-                    clean_lines.append(clean_line)
-                elif line.startswith('#  # '):
-                    # Skip lines that are purely diff comment additions
-                    continue
-                else:
-                    clean_lines.append(line)
-            
-            return '\n'.join(clean_lines)
+        Returns:
+            Clean text without diff markers
+        """
+        lines = text.splitlines()
+        clean_lines = []
+        
+        for line in lines:
+            # Remove enhanced diff markers with new format
+            if '  # 🟢 ADDED →' in line:
+                clean_line = line.split('  # 🟢 ADDED →')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # 🔴 DELETED →' in line:
+                clean_line = line.split('  # 🔴 DELETED →')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # 🟡 CHANGED →' in line:
+                clean_line = line.split('  # 🟡 CHANGED →')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # 🔵 MODIFIED →' in line:
+                clean_line = line.split('  # 🔵 MODIFIED →')[0].rstrip()
+                clean_lines.append(clean_line)
+            # Handle old-style markers for backward compatibility
+            elif '  # ✅' in line:
+                clean_line = line.split('  # ✅')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # ❌' in line:
+                clean_line = line.split('  # ❌')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # 🔄' in line:
+                clean_line = line.split('  # 🔄')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif '  # 🟢' in line:
+                clean_line = line.split('  # 🟢')[0].rstrip()
+                clean_lines.append(clean_line)
+            elif line.startswith('#  # '):
+                # Skip lines that are purely diff comment additions
+                continue
+            else:
+                clean_lines.append(line)
+        
+        return '\n'.join(clean_lines)
     
     def get_status(self) -> str:
         """Get the editor status."""
