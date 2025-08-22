@@ -54,6 +54,18 @@ class BehaviorComponent(BaseModel):
     is_temporal: Optional[bool] = Field(default=False, description="Whether this is time-dependent")
 
 
+class ContextKeyValue(BaseModel):
+    """Represents a key-value pair for shared context (Gemini-compatible)."""
+    key: str = Field(description="Context key")
+    value: Any = Field(description="Context value")
+
+
+class PatternMapping(BaseModel):
+    """Maps a pattern name to its description."""
+    pattern_name: str = Field(description="Pattern name (e.g., 'predator_prey')")
+    description: str = Field(description="Pattern description")
+
+
 class DecomposedBehavior(BaseModel):
     """Result of behavior decomposition"""
     original_description: str = Field(description="Original behavior description")
@@ -61,13 +73,13 @@ class DecomposedBehavior(BaseModel):
     behavior_category: str = Field(description="Category: particle_system, pure_drawing, or hybrid")
     species_info: SpeciesConfiguration = Field(description="Species configuration")
     components: List[BehaviorComponent] = Field(description="List of behavior components")
-    context: Optional[Dict[str, Any]] = Field(default=None, description="Shared context")
+    context: Optional[List[ContextKeyValue]] = Field(default=None, description="Shared context as key-value pairs")
     suggested_states: Optional[List[Tuple[str, str, str, float, float]]] = Field(default=None, description="Suggested custom states")
 
 
 class DecompositionDependencies(BaseModel):
     """Dependencies for decomposition agent"""
-    context_patterns: Dict[str, str] = Field(description="Context patterns")
+    context_patterns: List[PatternMapping] = Field(description="Context patterns as mappings")
     alife_examples: List[str] = Field(description="Artificial life examples")
 
 
@@ -135,8 +147,14 @@ class BehaviorDecomposer:
                                  description=description) as node:
             logger.info(f"Decomposing behavior: {description}")
             
+            # Convert BEHAVIOR_PATTERNS dict to list of PatternMapping
+            pattern_mappings = [
+                PatternMapping(pattern_name=name, description=desc)
+                for name, desc in self.BEHAVIOR_PATTERNS.items()
+            ]
+            
             deps = DecompositionDependencies(
-                context_patterns=self.BEHAVIOR_PATTERNS,
+                context_patterns=pattern_mappings,
                 alife_examples=self._get_relevant_examples(description)
             )
             

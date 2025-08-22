@@ -4,10 +4,9 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
-from .synthesizer import Synthesizer, Expert
+from .synthesizer import Synthesizer
 from .state_manager import StateManager
 from .decomposer import BehaviorDecomposer
-from .behavior_requirements import BehaviorRequirementsAnalyzer, BehaviorRequirements
 from ..debug.tracing import get_collector
 from ..generation.kernel import IntegrationKernelGenerator
 from ..generation.sketch import SketchGenerator
@@ -64,7 +63,7 @@ class BehaviorAgent:
         self.synthesizer = Synthesizer(model_name, tolvera_instance, api_key)
         self.state_manager = StateManager(tolvera_instance)
         self.species_manager = SpeciesManager(tolvera_instance)
-        self.requirements_analyzer = BehaviorRequirementsAnalyzer()
+        # Removed behavior requirements analyzer (dead code)
         
         # Initialize decomposer (uses its own prompt loading)
         self.decomposer = BehaviorDecomposer(model_name, self.provider, api_key=api_key)
@@ -85,7 +84,7 @@ class BehaviorAgent:
         self.temporal_updates: List[Any] = []
         
         # Track behavior requirements for holistic synthesis
-        self.current_behavior_requirements: Optional[BehaviorRequirements] = None
+        # Removed current_behavior_requirements (dead code)
         self.synthesized_helpers: Dict[str, str] = {}  # Helper functions synthesized by experts
         
         # Track synthesized components (from new LLM synthesis)
@@ -213,7 +212,7 @@ class BehaviorAgent:
                     
                     # Extract species configuration from decomposition
                     if decomposed and hasattr(decomposed, 'species_info') and decomposed.species_info:
-                        from .models import SpeciesConfiguration
+                        from .models import SpeciesConfiguration, SpeciesNameMapping, SpeciesColorMapping
                         from .color_resolver import ColorResolver
                         species_info = decomposed.species_info
                         
@@ -251,29 +250,40 @@ class BehaviorAgent:
                             color_resolver = ColorResolver()
                             resolved_colors = color_resolver.get_default_species_colors(species_info.total_count)
                         
-                        # Convert species names from list to dict
-                        species_names_dict = {}
+                        # Convert species names - already in list format from decomposer
+                        species_names_list = []
                         if species_info.species_names and species_info.species_names is not None:
                             for item in species_info.species_names:
                                 # Handle both object and dict formats
                                 if hasattr(item, 'species_id'):
-                                    species_id = item.species_id
-                                    name = item.name if hasattr(item, 'name') else 'unnamed'
+                                    species_names_list.append(SpeciesNameMapping(
+                                        species_id=item.species_id,
+                                        name=item.name if hasattr(item, 'name') else 'unnamed'
+                                    ))
                                 elif isinstance(item, dict):
-                                    species_id = item.get('species_id', 0)
-                                    name = item.get('name', 'unnamed')
-                                else:
-                                    continue  # Skip invalid items
-                                species_names_dict[species_id] = name
+                                    species_names_list.append(SpeciesNameMapping(
+                                        species_id=item.get('species_id', 0),
+                                        name=item.get('name', 'unnamed')
+                                    ))
+                                # else skip invalid items
+                        
+                        # Convert colors from dict to list format
+                        colors_list = []
+                        if resolved_colors:
+                            for species_id, rgba in resolved_colors.items():
+                                colors_list.append(SpeciesColorMapping(
+                                    species_id=species_id,
+                                    rgba=rgba
+                                ))
 
                         # Convert to SpeciesConfiguration format
                         self.current_species_config = SpeciesConfiguration(
                             species_ids=list(range(species_info.total_count)),
-                            species_names=species_names_dict,
+                            species_names=species_names_list if species_names_list else None,
                             interaction_pairs=getattr(species_info, 'interaction_pairs', None) or [],
                             species_behaviors=None,
                             requires_all_species=False,
-                            colors=resolved_colors
+                            colors=colors_list if colors_list else None
                         )
                         logger.info(f"Extracted species config from decomposition: {species_info.total_count} species")
                 except Exception as e:
@@ -291,20 +301,15 @@ class BehaviorAgent:
                 self.current_speed_spec = decomposed.speed_spec
                 logger.info(f"Detected speed specification: uniform={decomposed.speed_spec.uniform}, magnitude={decomposed.speed_spec.magnitude}")
             
-            # 4. Analyze requirements with decomposition info
-            if decomposed:
-                self.current_behavior_requirements = self.requirements_analyzer.analyze(description, decomposed)
-            else:
-                self.current_behavior_requirements = self.requirements_analyzer.analyze(description)
-            logger.info(f"Pattern detected: {self.current_behavior_requirements.pattern_type}")
+            # 4. Requirements analysis removed (dead code)
             
             # 3. Create ALL states upfront (from requirements, decomposer, AND component analysis)
             all_states_specs = []
             temporal_count = 0
             
-            # Collect states from requirements analyzer
-            if self.current_behavior_requirements.state_requirements:
-                for state_req in self.current_behavior_requirements.state_requirements:
+            # State requirements collection removed (dead code)
+            if False:  # Removed state requirements check
+                for state_req in []:
                     # Create state spec
                     spec = {state_req.category: {state_req.name: state_req}}
                     all_states_specs.append(spec)
@@ -381,16 +386,16 @@ class BehaviorAgent:
             
             # 5. Build shared context for synthesis
             shared_context = {
-                "behavior_requirements": self.current_behavior_requirements,
+                # "behavior_requirements": removed (dead code),
                 "available_states": self.state_manager.get_available_states(),
                 "synthesized_helpers": self.synthesized_helpers.copy(),  # Pass already synthesized helpers
                 "existing_experts": [e.name for e in self.experts],
-                "pattern_type": self.current_behavior_requirements.pattern_type,
-                "pattern_confidence": self.current_behavior_requirements.pattern_confidence,
-                "shared_parameters": self.current_behavior_requirements.shared_parameters,
-                "constraints": self.current_behavior_requirements.constraints,
-                "pixel_field": self.current_behavior_requirements.pixel_field,
-                "temporal": self.current_behavior_requirements.temporal,
+                "pattern_type": "unknown",
+                "pattern_confidence": 0.0,
+                "shared_parameters": {},
+                "constraints": [],
+                "pixel_field": None,
+                "temporal": None,
                 "states_already_created": True  # Signal states are created upfront
             }
             
@@ -427,20 +432,20 @@ class BehaviorAgent:
                 # Temporal updates are now handled by utility experts - no legacy kernel generation needed
                 
                 # Generate pixel kernels if needed
-                if self.current_behavior_requirements.pixel_field:
-                    pixel_kernels = self._generate_pixel_kernels(self.current_behavior_requirements.pixel_field)
+                if False:  # Removed pixel field check (dead code)
+                    pixel_kernels = self._generate_pixel_kernels(None)
                     if pixel_kernels:
                         self.pixel_kernels = pixel_kernels
                         logger.info(f"Generated {len(pixel_kernels)} pixel kernels")
                 
                 return {
                     'success': True,
-                    'pattern_type': self.current_behavior_requirements.pattern_type if self.current_behavior_requirements else 'unknown',
+                    'pattern_type': 'unknown',
                     'experts_added': total_experts,
                     'components': components_results,
-                    'states_created': len(self.current_behavior_requirements.state_requirements) if self.current_behavior_requirements and self.current_behavior_requirements.state_requirements else 0,
+                    'states_created': 0,
                     'helpers_synthesized': len(self.synthesized_helpers),
-                    'requirements': self.current_behavior_requirements,
+                    # 'requirements': removed (dead code),
                     'expert_names': [c['expert_name'] for c in components_results]
                 }
             else:
@@ -453,7 +458,7 @@ class BehaviorAgent:
                     'expert_names': [],
                     'states_created': 0,
                     'helpers_synthesized': 0,
-                    'requirements': self.current_behavior_requirements
+                    # 'requirements': removed (dead code)
                 }
     
     async def _synthesize_drawing_function(
@@ -734,12 +739,16 @@ def {function_name}():
         if not new:
             return existing
             
-        from .models import SpeciesConfiguration
+        from .models import SpeciesConfiguration, SpeciesNameMapping, SpeciesColorMapping, SpeciesBehaviorMapping
         
         # Build a mapping of color/name to species ID for existing config
         color_to_id = {}
+        existing_names_dict = {}
         if existing.species_names:
-            for sid, name in existing.species_names.items():
+            for mapping in existing.species_names:
+                sid = mapping.species_id
+                name = mapping.name
+                existing_names_dict[sid] = name
                 # Extract color from name if present
                 color = self._extract_color_from_name(name)
                 if color:
@@ -748,15 +757,21 @@ def {function_name}():
                     color_to_id[name] = sid
         
         # Process new species
-        final_names = dict(existing.species_names) if existing.species_names else {}
-        final_behaviors = dict(existing.species_behaviors) if existing.species_behaviors else {}
+        final_names_dict = dict(existing_names_dict)
+        final_behaviors_dict = {}
+        
+        # Convert existing behaviors to dict
+        if existing.species_behaviors:
+            for mapping in existing.species_behaviors:
+                final_behaviors_dict[mapping.species_id] = mapping.behaviors
+        
         max_id = max(existing.species_ids) if existing.species_ids else -1
         new_species_ids = list(existing.species_ids)
         
         if new.species_names:
-            for item in new.species_names:
-                sid = item.get('species_id', 0)
-                name = item.get('name', 'unnamed')
+            for mapping in new.species_names:
+                sid = mapping.species_id
+                name = mapping.name
                 color = self._extract_color_from_name(name)
                 lookup_key = color if color else name
                 
@@ -764,18 +779,21 @@ def {function_name}():
                     # This species already exists, update its info
                     existing_id = color_to_id[lookup_key]
                     # Keep the more descriptive name
-                    if len(name) > len(final_names.get(existing_id, '')):
-                        final_names[existing_id] = name
+                    if len(name) > len(final_names_dict.get(existing_id, '')):
+                        final_names_dict[existing_id] = name
                 else:
                     # This is a new species
                     max_id += 1
                     new_species_ids.append(max_id)
-                    final_names[max_id] = name
+                    final_names_dict[max_id] = name
                     color_to_id[lookup_key] = max_id
                     
                     # Copy behaviors if any
-                    if new.species_behaviors and sid in new.species_behaviors:
-                        final_behaviors[max_id] = new.species_behaviors[sid]
+                    if new.species_behaviors:
+                        for beh_mapping in new.species_behaviors:
+                            if beh_mapping.species_id == sid:
+                                final_behaviors_dict[max_id] = beh_mapping.behaviors
+                                break
         
         # Update interaction pairs with remapped IDs
         remapped_pairs = list(existing.interaction_pairs) if existing.interaction_pairs else []
@@ -785,31 +803,49 @@ def {function_name}():
         new_species_ids = sorted(list(set(new_species_ids)))
         
         # Merge colors - preserve existing and add new
-        final_colors = {}
+        final_colors_dict = {}
         if existing.colors:
-            final_colors.update(existing.colors)
+            for mapping in existing.colors:
+                final_colors_dict[mapping.species_id] = mapping.rgba
         if new.colors:
             # Map new colors to the correct species IDs
-            for sid, color in new.colors.items():
+            for mapping in new.colors:
+                sid = mapping.species_id
                 if new.species_names:
                     name = ""
-                    for item in new.species_names:
-                        if item.get('species_id', 0) == sid:
-                            name = item.get('name', 'unnamed')
+                    for name_mapping in new.species_names:
+                        if name_mapping.species_id == sid:
+                            name = name_mapping.name
                             break
                     if name:
                         color_key = self._extract_color_from_name(name)
                         lookup_key = color_key if color_key else name
                         if lookup_key in color_to_id:
-                            final_colors[color_to_id[lookup_key]] = color
+                            final_colors_dict[color_to_id[lookup_key]] = mapping.rgba
+        
+        # Convert dicts back to lists of mappings
+        final_names_list = [
+            SpeciesNameMapping(species_id=sid, name=name)
+            for sid, name in final_names_dict.items()
+        ] if final_names_dict else None
+        
+        final_behaviors_list = [
+            SpeciesBehaviorMapping(species_id=sid, behaviors=behaviors)
+            for sid, behaviors in final_behaviors_dict.items()
+        ] if final_behaviors_dict else None
+        
+        final_colors_list = [
+            SpeciesColorMapping(species_id=sid, rgba=rgba)
+            for sid, rgba in final_colors_dict.items()
+        ] if final_colors_dict else None
         
         return SpeciesConfiguration(
             species_ids=new_species_ids,
-            species_names=final_names if final_names else None,
+            species_names=final_names_list,
             interaction_pairs=remapped_pairs,
-            species_behaviors=final_behaviors if final_behaviors else None,
+            species_behaviors=final_behaviors_list,
             requires_all_species=existing.requires_all_species or new.requires_all_species,
-            colors=final_colors if final_colors else None
+            colors=final_colors_list
         )
     
     def _extract_color_from_name(self, name: str) -> Optional[str]:
@@ -960,7 +996,7 @@ def {function_name}():
                     
                     # Extract species configuration from decomposition
                     if decomposed and hasattr(decomposed, 'species_info') and decomposed.species_info:
-                        from .models import SpeciesConfiguration
+                        from .models import SpeciesConfiguration, SpeciesNameMapping, SpeciesColorMapping
                         from .color_resolver import ColorResolver
                         species_info = decomposed.species_info
                         
@@ -998,29 +1034,40 @@ def {function_name}():
                             color_resolver = ColorResolver()
                             resolved_colors = color_resolver.get_default_species_colors(species_info.total_count)
                         
-                        # Convert species names from list to dict
-                        species_names_dict = {}
+                        # Convert species names - already in list format from decomposer
+                        species_names_list = []
                         if species_info.species_names and species_info.species_names is not None:
                             for item in species_info.species_names:
                                 # Handle both object and dict formats
                                 if hasattr(item, 'species_id'):
-                                    species_id = item.species_id
-                                    name = item.name if hasattr(item, 'name') else 'unnamed'
+                                    species_names_list.append(SpeciesNameMapping(
+                                        species_id=item.species_id,
+                                        name=item.name if hasattr(item, 'name') else 'unnamed'
+                                    ))
                                 elif isinstance(item, dict):
-                                    species_id = item.get('species_id', 0)
-                                    name = item.get('name', 'unnamed')
-                                else:
-                                    continue  # Skip invalid items
-                                species_names_dict[species_id] = name
+                                    species_names_list.append(SpeciesNameMapping(
+                                        species_id=item.get('species_id', 0),
+                                        name=item.get('name', 'unnamed')
+                                    ))
+                                # else skip invalid items
+                        
+                        # Convert colors from dict to list format
+                        colors_list = []
+                        if resolved_colors:
+                            for species_id, rgba in resolved_colors.items():
+                                colors_list.append(SpeciesColorMapping(
+                                    species_id=species_id,
+                                    rgba=rgba
+                                ))
 
                         # Convert to SpeciesConfiguration format
                         self.current_species_config = SpeciesConfiguration(
                             species_ids=list(range(species_info.total_count)),
-                            species_names=species_names_dict,
+                            species_names=species_names_list if species_names_list else None,
                             interaction_pairs=getattr(species_info, 'interaction_pairs', None) or [],
                             species_behaviors=None,
                             requires_all_species=False,
-                            colors=resolved_colors
+                            colors=colors_list if colors_list else None
                         )
                         logger.info(f"Extracted species config from decomposition: {species_info.total_count} species")
                 except Exception as e:
@@ -1302,133 +1349,9 @@ def {function_name}():
     
     # Legacy _generate_temporal_update_kernel method removed - utility experts now handle temporal updates
     
-    def _has_grid_states(self, available_states: Dict[str, List[str]]) -> bool:
-        return any(s in available_states.get('particle', []) 
-                  for s in ['grid_x', 'grid_y', 'is_alive', 'neighbor_count'])
-    
-    def _has_oscillator_states(self, available_states: Dict[str, List[str]]) -> bool:
-        return any(s in available_states.get('particle', []) 
-                  for s in ['phase', 'frequency'])
-    
-    def _has_growth_states(self, available_states: Dict[str, List[str]]) -> bool:
-        return any(s in available_states.get('particle', []) 
-                  for s in ['age', 'cell_type'])
     
     # Legacy temporal kernel headers removed - utility experts now handle temporal updates
     
-    def _generate_grid_update_code(self, available_states: Dict[str, List[str]]) -> List[str]:
-        particle_states = available_states.get('particle', [])
-        has_all_grid_states = all(s in particle_states for s in ['grid_x', 'grid_y', 'is_alive', 'neighbor_count'])
-        
-        if not has_all_grid_states:
-            return []
-        
-        return [
-            "    # Step 1: Count neighbors for grid-based patterns",
-            "    grid_size = ti.cast(ti.sqrt(ti.cast(tv.pn, ti.f32)), ti.i32)",
-            "    for i in range(tv.pn):",
-            "        if tv.p.field[i].active == 0:",
-            "            continue",
-            "        gx = tv.s.llm_particle.field[i].grid_x",
-            "        gy = tv.s.llm_particle.field[i].grid_y",
-            "        count = 0",
-            "        for dx in range(-1, 2):",
-            "            for dy in range(-1, 2):",
-            "                if dx == 0 and dy == 0:",
-            "                    continue",
-            "                nx = (gx + dx + grid_size) % grid_size",
-            "                ny = (gy + dy + grid_size) % grid_size",
-            "                for j in range(tv.pn):",
-            "                    if (tv.s.llm_particle.field[j].grid_x == nx and",
-            "                        tv.s.llm_particle.field[j].grid_y == ny and",
-            "                        tv.s.llm_particle.field[j].is_alive == 1):",
-            "                        count += 1",
-            "                        break",
-            "        tv.s.llm_particle.field[i].neighbor_count = count",
-            "    ",
-            "    # Step 2: Apply rules and update states",
-            "    for i in range(tv.pn):",
-            "        if tv.p.field[i].active == 0:",
-            "            continue",
-            "        alive = tv.s.llm_particle.field[i].is_alive",
-            "        neighbors = tv.s.llm_particle.field[i].neighbor_count",
-            "        next_state = 0",
-            "        if alive == 1:",
-            "            if neighbors == 2 or neighbors == 3:",
-            "                next_state = 1",
-            "        else:",
-            "            if neighbors == 3:",
-            "                next_state = 1",
-            "        tv.s.llm_particle.field[i].next_state = next_state",
-            "    ",
-            "    # Step 3: Commit state changes",
-            "    for i in range(tv.pn):",
-            "        tv.s.llm_particle.field[i].is_alive = tv.s.llm_particle.field[i].next_state",
-            "        if tv.s.llm_particle.field[i].is_alive == 1:",
-            "            tv.p.field[i].size = 5.0",
-            "            tv.p.field[i].active = 1.0",
-            "        else:",
-            "            tv.p.field[i].size = 1.0",
-            "            tv.p.field[i].active = 0.3",
-            ""
-        ]
-    
-    def _generate_oscillator_update_code(self, available_states: Dict[str, List[str]]) -> List[str]:
-        particle_states = available_states.get('particle', [])
-        if not ('phase' in particle_states and 'frequency' in particle_states):
-            return []
-        
-        return [
-            "    # Update oscillator phases",
-            "    for i in range(tv.pn):",
-            "        if tv.p.field[i].active > 0:",
-            "            frequency = tv.s.llm_particle.field[i].frequency",
-            "            tv.s.llm_particle.field[i].phase += frequency * dt * 2 * 3.14159",
-            "            if tv.s.llm_particle.field[i].phase > 2 * 3.14159:",
-            "                tv.s.llm_particle.field[i].phase -= 2 * 3.14159",
-            "            brightness = (ti.sin(tv.s.llm_particle.field[i].phase) + 1.0) * 0.5",
-            "            tv.p.field[i].size = 2.0 + brightness * 3.0",
-            ""
-        ]
-    
-    def _generate_growth_update_code(self, available_states: Dict[str, List[str]]) -> List[str]:
-        particle_states = available_states.get('particle', [])
-        if 'age' not in particle_states:
-            return []
-        
-        return [
-            "    # Update age and growth",
-            "    for i in range(tv.pn):",
-            "        if tv.p.field[i].active > 0:",
-            "            tv.s.llm_particle.field[i].age += dt",
-            ""
-        ]
-    
-    def _generate_energy_update_code(self) -> List[str]:
-        return [
-            "    # Energy dynamics",
-            "    for i in range(tv.pn):",
-            "        if tv.p.field[i].active > 0:",
-            "            tv.s.llm_particle.field[i].energy *= 0.995",
-            "            if tv.s.llm_particle.field[i].energy < 0.1:",
-            "                tv.p.field[i].active = 0.0",
-            ""
-        ]
-    
-    def _generate_synthesis_temporal_updates(self, available_states: Dict[str, List[str]]) -> List[str]:
-        parts = ["    # Synthesis-specified temporal updates"]
-        for temporal_update in self.temporal_updates:
-            for state_name, update_expr in temporal_update.frame_updates.items():
-                if state_name in available_states.get('global', []):
-                    expr = update_expr.replace('frame', 'ti.cast(frame, ti.f32)')
-                    parts.append(f"    tv.s.llm_global.field[0].{state_name} = {expr}")
-                elif state_name in available_states.get('particle', []):
-                    parts.extend([
-                        "    for i in range(tv.pn):",
-                        "        if tv.p.field[i].active > 0:",
-                        f"            tv.s.llm_particle.field[i].{state_name} = {update_expr.replace(state_name, f'tv.s.llm_particle.field[i].{state_name}')}"
-                    ])
-        return parts
     
     def _generate_pixel_kernels(self, pixel_field_req) -> str:
         """Generate pixel field kernels for pheromone/trail operations."""
@@ -1565,278 +1488,8 @@ def deposit_trails():
             'confidence': classification["confidence"]
         }
     
-    async def add_complex_behavior(
-        self,
-        description: str,
-        weight: float = 1.0,
-        decompose: bool = True,
-        auto_embellish: bool = True,
-        _decomposed=None
-    ) -> Dict[str, Any]:
-        collector = get_collector()
-        
-        with collector.trace_node("add_complex_behavior", "synthesis", 
-                                      description=description,
-                                      decompose=decompose,
-                                      auto_embellish=auto_embellish) as node:
-            logger.info(f"Adding complex behavior: {description}")
-            
-            if not self.decomposer:
-                # Fall back to regular synthesis if decomposer not available
-                return await self.add_behavior(description, weight, skip_decomposition=True)
-            
-            # Use decomposer to break down the behavior (if not already done)
-            if _decomposed:
-                decomposed = _decomposed
-            elif decompose:
-                decomposed = await self.decomposer.decompose(description)
-                
-                # Extract particle count if detected
-                if decomposed and hasattr(decomposed, 'particle_count') and decomposed.particle_count:
-                    self.detected_particle_count = decomposed.particle_count
-                    logger.info(f"Detected particle count: {self.detected_particle_count}")
-            else:
-                # If decompose=False and no _decomposed, fall back to simple synthesis
-                return await self.add_behavior(description, weight, skip_decomposition=True)
-            
-            # Create synthesis context from decomposition
-            synthesis_context = {
-                "shared_context": decomposed.context,
-                "previous_experts": [],
-                "species_config": self.current_species_config,
-                "tolvera_context": {
-                    "pn": self.tv.pn,
-                    "sn": self.tv.sn,
-                    "width": self.tv.x,
-                    "height": self.tv.y
-                }
-            }
-            
-            # Synthesize each component
-            results = {
-                'interpretation': decomposed.interpretation,
-                'components': [],
-                'embellishments': [],
-                'total_experts': 0,
-                'implementation_notes': decomposed.implementation_notes
-            }
-            
-            # Process each decomposed component
-            for component in decomposed.components:
-                try:
-                    # Adjust weight based on priority
-                    component_weight = weight * component.priority
-                    
-                    # Check if component needs states
-                    if component.required_states:
-                        state_names = [state[0] for state in component.required_states]
-                        await self._create_states_for_component(
-                            component.description, 
-                            state_names,
-                            component.expert_type
-                        )
-                    
-                    # Create a synthesis description that includes high-level behavioral guidance
-                    synthesis_description = f"{component.description}. Behavior: {component.implementation}"
-                    
-                    # Pass context requirements to synthesizer
-                    synthesis_context.update({
-                        "current_component": component.expert_name,
-                        "constraints": component.context_requirements or [],
-                        "previous_experts": synthesis_context["previous_experts"]
-                    })
-                    
-                    # Route to appropriate synthesis method based on type
-                    result = await self._synthesize_component(
-                        component,
-                        component_weight,
-                        synthesis_context
-                    )
-                    
-                    # Track this expert for context threading
-                    synthesis_context["previous_experts"].append({
-                        "name": component.expert_name,
-                        "type": component.expert_type,
-                        "context": component.context_requirements
-                    })
-                    
-                    # Track results
-                    results['components'].append({
-                        'expert_name': component.expert_name,
-                        'description': component.description,
-                        'type': component.expert_type,
-                        'result': result
-                    })
-                    
-                    results['total_experts'] += result.get('experts_added', 0)
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to synthesize component '{component.expert_name}': {e}")
-                    # Continue with other components
-            
-            # Update trace node with results
-            if node:
-                node.output_data = results
-            
-            return results
     
-    async def _synthesize_component(
-        self, 
-        component,
-        weight: float,
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Synthesize a single component based on its type."""
-        
-        if component.expert_type in ['force', 'interaction', 'state_update']:
-            # Use existing synthesis methods
-            synthesis_description = f"{component.description}. Behavior: {component.implementation}"
-            result = await self.add_behavior(
-                synthesis_description,
-                weight=weight
-            )
-            return result
-            
-        elif component.expert_type == 'initialization':
-            # Synthesize initialization kernel
-            init_response = await self.synthesizer.synthesize_initialization(
-                component.implementation,
-                species_config=self.current_species_config,
-                context=context
-            )
-            
-            # Store initialization code
-            self.synthesized_initialization = init_response.code
-            
-            return {
-                'type': 'initialization',
-                'code': init_response.code,
-                'description': init_response.description
-            }
-            
-        elif component.expert_type in ['temporal_update', 'state_update', 'utility']:
-            # Synthesize utility expert (temporal updates, state updates, etc.)
-            available_states = self.state_manager.get_available_states()
-            utility_response = await self.synthesizer.synthesize_utility_expert(
-                component.implementation,
-                available_states=available_states,
-                context=context,
-                expert_type=component.expert_type  # Pass the specific expert type!
-            )
-            
-            # States for utility experts are created upfront by decomposer
-            states_created = 0
-            
-            # Create Expert object from utility response
-            expert = Expert(
-                name=utility_response.name,
-                description=utility_response.description,
-                code=utility_response.code,
-                is_interaction=False,
-                weight=weight
-            )
-            
-            # Register as utility expert
-            expert_info = ExpertInfo(
-                name=expert.name,
-                description=expert.description,
-                weight=weight,
-                expert_type='utility',
-                code=expert.code
-            )
-            self.experts.append(expert_info)
-            self.expert_weights[expert.name] = weight
-            logger.info(f"Registered utility expert: {expert.name}")
-            
-            # Regenerate utility kernel
-            await self._regenerate_utility_kernel()
-            
-            return {
-                'type': 'utility',
-                'expert_name': expert.name,
-                'code': utility_response.code,
-                'description': utility_response.description,
-                'experts_added': 1,
-                'states_created': states_created
-            }
-            
-        elif component.expert_type == 'configuration':
-            # Synthesize configuration
-            config_response = await self.synthesizer.synthesize_configuration(
-                component.implementation,
-                species_config=self.current_species_config
-            )
-            
-            # Store configuration code
-            self.synthesized_configuration = config_response.config_code
-            
-            return {
-                'type': 'configuration',
-                'code': config_response.config_code,
-                'species_count': config_response.species_count,
-                'particle_count': config_response.particle_count
-            }
-            
-        elif component.expert_type == 'visual':
-            # Use existing drawing behavior synthesis
-            synthesis_description = f"{component.description}. Behavior: {component.implementation}"
-            result = await self.add_drawing_behavior(
-                synthesis_description,
-                weight=weight
-            )
-            return result
-            
-        else:
-            logger.warning(f"Unknown component type: {component.expert_type}")
-            return {}
     
-    async def _synthesize_pure_drawing(self, description: str, weight: float, decomposed) -> Dict[str, Any]:
-        """
-        Synthesize a pure drawing behavior without particle systems.
-        
-        Args:
-            description: Natural language description
-            weight: Weight (not used for pure drawing)
-            decomposed: Decomposition result
-            
-        Returns:
-            Dictionary with synthesis results
-        """
-        logger.info(f"Synthesizing pure drawing behavior: {description}")
-        
-        # Synthesize drawing code using the synthesizer
-        # We'll use the drawing behavior synthesis which should generate appropriate drawing code
-        try:
-            # Create a simple drawing kernel
-            drawing_code = f"""
-# Draw based on description: {description}
-# This is a placeholder - actual synthesis would generate proper drawing code
-width = tv.x // 2
-height = tv.y // 2
-x = tv.x // 2 - width // 2
-y = tv.y // 2 - height // 2
-tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
-"""
-            
-            # Store the drawing code
-            self.pure_drawing_code = drawing_code
-            self.is_pure_drawing = True
-            
-            return {
-                'success': True,
-                'pattern_type': 'pure_drawing',
-                'experts_added': 0,  # No experts for pure drawing
-                'drawing_functions': 1,
-                'description': description,
-                'behavior_category': 'pure_drawing'
-            }
-        except Exception as e:
-            logger.error(f"Failed to synthesize pure drawing behavior: {e}")
-            return {
-                'success': False,
-                'pattern_type': 'pure_drawing',
-                'error': str(e)
-            }
     
     async def generate_sketch_async(
         self, 
@@ -1846,58 +1499,7 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
         validate: bool = True,
         auto_fix: bool = True
     ) -> tuple[str, str]:
-        # Check if this is a pure drawing behavior
-        if hasattr(self, 'is_pure_drawing') and self.is_pure_drawing:
-            logger.info("Generating pure drawing sketch")
-            sketch = self.sketch_generator.generate_pure_drawing(
-                description=description,
-                drawing_code=self.pure_drawing_code if hasattr(self, 'pure_drawing_code') else "# Drawing code placeholder"
-            )
-            
-            # Save if filename provided or use_timestamp is True
-            if filename or use_timestamp:
-                from pathlib import Path
-                from datetime import datetime
-                
-                # Create generated_sketches directory if it doesn't exist
-                sketch_dir = Path('examples/generated_sketches')
-                sketch_dir.mkdir(parents=True, exist_ok=True)
-                
-                if filename and not use_timestamp:
-                    # Use provided filename as-is
-                    file_path = Path(filename)
-                    if not file_path.parent.name or file_path.parent == Path('.'):
-                        file_path = sketch_dir / file_path.name
-                else:
-                    # Generate filename with timestamp
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    base_name = filename.replace('.py', '') if filename else 'pure_drawing_sketch'
-                    file_path = sketch_dir / f"{base_name}_{timestamp}.py"
-                
-                with open(file_path, 'w') as f:
-                    f.write(sketch)
-                logger.info(f"Saved pure drawing sketch to: {file_path}")
-                
-                # Validate if requested
-                if validate:
-                    from .sketch_validator import SketchValidator
-                    validator = SketchValidator()
-                    success, fixed_sketch, error = await validator.validate_sketch(
-                        sketch, auto_fix=auto_fix, verbose=False
-                    )
-                    if success and fixed_sketch != sketch:
-                        # Update the saved file with the fixed version
-                        with open(file_path, 'w') as f:
-                            f.write(fixed_sketch)
-                        logger.info(f"Sketch validated and fixed: {file_path}")
-                        return fixed_sketch, str(file_path)
-                    elif not success:
-                        logger.warning(f"Sketch validation failed: {error}")
-                
-                return sketch, str(file_path)
-            return sketch, ""
-        
-        # Regular particle system sketch generation
+        """Generate regular particle system sketch"""
         # Collect synthesized helper functions
         helper_code = ""
         if self.synthesized_helpers:
@@ -2143,136 +1745,78 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                 self.generate_sketch_async(description, filename, use_timestamp, validate, auto_fix)
             )
     
-    def _generate_sketch_sync(self, description: str, filename: Optional[str] = None, use_timestamp: bool = True) -> tuple[str, str]:
-        """Synchronous sketch generation without validation (fallback)."""
-        # This is the original generate_sketch logic without validation
-        # Used when we can't run async validation
-        
-        # Check if this is a pure drawing behavior
-        if hasattr(self, 'is_pure_drawing') and self.is_pure_drawing:
-            logger.info("Generating pure drawing sketch")
-            sketch = self.sketch_generator.generate_pure_drawing(
-                description=description,
-                drawing_code=self.pure_drawing_code if hasattr(self, 'pure_drawing_code') else "# Drawing code placeholder"
-            )
-            
-            # Save if filename provided or use_timestamp is True
-            if filename or use_timestamp:
-                from pathlib import Path
-                from datetime import datetime
-                
-                # Create generated_sketches directory if it doesn't exist
-                sketch_dir = Path('examples/generated_sketches')
-                sketch_dir.mkdir(parents=True, exist_ok=True)
-                
-                if filename and not use_timestamp:
-                    # Use provided filename as-is
-                    file_path = Path(filename)
-                    if not file_path.parent.name or file_path.parent == Path('.'):
-                        file_path = sketch_dir / file_path.name
-                else:
-                    # Generate filename with timestamp
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    base_name = filename or "pure_drawing_sketch"
-                    file_path = sketch_dir / f"{base_name}_{timestamp}.py"
-                
-                with open(file_path, 'w') as f:
-                    f.write(sketch)
-                logger.info(f"Saved pure drawing sketch to: {file_path}")
-                
-                return sketch, str(file_path)
-            return sketch, ""
-        
-        # Regular particle system sketch generation
+    def _generate_basic_sketch(self, description: str) -> str:
+        """Generate basic sketch without async refinement."""
         # Collect synthesized helper functions
         helper_code = ""
-        if hasattr(self, 'synthesized_helpers'):
+        if self.synthesized_helpers:
             helper_parts = ["# Helper Functions"]
             for name, code in self.synthesized_helpers.items():
                 helper_parts.append(f"\n{code}\n")
             helper_code = "\n".join(helper_parts)
         
         # Separate expert code by type
-        force_experts = [e for e in self.experts if e.expert_type in ['single', 'interaction']] if hasattr(self, 'experts') else []
-        # Include both 'visual' and 'drawing' types as they're the same concept
-        visual_experts = [e for e in self.experts if e.expert_type in ['visual', 'drawing', 'drawing_interaction']] if hasattr(self, 'experts') else []
-        utility_experts = [e for e in self.experts if e.expert_type == 'utility'] if hasattr(self, 'experts') else []
-        
+        force_experts = [e for e in self.experts if e.expert_type in ['single', 'interaction']]
         expert_code = "\n\n".join(e.code for e in force_experts)
         
         # Combine helper functions and force experts
         if helper_code:
             combined_expert_code = f"{helper_code}\n\n{expert_code}"
         else:
-            combined_expert_code = expert_code if expert_code else "# No experts defined"
+            combined_expert_code = expert_code
         
-        # Get drawing code from visual experts
-        drawing_expert_code = "\n\n".join(e.code for e in visual_experts) if visual_experts else ""
+        # Generate initialization code
+        init_code = self._generate_init_code() if hasattr(self, '_generate_init_code') else ""
         
-        # Generate drawing kernel if we have visual experts
+        # Generate state code
+        state_code = self._generate_state_code() if hasattr(self, '_generate_state_code') else ""
+        
+        # Generate kernel code
+        kernel_code = self._generate_simple_kernel() if hasattr(self, '_generate_simple_kernel') else ""
+        
+        # Generate configuration code
+        config_code = ""
+        if self.current_species_config or self.detected_particle_count:
+            species_count = len(self.current_species_config.species_ids) if self.current_species_config else 1
+            particle_count = self.detected_particle_count if self.detected_particle_count else 1000
+            config_code = f"""# Override default Tölvera parameters
+    # Detected {species_count} species from description
+    import sys
+    if 'species' not in kwargs:
+        kwargs['species'] = {species_count}
+    if 'particles' not in kwargs:
+        kwargs['particles'] = {particle_count}"""
+        
+        # Generate drawing code if visual experts exist
+        visual_experts = [e for e in self.experts if e.expert_type in ['visual', 'drawing', 'drawing_interaction']]
         drawing_kernel_code = ""
+        drawing_expert_code = ""
         if visual_experts:
-            # Use kernel_generator to create an actual kernel that calls the drawing functions
-            drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
-                visual_expert_names=[e.name for e in visual_experts],
-                function_name="draw"
-            )
+            if hasattr(self, 'drawing_kernel_code') and self.drawing_kernel_code:
+                drawing_kernel_code = self.drawing_kernel_code
+            drawing_expert_code = "\n\n".join(e.code for e in visual_experts)
         
-        # Generate utility kernel if we have utility experts
-        utility_expert_code = "\n\n".join(e.code for e in utility_experts) if utility_experts else ""
+        # Check for utility experts
+        utility_experts = [e for e in self.experts if e.expert_type == 'utility']
+        utility_expert_code = "\n\n".join([e.code for e in utility_experts])
         utility_kernel_code = ""
-        if utility_experts:
+        if utility_experts and hasattr(self.kernel_generator, 'generate_utility_kernel'):
             utility_kernel_code = self.kernel_generator.generate_utility_kernel(
                 utility_expert_names=[e.name for e in utility_experts],
                 function_name="update_utilities"
             )
         
-        # Get initialization code
-        if hasattr(self, 'synthesized_initialization') and self.synthesized_initialization:
-            init_code = self.synthesized_initialization
-        else:
-            init_code = self._generate_init_code()
+        # Check if we have non-visual experts
+        has_non_visual_experts = len(force_experts) > 0
         
-        # Get state code
-        state_code = self._generate_state_code()
-        
-        # Generate kernel
-        kernel_code = self._generate_simple_kernel()
-        
-        # Config code
-        config_code = ""
-        if self.current_species_config or (hasattr(self, 'detected_particle_count') and self.detected_particle_count):
-            # Include species configuration
-            kwargs = self.tv.kwargs.copy() if hasattr(self.tv, 'kwargs') else {}
-            if self.current_species_config:
-                kwargs['species'] = len(self.current_species_config.species_ids)
-            if hasattr(self, 'detected_particle_count') and self.detected_particle_count:
-                kwargs['pn'] = self.detected_particle_count
-            
-            config_code = f"""# Override default Tölvera parameters
-    # Detected {len(self.current_species_config.species_ids) if self.current_species_config else 1} species from description
-    import sys
-    if 'species' not in kwargs:
-        kwargs['species'] = {kwargs.get('species', 1)}  # Use detected species count
-    if 'particles' not in kwargs:
-        kwargs['particles'] = {kwargs.get('pn', 1000)}  # Use detected particle count
-    if 'width' not in kwargs:
-        kwargs['width'] = 1920
-    if 'height' not in kwargs:
-        kwargs['height'] = 1080"""
-        
-        # Check if we have force experts (single/interaction) that actually affect particle movement
-        # Only render particles if we have experts that generate forces
-        has_non_visual_experts = bool(force_experts)
-        
-        # Generate complete sketch using the correct signature
-        sketch = self.sketch_generator.generate(
+        # Generate complete sketch
+        return self.sketch_generator.generate(
             description=description,
-            experts=[combined_expert_code],  # List of expert code strings
+            experts=[combined_expert_code],
             kernel=kernel_code,
             init_code=init_code,
             state_code=state_code,
-            temporal_code="",  # Legacy, now handled by utility experts
+            temporal_code="",
             config_code=config_code,
             utility_code=utility_expert_code,
             utility_kernel=utility_kernel_code,
@@ -2280,6 +1824,14 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
             drawing_kernel=drawing_kernel_code,
             has_non_visual_experts=has_non_visual_experts
         )
+    
+    def _generate_sketch_sync(self, description: str, filename: Optional[str] = None, use_timestamp: bool = True) -> tuple[str, str]:
+        """Synchronous sketch generation without validation (fallback)."""
+        # This is the original generate_sketch logic without validation
+        # Used when we can't run async validation
+        
+        # Generate the basic sketch without async refinement
+        sketch = self._generate_basic_sketch(description)
         
         # Save if filename provided or use_timestamp is True
         if filename or use_timestamp:
@@ -2298,7 +1850,7 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
             else:
                 # Generate filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                base_name = filename or "sketch"
+                base_name = filename.replace('.py', '') if filename else "generated_sketch"
                 file_path = sketch_dir / f"{base_name}_{timestamp}.py"
             
             with open(file_path, 'w') as f:
@@ -2308,7 +1860,6 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
             return sketch, str(file_path)
         
         return sketch, ""
-    
     def _generate_init_code(self) -> str:
         if self.current_species_config:
             # Use species manager to generate initialization
@@ -2324,17 +1875,29 @@ tv.px.rect(x, y, width, height, ti.Vector([1.0, 0.0, 0.0, 1.0]))
                 init_type = "grid"
                 grid_size = suggested_size
             # For ecosystem patterns, use clustered initialization
-            elif self.current_behavior_requirements and self.current_behavior_requirements.pattern_type == "ecosystem":
+            elif False:  # Removed ecosystem pattern check (dead code)
                 init_type = "clustered"
                 logger.info("Using clustered initialization for ecosystem pattern")
             
             # Generate species-aware initialization
             from .species_analyzer import SpeciesInfo
+            
+            # Convert list-based names/behaviors to dict for SpeciesInfo
+            species_names_dict = {}
+            if self.current_species_config.species_names:
+                for mapping in self.current_species_config.species_names:
+                    species_names_dict[mapping.species_id] = mapping.name
+            
+            species_behaviors_dict = {}
+            if self.current_species_config.species_behaviors:
+                for mapping in self.current_species_config.species_behaviors:
+                    species_behaviors_dict[mapping.species_id] = mapping.behaviors
+            
             species_info = SpeciesInfo(
                 species_ids=self.current_species_config.species_ids,
-                species_names=self.current_species_config.species_names or {},
+                species_names=species_names_dict,
                 interaction_pairs=self.current_species_config.interaction_pairs,
-                species_behaviors=self.current_species_config.species_behaviors or {},
+                species_behaviors=species_behaviors_dict,
                 requires_all_species=self.current_species_config.requires_all_species,
                 total_count=len(self.current_species_config.species_ids),
                 color_hints={}

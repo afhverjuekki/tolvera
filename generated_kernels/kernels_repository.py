@@ -8,4 +8,3 @@ import taichi as ti
 import tolvera as tv
 import numpy as np
 from math import pi, sqrt, sin, cos, tan, atan2
-

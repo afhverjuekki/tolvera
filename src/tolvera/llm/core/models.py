@@ -1,5 +1,11 @@
-from typing import List, Dict, Optional, Literal, Union, Tuple
+from typing import List, Dict, Optional, Literal, Union, Tuple, Any
 from pydantic import BaseModel, Field, validator
+
+
+class KeyValuePair(BaseModel):
+    """Represents a single key-value pair for Gemini-compatible dictionary representation."""
+    key: str = Field(description="The key of the entry")
+    value: Any = Field(description="The value of the entry")
 
 
 class VectorExpression(BaseModel):
@@ -34,9 +40,9 @@ class ConditionalForce(BaseModel):
 
 class ForceComputation(BaseModel):
     state_accesses: List[StateAccess] = Field(default_factory=list)
-    helper_variables: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Helper variable declarations (name -> expression)"
+    helper_variables: List[KeyValuePair] = Field(
+        default_factory=list,
+        description="Helper variable declarations as key-value pairs"
     )
     conditional_forces: List[ConditionalForce] = Field(default_factory=list)
     base_force: VectorExpression = Field(
@@ -53,8 +59,8 @@ class ForceComputation(BaseModel):
             lines.append(state.to_code())
         
         # Helper variables
-        for var, expr in self.helper_variables.items():
-            lines.append(f"{var} = {expr}")
+        for kv_pair in self.helper_variables:
+            lines.append(f"{kv_pair.key} = {kv_pair.value}")
         
         # Start with base force
         lines.append(f"force = {self.base_force.to_code()}")
@@ -84,9 +90,9 @@ class DrawingOperation(BaseModel):
 
 class DrawingComputation(BaseModel):
     state_accesses: List[StateAccess] = Field(default_factory=list)
-    helper_variables: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Helper variable declarations"
+    helper_variables: List[KeyValuePair] = Field(
+        default_factory=list,
+        description="Helper variable declarations as key-value pairs"
     )
     conditionals: List[ConditionalForce] = Field(default_factory=list)
     drawing_operations: List[DrawingOperation] = Field(
@@ -103,8 +109,8 @@ class DrawingComputation(BaseModel):
             lines.append(state.to_code())
         
         # Helper variables
-        for var, expr in self.helper_variables.items():
-            lines.append(f"{var} = {expr}")
+        for kv_pair in self.helper_variables:
+            lines.append(f"{kv_pair.key} = {kv_pair.value}")
         
         # Drawing operations
         for op in self.drawing_operations:
@@ -227,9 +233,27 @@ class StateDefinition(BaseModel):
         return v
 
 
+class SpeciesNameMapping(BaseModel):
+    """Maps a species ID to its semantic name."""
+    species_id: int = Field(description="Species ID")
+    name: str = Field(description="Semantic name for the species")
+
+
+class SpeciesBehaviorMapping(BaseModel):
+    """Maps a species ID to its behaviors."""
+    species_id: int = Field(description="Species ID")
+    behaviors: List[str] = Field(description="List of behaviors for this species")
+
+
+class SpeciesColorMapping(BaseModel):
+    """Maps a species ID to its RGBA color."""
+    species_id: int = Field(description="Species ID")
+    rgba: List[float] = Field(description="RGBA color values [r, g, b, a]")
+
+
 class SpeciesConfiguration(BaseModel):
     species_ids: List[int] = Field(description="List of species IDs to use")
-    species_names: Optional[Dict[int, str]] = Field(
+    species_names: Optional[List[SpeciesNameMapping]] = Field(
         default=None,
         description="Mapping of species IDs to semantic names"
     )
@@ -237,11 +261,11 @@ class SpeciesConfiguration(BaseModel):
         default_factory=list,
         description="Pairs of species that interact"
     )
-    species_behaviors: Optional[Dict[int, List[str]]] = Field(
+    species_behaviors: Optional[List[SpeciesBehaviorMapping]] = Field(
         default=None,
         description="Species-specific behaviors"
     )
-    colors: Optional[Dict[int, List[float]]] = Field(
+    colors: Optional[List[SpeciesColorMapping]] = Field(
         default=None,
         description="RGBA colors for each species"
     )
@@ -274,8 +298,8 @@ class SpeciesConfiguration(BaseModel):
         # Add species comments if names are available
         if self.species_names:
             init_code += "# Species configuration:\n"
-            for sid, name in self.species_names.items():
-                init_code += f"# Species {sid}: {name}\n"
+            for mapping in self.species_names:
+                init_code += f"# Species {mapping.species_id}: {mapping.name}\n"
             init_code += "\n"
         
         init_code += f"""@ti.kernel
@@ -297,9 +321,16 @@ init_particles()
         
         # Set colors with semantic awareness
         color_code = "\n# Set species colors\n"
+        
+        # Build a dict for quick lookup from the list format
+        colors_dict = {}
+        if self.colors:
+            for mapping in self.colors:
+                colors_dict[mapping.species_id] = mapping.rgba
+        
         for idx, species_id in enumerate(self.species_ids):
-            if self.colors and species_id in self.colors:
-                color = self.colors[species_id]
+            if species_id in colors_dict:
+                color = colors_dict[species_id]
             elif idx < len(default_colors):
                 color = default_colors[idx]
             else:
@@ -313,19 +344,31 @@ init_particles()
         return init_code + color_code
 
 
+class ExpertSpeciesCondition(BaseModel):
+    """Maps an expert name to its species conditions."""
+    expert_name: str = Field(description="Expert function name")
+    species_ids: List[int] = Field(description="Species IDs this expert applies to")
+
+
 class IntegrationKernel(BaseModel):
     single_experts: List[str] = Field(description="Names of single-particle experts")
     interaction_experts: List[str] = Field(description="Names of interaction experts")
-    species_conditions: Optional[Dict[str, List[int]]] = Field(
+    species_conditions: Optional[List[ExpertSpeciesCondition]] = Field(
         default=None,
         description="Species conditions for each expert"
     )
     
     def to_code(self) -> str:
+        # Build a dict for quick lookup from the list format
+        species_conditions_dict = {}
+        if self.species_conditions:
+            for condition in self.species_conditions:
+                species_conditions_dict[condition.expert_name] = condition.species_ids
+        
         single_calls = []
         for expert_name in self.single_experts:
-            if self.species_conditions and expert_name in self.species_conditions:
-                species_list = self.species_conditions[expert_name]
+            if expert_name in species_conditions_dict:
+                species_list = species_conditions_dict[expert_name]
                 conditions = " or ".join([f"species == {s}" for s in species_list])
                 single_calls.append(
                     f"        if {conditions}:\n"
@@ -397,10 +440,16 @@ def apply_all_experts():
         return kernel_code
 
 
+class StateUpdateMapping(BaseModel):
+    """Maps a state name to its update expression."""
+    state_name: str = Field(description="Name of the state to update")
+    update_expression: str = Field(description="Expression for updating the state")
+
+
 class TemporalUpdate(BaseModel):
-    frame_updates: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Frame-based updates (state_name -> update_expression)"
+    frame_updates: List[StateUpdateMapping] = Field(
+        default_factory=list,
+        description="Frame-based updates as state name to update expression mappings"
     )
     day_duration: float = Field(default=10.0, description="Day duration in seconds")
     
@@ -409,8 +458,8 @@ class TemporalUpdate(BaseModel):
             return "@ti.kernel\ndef update_temporal_states():\n    pass"
         
         update_lines = []
-        for state_name, update_expr in self.frame_updates.items():
-            update_lines.append(f"    tv.s.llm_global.field[0].{state_name} = {update_expr}")
+        for mapping in self.frame_updates:
+            update_lines.append(f"    tv.s.llm_global.field[0].{mapping.state_name} = {mapping.update_expression}")
         
         return f'''@ti.kernel
 def update_temporal_states():
@@ -432,6 +481,12 @@ class BehaviorSynthesisRequest(BaseModel):
     particle_count: int = 300
 
 
+class HelperFunctionMapping(BaseModel):
+    """Maps a helper function name to its code."""
+    function_name: str = Field(description="Name of the helper function")
+    code: str = Field(description="Code implementation of the helper function")
+
+
 class BehaviorSynthesisResponse(BaseModel):
     experts: List[ExpertFunction]
     states_needed: List[StateDefinition] = Field(
@@ -441,7 +496,7 @@ class BehaviorSynthesisResponse(BaseModel):
     species_config: SpeciesConfiguration
     integration_kernel: IntegrationKernel
     temporal_update: Optional[TemporalUpdate] = None
-    helper_functions: Optional[Dict[str, str]] = Field(
+    helper_functions: Optional[List[HelperFunctionMapping]] = Field(
         default=None,
         description="Helper functions generated alongside experts"
     )

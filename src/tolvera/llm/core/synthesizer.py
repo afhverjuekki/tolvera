@@ -717,15 +717,42 @@ The following states are available and MUST be used in your implementation:
                     interaction_experts=[expert.name] if expert.is_interaction else []
                 )
                 
+                # Import the mapping classes
+                from .models import SpeciesNameMapping, SpeciesBehaviorMapping, SpeciesColorMapping
+                
+                # Convert species_names dict to list of mappings
+                species_names_list = None
+                if species_info.species_names:
+                    species_names_list = [
+                        SpeciesNameMapping(species_id=sid, name=name)
+                        for sid, name in species_info.species_names.items()
+                    ]
+                
+                # Convert species_behaviors dict to list of mappings
+                species_behaviors_list = None
+                if species_info.species_behaviors:
+                    species_behaviors_list = [
+                        SpeciesBehaviorMapping(species_id=sid, behaviors=behaviors)
+                        for sid, behaviors in species_info.species_behaviors.items()
+                    ]
+                
+                # Convert colors dict to list of mappings
+                colors_list = [
+                    SpeciesColorMapping(
+                        species_id=i,
+                        rgba=self.species_analyzer.get_color_for_species(i, species_info)
+                    )
+                    for i in range(species_info.total_count)
+                ]
+                
                 # Create species configuration with analyzed data
                 species_config = SpeciesConfiguration(
                     species_ids=species_info.species_ids if species_info.species_ids else list(range(species_info.total_count)),
-                    species_names=species_info.species_names,
+                    species_names=species_names_list,
                     interaction_pairs=species_info.interaction_pairs,
-                    species_behaviors=species_info.species_behaviors,
+                    species_behaviors=species_behaviors_list,
                     requires_all_species=species_info.requires_all_species,
-                    colors={i: self.species_analyzer.get_color_for_species(i, species_info) 
-                           for i in range(species_info.total_count)}
+                    colors=colors_list
                 )
                 
                 # Temporal updates removed - handled by individual experts
@@ -844,8 +871,8 @@ IMPORTANT:
             system_prompt += "\nSpecies Information:\n"
             system_prompt += f"- Total species: {len(species_config.species_ids)}\n"
             if species_config.species_names:
-                for sid, name in species_config.species_names.items():
-                    system_prompt += f"- Species {sid}: {name}\n"
+                for mapping in species_config.species_names:
+                    system_prompt += f"- Species {mapping.species_id}: {mapping.name}\n"
         
         # Create agent for initialization synthesis
         agent = Agent(

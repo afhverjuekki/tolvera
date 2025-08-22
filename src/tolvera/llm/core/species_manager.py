@@ -37,7 +37,9 @@ class SpeciesManager:
         colors = {}
         
         if species_config and species_config.colors:
-            colors.update(species_config.colors)
+            # Convert list of SpeciesColorMapping to dict
+            for mapping in species_config.colors:
+                colors[mapping.species_id] = mapping.rgba
         
         for i in range(species_info.total_count):
             if i not in colors:
