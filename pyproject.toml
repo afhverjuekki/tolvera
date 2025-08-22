@@ -29,6 +29,9 @@ openai = "^1.62.0"
 anthropic = "^0.52.0"
 google-generativeai = {version = "^0.8.3", optional = true}
 python-dotenv = "^1.1.1"
+textual = {extras = ["syntax"], version = "^0.67.1"}
+tree-sitter = ">=0.20.1,<0.21.0"
+tree-sitter-languages = "^1.10.2"
 
 [tool.poetry.group.dev.dependencies]
 mkdocs = "^1.5.3"
