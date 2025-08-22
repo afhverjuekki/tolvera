@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from jinja2 import Environment, FileSystemLoader
 import os
-from ..core.prompts import ContextAwarePromptBuilder
 from ..core.prompt_loader import get_prompt_loader
 
 logger = logging.getLogger(__name__)
@@ -179,7 +178,7 @@ class DrawingSynthesizer:
     def __init__(self, llm_client):
         self.llm_client = llm_client
         self.classifier = DrawingClassifier()
-        self.prompt_builder = ContextAwarePromptBuilder()
+        self.prompt_loader = get_prompt_loader()
         
         # Set up Jinja2 environment
         templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
@@ -206,11 +205,12 @@ class DrawingSynthesizer:
         if not classification["is_drawing"]:
             raise ValueError(f"Description does not appear to be a drawing behavior: {description}")
         
-        # Build comprehensive prompt using ContextAwarePromptBuilder
-        base_prompt = self.prompt_builder.build_synthesis_prompt(
+        # Build comprehensive prompt using enhanced prompt_loader with dynamic context selection
+        base_prompt = await self.prompt_loader.build_prompt_with_dynamic_context(
             description=description,
+            expert_type="visual",
             available_states=available_states,
-            constrained=False  # Direct code generation
+            additional_context={"drawing": True}
         )
         
         # Add drawing-specific instructions

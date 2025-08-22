@@ -66,12 +66,10 @@ class SketchRefiner:
         # Load context patterns for syntax guidance
         self._load_context_patterns()
         
-        # Create agents for two-stage refinement
-        self.analysis_agent = self._create_analysis_agent()
-        self.implementation_agent = self._create_implementation_agent()
-        
-        # Create single-stage refinement agent for backward compatibility
-        self.refinement_agent = self._create_single_stage_refinement_agent()
+        # Defer agent creation until needed to avoid premature context selection
+        self.analysis_agent = None
+        self.implementation_agent = None
+        self.refinement_agent = None
         
         # Initialize conversation manager for contextual memory
         self.conversation_manager = ConversationManager(
@@ -169,12 +167,13 @@ class SketchRefiner:
     def _create_implementation_agent(self) -> Agent:
         """Create the Stage 2 implementation agent."""
         
-        # Load implementation prompt using PromptLoader
+        # Load implementation prompt using dynamic context selection
         loader = get_prompt_loader()
-        system_prompt = loader.load_prompt("refinement/sketch_implementation_system.txt",
-                                          taichi_fundamentals=self.taichi_fundamentals,
-                                          movement_patterns=self.movement_patterns,
-                                          flocking_patterns=self.flocking_patterns)
+        system_prompt = loader.load_prompt_with_dynamic_context(
+            "refinement/sketch_implementation_system.txt",
+            description="implementation agent for architectural refinement",
+            refinement_type="implementation"
+        )
         
         # Log the assembled system prompt
         logger.info(f"[SKETCH_REFINER] Implementation Agent System Prompt assembled: {len(system_prompt)} chars")
@@ -194,11 +193,13 @@ class SketchRefiner:
     def _create_single_stage_refinement_agent(self) -> Agent:
         """Create the single-stage refinement agent for quick fixes and repairs."""
         
-        # Load single-stage refinement prompt using PromptLoader
+        # Load single-stage refinement prompt using dynamic context selection
         loader = get_prompt_loader()
-        system_prompt = loader.load_prompt("refinement/single_state_refinement_system.txt",
-                                          taichi_crashes=self.taichi_crashes if hasattr(self, 'taichi_crashes') else '',
-                                          taichi_fundamentals=self.taichi_fundamentals if hasattr(self, 'taichi_fundamentals') else '')
+        system_prompt = loader.load_prompt_with_dynamic_context(
+            "refinement/single_state_refinement_system.txt",
+            description="single stage refinement for error correction and features",
+            refinement_type="error_correction"
+        )
         
         # Log the assembled system prompt
         logger.info(f"[SKETCH_REFINER] Single-Stage Agent System Prompt assembled: {len(system_prompt)} chars")
@@ -231,6 +232,10 @@ class SketchRefiner:
             Dictionary with analysis results and plan
         """
         logger.info("Stage 1: Analyzing sketch and creating implementation plan")
+        
+        # Lazily create analysis agent if needed
+        if self.analysis_agent is None:
+            self.analysis_agent = self._create_analysis_agent()
         
         collector = get_collector()
         
@@ -266,7 +271,7 @@ Analyze the sketch against the user's goal and the architectural patterns in the
                     llm_data = LLMCallData(
                         model=self.model_name,
                         provider=self.provider,
-                        user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
+                        user_prompt=prompt,
                         system_prompt="Analysis agent system prompt",
                         full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response=analysis
@@ -305,6 +310,10 @@ Analyze the sketch against the user's goal and the architectural patterns in the
         """
         logger.info("Stage 2: Implementing refactoring based on plan")
         
+        # Lazily create implementation agent if needed
+        if self.implementation_agent is None:
+            self.implementation_agent = self._create_implementation_agent()
+        
         collector = get_collector()
         
         with collector.trace_node("implement_refinement", "implementation", description=description) as node:
@@ -341,7 +350,7 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
                     llm_data = LLMCallData(
                         model=self.model_name,
                         provider=self.provider,
-                        user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
+                        user_prompt=prompt,
                         system_prompt="Implementation agent system prompt",
                         full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response={'changes_summary': result.output.changes_summary}
@@ -496,6 +505,10 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
         """
         logger.info(f"Single-stage refinement: {refinement_request}")
         
+        # Lazily create refinement agent if needed
+        if self.refinement_agent is None:
+            self.refinement_agent = self._create_single_stage_agent()
+        
         collector = get_collector()
         refinement_type = "error_correction" if error_info else "feature_addition"
         
@@ -582,7 +595,7 @@ Return the COMPLETE refined sketch code.
                     llm_data = LLMCallData(
                         model=self.model_name,
                         provider=self.provider,
-                        user_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,
+                        user_prompt=prompt,
                         system_prompt="Single-stage refinement agent",
                         full_prompt=prompt,  # Store the full prompt for complete trace viewing
                         parsed_response={

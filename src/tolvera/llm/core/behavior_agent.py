@@ -66,9 +66,8 @@ class BehaviorAgent:
         self.species_manager = SpeciesManager(tolvera_instance)
         self.requirements_analyzer = BehaviorRequirementsAnalyzer()
         
-        from .prompts import ContextAwarePromptBuilder
-        prompt_builder = ContextAwarePromptBuilder()
-        self.decomposer = BehaviorDecomposer(model_name, self.provider, prompt_builder, api_key)
+        # Initialize decomposer (uses its own prompt loading)
+        self.decomposer = BehaviorDecomposer(model_name, self.provider, api_key=api_key)
         
         self.kernel_generator = IntegrationKernelGenerator()
         self.sketch_generator = SketchGenerator()

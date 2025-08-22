@@ -35,6 +35,7 @@ class MermaidDiagramGenerator:
             "    classDef state_analysis fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;",
             "    classDef color_resolution fill:#fff3e0,stroke:#ff5722,stroke-width:2px;",
             "    classDef temporal_update fill:#fffde7,stroke:#f9a825,stroke-width:2px;",
+            "    classDef context_selection fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px;",
             "    classDef analysis fill:#f0e6ff,stroke:#9c27b0,stroke-width:2px;",
             "    classDef implementation fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
             "    classDef refinement fill:#ede7f6,stroke:#7c4dff,stroke-width:2px;",
@@ -59,7 +60,7 @@ class MermaidDiagramGenerator:
             'synthesis', 'decomposition', 'llm_call', 'routing', 
             'parsing', 'drawing', 'state_analysis', 'color_resolution', 'temporal_update',
             'analysis', 'implementation', 'refinement', 'error_correction', 'behavior_modification', 'sketch_repair',
-            'demo', 'error', 'success'
+            'context_selection', 'demo', 'error', 'success'
         }
         
         expert_types = {
@@ -215,6 +216,25 @@ class MermaidDiagramGenerator:
             if expert_type:
                 label += f"<br/>{expert_type}"
             
+        elif node.type == "context_selection" and node.output_data:
+            # Context selection information
+            selected_contexts = node.output_data.get("selected_contexts", [])
+            context_count = node.output_data.get("context_count", len(selected_contexts))
+            confidence = node.output_data.get("confidence", 0)
+            method = node.output_data.get("method", "llm")
+            
+            label += f"<br/>{context_count} contexts"
+            if confidence > 0:
+                label += f"<br/>{confidence:.0%} confidence"
+            if method == "pattern_matching":
+                label += "<br/>pattern match"
+            
+            # Show first few contexts if not too many
+            if selected_contexts and len(selected_contexts) <= 3:
+                context_preview = ", ".join(selected_contexts[:3])
+                if len(context_preview) <= 30:
+                    label += f"<br/>{context_preview}"
+                    
         elif node.type == "analysis":
             # Two-stage refinement: Stage 1 analysis
             if node.output_data:
@@ -388,6 +408,7 @@ class MermaidDiagramGenerator:
             "drawing": ("[(", ")]"),  # Cylindrical
             "state_analysis": ("([", "])"),  # Stadium shape for state_analysis
             "temporal_update": ("((", "))"),  # Double circle
+            "context_selection": ("{", "}"),  # Rhombus for context selection
             "analysis": ("((", "))"),  # Double circle for analysis
             "implementation": ("[/", "\\]"),  # Parallelogram for implementation
             "refinement": ("[/", "\\]"),  # Parallelogram

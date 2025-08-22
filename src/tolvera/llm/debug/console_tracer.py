@@ -26,6 +26,7 @@ class ConsoleTracer:
         "state_analysis": "🧬",
         "color_resolution": "🌈",
         "temporal_update": "⏰",
+        "context_selection": "🎯",
         "error": "❌",
         "success": "✅",
         "running": "⏳",
@@ -144,6 +145,18 @@ class ConsoleTracer:
             name = self._color(f"Resolving Color: '{color_name}'", "yellow")
         elif node.type == "temporal_update":
             name = self._color(f"Temporal Update: {node.name}", "cyan")
+        elif node.type == "context_selection":
+            # Check if this is refinement context selection or behavior context selection
+            method = node.metadata.get("method") or node.input_data.get("method", "llm")
+            expert_type = node.input_data.get("expert_type", "")
+            refinement_type = node.input_data.get("refinement_type", "")
+            
+            if refinement_type:
+                name = self._color(f"Context Selection (Refinement): {refinement_type}", "magenta")
+            elif expert_type:
+                name = self._color(f"Context Selection ({expert_type}): {node.name}", "magenta")
+            else:
+                name = self._color(f"Context Selection: {node.name}", "magenta")
         elif node.type == "analysis":
             icon = self.ICONS.get("analysis", "🔍")
             name = self._color(f"Stage 1 Analysis: {node.name}", "magenta")
@@ -228,9 +241,29 @@ class ConsoleTracer:
                             extra = f" → {changes_preview}"
                         else:
                             extra = " → implementation complete"
-            elif node.type == "decomposition" and "components" in node.output_data:
-                count = len(node.output_data.get("components", []))
-                extra = f" → {count} components"
+            elif node.type == "decomposition" and node.output_data:
+                # Check for components in the result structure (from decomposer)
+                result_data = node.output_data.get("result", {})
+                if "components" in result_data:
+                    count = len(result_data.get("components", []))
+                    extra = f" → {count} components"
+                elif "components" in node.output_data:
+                    # Fallback to direct components access
+                    count = len(node.output_data.get("components", []))
+                    extra = f" → {count} components"
+                else:
+                    extra = " → decomposition complete"
+            elif node.type == "context_selection" and node.output_data:
+                selected_contexts = node.output_data.get("selected_contexts", [])
+                context_count = node.output_data.get("context_count", len(selected_contexts))
+                confidence = node.output_data.get("confidence", 0)
+                method = node.output_data.get("method", "llm")
+                
+                extra = f" → {context_count} contexts"
+                if confidence > 0:
+                    extra += f" ({confidence:.0%})"
+                if method == "pattern_matching":
+                    extra += " [pattern]"
             
             print(f"{indent}{timing}{extra}")
         
@@ -250,25 +283,38 @@ class ConsoleTracer:
             self._show_refinement_output(node, depth + 1)
         elif node.type == "sketch_repair" and node.output_data:
             self._show_sketch_repair_output(node, depth + 1)
+        elif node.type == "context_selection" and node.output_data:
+            self._show_context_selection_output(node, depth + 1)
     
     def _show_decomposition_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)
         output = node.output_data
         
-        if "interpretation" in output:
+        # Check for components in the result structure (from decomposer)
+        result_data = output.get("result", {})
+        if result_data and "interpretation" in result_data:
+            interp = self._color(f'"{result_data["interpretation"]}"', "dim")
+            print(f"{indent}Interpretation: {interp}")
+        elif "interpretation" in output:
             interp = self._color(f'"{output["interpretation"]}"', "dim")
             print(f"{indent}Interpretation: {interp}")
         
         # Show component count instead of complexity classification
-        components = output.get('components', [])
+        # Check for components in the result structure first
+        components = []
+        if result_data and "components" in result_data:
+            components = result_data.get("components", [])
+        else:
+            components = output.get('components', [])
+            
         component_count = len(components)
         complexity_color = "green" if component_count == 1 else "yellow"
         complexity_text = f"{component_count} expert{'s' if component_count != 1 else ''}"
         print(f"{indent}Components: {self._color(complexity_text, complexity_color)}")
         
-        if "components" in output:
+        if components:
             print(f"{indent}Components:")
-            for comp in output["components"]:
+            for comp in components:
                 expert_name = comp.get("expert_name", "unknown")
                 expert_type = comp.get("expert_type", "")
                 priority = comp.get("priority", 1.0)
@@ -387,20 +433,27 @@ class ConsoleTracer:
                             print(f"{indent}    • {self._color(str(update), 'yellow')}")
             else:
                 print(f"{indent}  {self._color(str(parsed), 'yellow')}")
-        elif output.get("needs_states"):
-            states_summary = []
-            if output.get("global_states", 0) > 0:
-                states_summary.append(f"Global: {output['global_states']}")
-            if output.get("particle_states", 0) > 0:
-                states_summary.append(f"Particle: {output['particle_states']}")
-            if output.get("species_states", 0) > 0:
-                states_summary.append(f"Species: {output['species_states']}")
-            if output.get("temporal_updates", 0) > 0:
-                states_summary.append(f"Temporal: {output['temporal_updates']}")
-            
-            if states_summary:
-                print(f"{indent}{self._color('States needed (summary):', 'yellow')} {', '.join(states_summary)}")
-                print(f"{indent}{self._color('Note: Full state details not available in trace', 'dim')}")
+        elif output.get("needs_states") is not None:
+            # Check if we actually need states
+            if output.get("needs_states"):
+                states_summary = []
+                if output.get("global_states", 0) > 0:
+                    states_summary.append(f"Global: {output['global_states']}")
+                if output.get("particle_states", 0) > 0:
+                    states_summary.append(f"Particle: {output['particle_states']}")
+                if output.get("species_states", 0) > 0:
+                    states_summary.append(f"Species: {output['species_states']}")
+                if output.get("temporal_updates", 0) > 0:
+                    states_summary.append(f"Temporal: {output['temporal_updates']}")
+                
+                if states_summary:
+                    print(f"{indent}{self._color('States needed:', 'yellow')} {', '.join(states_summary)}")
+                else:
+                    # needs_states is True but no states were found - this is the bug
+                    print(f"{indent}{self._color('Warning: needs_states=True but no states found', 'red')}")
+            else:
+                # needs_states is False - no custom states needed
+                print(f"{indent}{self._color('No custom states needed', 'green')}")
             
             temporal_details = output.get("temporal_update_details", [])
             if temporal_details:
@@ -498,6 +551,35 @@ class ConsoleTracer:
                 print(f"{indent}{self._color('Error:', 'red')} {error_msg}")
             if output.get("exception"):
                 print(f"{indent}{self._color('Type:', 'dim')} Exception during repair process")
+    
+    def _show_context_selection_output(self, node: TraceNode, depth: int):
+        indent = self._get_indent(depth)
+        output = node.output_data
+        
+        # Show context selection summary
+        selected_contexts = output.get("selected_contexts", [])
+        context_count = output.get("context_count", len(selected_contexts))
+        reasoning = output.get("reasoning", "")
+        method = output.get("method", "llm")
+        
+        print(f"{indent}{self._color('Context Selection Results:', 'bold')}")
+        print(f"{indent}  {self._color('Method:', 'cyan')} {method}")
+        print(f"{indent}  {self._color('Selected:', 'cyan')} {context_count} contexts")
+        
+        if reasoning:
+            reasoning_preview = reasoning[:100] + "..." if len(reasoning) > 100 else reasoning
+            print(f"{indent}  {self._color('Reasoning:', 'cyan')} {self._color(reasoning_preview, 'dim')}")
+        
+        # Show selected contexts
+        if selected_contexts:
+            print(f"{indent}  {self._color('Contexts:', 'cyan')}")
+            for i, context in enumerate(selected_contexts[:10]):  # Show max 10 contexts
+                context_name = context.replace('_', ' ').title()
+                print(f"{indent}    {i+1}. {self._color(context_name, 'yellow')}")
+            
+            if len(selected_contexts) > 10:
+                remaining = len(selected_contexts) - 10
+                print(f"{indent}    {self._color(f'... and {remaining} more', 'dim')}")
     
     def _show_analysis_output(self, node: TraceNode, depth: int):
         indent = self._get_indent(depth)

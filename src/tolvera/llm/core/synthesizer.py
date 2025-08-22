@@ -21,7 +21,6 @@ from .models import (
 from ..debug.tracing import get_collector, LLMCallData
 from .species_analyzer import SpeciesAnalyzer
 from .species_manager import SpeciesManager
-from .prompts import ContextAwarePromptBuilder
 from .prompt_loader import get_prompt_loader
 
 logger = logging.getLogger(__name__)
@@ -126,8 +125,8 @@ class Synthesizer:
         self.species_analyzer = SpeciesAnalyzer()
         self.species_manager = SpeciesManager(tolvera_instance) if tolvera_instance else None
         
-        # Initialize prompt builder
-        self.prompt_builder = ContextAwarePromptBuilder()
+        # Initialize prompt loader
+        self.prompt_loader = get_prompt_loader()
         
         # Keep track of experts
         self.experts = []
@@ -205,7 +204,29 @@ Focus on helper states and flags:
         collector = get_collector()
         
         # Build state analysis prompt with expert type context
-        prompt = self.prompt_builder.build_state_analysis_prompt(description, expert_type=expert_type)
+        prompt = f"""Analyze what custom states (if any) are needed for this behavior: "{description}"
+
+EXPERT TYPE: {expert_type}
+
+The following properties are ALREADY AVAILABLE on every particle and should NOT be recreated:
+- pos (ti.math.vec2): Position
+- vel (ti.math.vec2): Velocity  
+- mass (ti.f32): Mass
+- size (ti.f32): Display size
+- speed (ti.f32): Speed magnitude
+- species (ti.i32): Species ID
+- active (ti.f32): Activity level
+- ppos, pvel: Previous position/velocity
+
+Only create NEW states for properties that don't already exist.
+
+{self._get_expert_type_guidance(expert_type)}
+
+Consider:
+1. Does it need to track time, phases, or system-wide parameters? → Add to global_states
+2. Does it need per-particle memory or properties NOT listed above? → Add to particle_states  
+3. Does it need species-specific configuration? → Add to species_states
+4. Can it be implemented with just the existing properties? → Set needs_states: false"""
         
         # Load state analysis prompts using PromptLoader
         loader = get_prompt_loader()
@@ -274,10 +295,16 @@ Focus on helper states and flags:
                         )
                         llm_node.llm_call = llm_data
                 
-                # Count states by category
-                global_count = sum(1 for s in state_analysis.states if s.category == 'global')
-                particle_count = sum(1 for s in state_analysis.states if s.category == 'particle')
-                species_count = sum(1 for s in state_analysis.states if s.category == 'species')
+                # Count states by category - only if states are actually needed
+                if state_analysis.needs_states and state_analysis.states:
+                    global_count = sum(1 for s in state_analysis.states if s.category == 'global')
+                    particle_count = sum(1 for s in state_analysis.states if s.category == 'particle')
+                    species_count = sum(1 for s in state_analysis.states if s.category == 'species')
+                else:
+                    # No states needed, so all counts should be 0
+                    global_count = 0
+                    particle_count = 0
+                    species_count = 0
                 
                 logger.info(f"State analysis: needs_states={state_analysis.needs_states}, "
                            f"global={global_count}, "
@@ -388,12 +415,12 @@ Focus on helper states and flags:
         # Log available states for debugging
         logger.info(f"Available states for synthesis: {available_states}")
         
-        # Build comprehensive prompt using ContextAwarePromptBuilder
-        base_prompt = self.prompt_builder.build_synthesis_prompt(
+        # Build comprehensive prompt using enhanced prompt_loader with dynamic context selection
+        base_prompt = await self.prompt_loader.build_prompt_with_dynamic_context(
             description=description,
+            expert_type="force",  # Default expert type
             available_states=available_states,
-            constrained=False,  # We want direct code generation
-            context=context  # Pass context to prompt builder
+            additional_context=context
         )
         
         # Add species context if available
@@ -783,21 +810,18 @@ def drift(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, p
     ) -> InitializationResponse:
         """Synthesize initialization kernel based on behavior description."""
         
-        # Build initialization-specific prompt
-        prompt_builder = ContextAwarePromptBuilder()
-        contexts = prompt_builder.detect_needed_contexts(description)
-        
-        # Always include initialization patterns
-        contexts.add('initialization')
-        if species_config and len(species_config.species_ids) > 1:
-            contexts.add('species_initialization')
-        
-        prompt = prompt_builder.build_prompt(
-            description=description,
-            expert_type='initialization',
-            contexts=contexts,
-            species_config=species_config
-        )
+        # Build initialization-specific prompt using basic template
+        prompt = f"""You are a Taichi expert synthesizing particle initialization code for Tölvera.
+
+Generate a complete @ti.kernel function that initializes particles based on: {description}
+
+IMPORTANT:
+- Set tv.p.field[i].active = 1.0 for active particles
+- ALWAYS set tv.p.field[i].speed = 20.0 for movement scaling
+- Particle size should be 5.0-10.0 for visibility
+- Species ID must be within range [0, tv.sn-1]
+- Use ti.random() for randomness, not Python's random
+- Initialize velocities appropriate to behavior type"""
         
         # Add specific instructions for initialization
         system_prompt = f"""You are a Taichi expert synthesizing particle initialization code for Tölvera.
@@ -843,19 +867,28 @@ IMPORTANT:
     ) -> TemporalUpdateResponse:
         """Synthesize temporal update kernel based on behavior description."""
         
-        # Build temporal-specific prompt
-        prompt_builder = ContextAwarePromptBuilder()
-        contexts = prompt_builder.detect_needed_contexts(description)
-        
-        # Always include temporal patterns (even though states are global now)
-        contexts.add('temporal_dynamics')  # Use the temporal_dynamics context
-        contexts.add('temporal_patterns_extended')  # Include extended patterns
-        
-        prompt = prompt_builder.build_prompt(
-            description=description,
-            expert_type='temporal_update',
-            contexts=contexts
-        )
+        # Build temporal-specific prompt using basic template
+        prompt = f"""You are a Taichi expert synthesizing temporal state updates for Tölvera based on: {description}
+
+TEMPORAL UPDATE GUIDELINES:
+1. For states that change over time:
+   - energy: Deplete based on activity (vel.norm()), regenerate when resting
+   - age: Increment each frame, handle lifecycle transitions
+   - phase: Update based on frequency, handle wrapping
+   - temperature: Apply cooling/heating with Newton's law
+   - resources: Consume based on behavior, regenerate conditionally
+
+2. Update rates based on description:
+   - "slowly" → multiply by 0.999 or add/subtract 0.001
+   - "gradually" → multiply by 0.99 or add/subtract 0.01
+   - "quickly" → multiply by 0.95 or add/subtract 0.05
+   - "rapidly" → multiply by 0.9 or add/subtract 0.1
+
+IMPORTANT:
+- Access states via tv.s.llm_particle.field[i].STATE_NAME
+- Always clamp values to their valid ranges
+- Only set active = 0.0 when particle truly dies (energy=0, max age)
+- Consider species-specific dynamics where appropriate"""
         
         # Format available states with temporal info
         state_info = "Available States:\n"
@@ -1023,20 +1056,17 @@ Consider:
         # Just use the available_states that were passed in
         logger.info(f"Using pre-created states: {available_states}")
         
-        # Build utility-specific prompt
-        prompt_builder = ContextAwarePromptBuilder()
-        contexts = prompt_builder.detect_needed_contexts(description)
-        
-        # Add utility-specific contexts
-        if 'temporal' in description.lower() or 'time' in description.lower():
-            contexts.add('temporal_dynamics')
-            contexts.add('temporal_patterns_extended')
-        
-        prompt = prompt_builder.build_prompt(
-            description=description,
-            expert_type=expert_type,  # Use the specific expert type
-            contexts=contexts
-        )
+        # Build utility-specific prompt using basic template
+        prompt = f"""You are a Taichi expert synthesizing {expert_type} functions for Tölvera based on: {description}
+
+UNIVERSAL UTILITY FUNCTION RULES:
+1. The function should NOT take particle parameters (pos, vel, mass, species, particle_idx)
+2. Most utility functions take NO parameters at all: @ti.func def expert_name():
+3. If parameters are needed, use only what's necessary (e.g., dt for time-based updates)
+4. Access states directly via tv.s.llm_particle.field[i] or tv.s.llm_global.field[0]
+5. Do NOT return force vectors (ti.math.vec2 or ti.Vector)
+6. Most utility functions have NO return statement (void functions)
+7. Use @ti.func decorator"""
         
         # Format available states
         state_info = "Available States:\n"

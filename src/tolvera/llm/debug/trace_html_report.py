@@ -1,7 +1,6 @@
 import json
 import html
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, List, Any, Optional
 from .diagram_generator import MermaidDiagramGenerator
 
@@ -27,7 +26,6 @@ class TraceHTMLReporter:
         # Generate Mermaid diagrams
         diagram_generator = MermaidDiagramGenerator()
         # Convert dict to TraceNode-like structure for diagram generator
-        from .tracing import TraceNode
         trace_node = self._dict_to_trace_node(trace_data)
         flow_diagram = diagram_generator.generate_raw(trace_node)
         sequence_diagram = diagram_generator.generate_sequence_raw(trace_node)
@@ -46,7 +44,7 @@ class TraceHTMLReporter:
         return html
     
     def _build_html(self, summary_stats: str, timeline_segments: str, 
-                    total_duration: str, llm_call_sections: str, system_prompt: str,
+                    total_duration: str, llm_call_sections: str, _: str,
                     flow_diagram: str, sequence_diagram: str) -> str:
         """Build the complete HTML document."""
         return f'''<!DOCTYPE html>
@@ -108,6 +106,10 @@ class TraceHTMLReporter:
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #FF5722; border-radius: 2px;"></div>
                         <span>Color Resolution</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div style="width: 16px; height: 16px; background-color: #9C27B0; border-radius: 2px;"></div>
+                        <span>Context Selection</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <div style="width: 16px; height: 16px; background-color: #2196F3; border-radius: 2px;"></div>
@@ -741,7 +743,7 @@ class TraceHTMLReporter:
         """Generate summary statistics HTML."""
         # Count LLM calls
         llm_calls = self._collect_llm_calls(trace_data)
-        successful_calls = sum(1 for call in llm_calls if call.get('status') == 'success')
+        # successful_calls = sum(1 for call in llm_calls if call.get('status') == 'success')  # unused
         
         stats = [
             ("Duration", f"{(trace_data.get('duration_ms') or 0):.1f}ms", ""),
@@ -840,6 +842,7 @@ class TraceHTMLReporter:
             'state_analysis': '#4CAF50',     # Green - for state analysis
             'state_initialization': '#00BCD4', # Cyan - for state initialization
             'color_resolution': '#FF5722',   # Deep Orange - for color resolution
+            'context_selection': '#9C27B0',  # Purple - for context selection
             'synthesis_force': '#2196F3',    # Blue - for force expert synthesis
             'synthesis_interaction': '#FF9800',  # Orange - for interaction expert synthesis
             'synthesis_temporal': '#FFC107', # Amber - for temporal update synthesis
@@ -874,6 +877,7 @@ class TraceHTMLReporter:
                               'decompose' in call.get('name', '').lower())
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
+            is_context_selection = call.get('type') == 'context_selection' or 'context_selection' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower() or call.get('parent', {}).get('type') == 'refinement'
             is_error_correction = 'error_correction' in call.get('name', '').lower()
             is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
@@ -923,16 +927,21 @@ class TraceHTMLReporter:
                 # For state analysis, show brief result
                 parsed = call.get('llm_call', {}).get('parsed_response', {})
                 if parsed and isinstance(parsed, dict):
-                    global_states = parsed.get('global_states', [])
-                    particle_states = parsed.get('particle_states', [])
-                    species_states = parsed.get('species_states', [])
-                    
-                    global_count = len(global_states) if isinstance(global_states, list) else global_states if isinstance(global_states, int) else 0
-                    particle_count = len(particle_states) if isinstance(particle_states, list) else particle_states if isinstance(particle_states, int) else 0
-                    species_count = len(species_states) if isinstance(species_states, list) else species_states if isinstance(species_states, int) else 0
-                    
-                    total_states = global_count + particle_count + species_count
-                    timeline_label = f"states({total_states})" if total_states > 0 else "states(0)"
+                    needs_states = parsed.get('needs_states', False)
+                    if needs_states:
+                        global_states = parsed.get('global_states', [])
+                        particle_states = parsed.get('particle_states', [])
+                        species_states = parsed.get('species_states', [])
+                        
+                        global_count = len(global_states) if isinstance(global_states, list) else global_states if isinstance(global_states, int) else 0
+                        particle_count = len(particle_states) if isinstance(particle_states, list) else particle_states if isinstance(particle_states, int) else 0
+                        species_count = len(species_states) if isinstance(species_states, list) else species_states if isinstance(species_states, int) else 0
+                        
+                        total_states = global_count + particle_count + species_count
+                        timeline_label = f"states({total_states})" if total_states > 0 else "states(0)"
+                    else:
+                        # No states needed
+                        timeline_label = "states(none)"
                 else:
                     timeline_label = "state_analysis"
                 color = color_scheme['state_analysis']
@@ -945,6 +954,22 @@ class TraceHTMLReporter:
                 else:
                     timeline_label = "color_resolution"
                 color = color_scheme['color_resolution']
+            elif is_context_selection:
+                # For context selection, show context count and method
+                output_data = call.get('output_data', {})
+                context_count = output_data.get('context_count', 0)
+                method = output_data.get('method', 'llm')
+                confidence = output_data.get('confidence', 0)
+                
+                if context_count > 0:
+                    timeline_label = f"contexts({context_count})"
+                    if method == "pattern_matching":
+                        timeline_label += "[pattern]"
+                    elif confidence > 0:
+                        timeline_label += f"({confidence:.0%})"
+                else:
+                    timeline_label = "context_selection"
+                color = color_scheme['context_selection']
             else:
                 # For synthesis, determine type and assign appropriate color
                 parsed = call.get('llm_call', {}).get('parsed_response', {})
@@ -1035,6 +1060,7 @@ class TraceHTMLReporter:
                               'decompose' in call.get('name', '').lower())
             is_state_analysis = call.get('name') == 'llm_state_analysis' or 'state_analysis' in call.get('name', '').lower()
             is_color_resolution = call.get('name') == 'llm_color_resolution' or 'color_resolution' in call.get('name', '').lower()
+            is_context_selection = call.get('type') == 'context_selection' or 'context_selection' in call.get('name', '').lower()
             is_refinement = 'refinement' in call.get('name', '').lower()
             is_sketch_repair = call.get('type') == 'sketch_repair' or 'sketch_repair' in call.get('name', '').lower()
             is_analysis_stage = 'analyze_sketch' in call.get('name', '').lower() or call.get('type') == 'analysis'
@@ -1058,8 +1084,14 @@ class TraceHTMLReporter:
                 components = []
                 if parsed_response and parsed_response.get('components'):
                     components = parsed_response.get('components', [])
-                elif call.get('output_data') and call.get('output_data').get('components'):
-                    components = call.get('output_data').get('components', [])
+                elif call.get('output_data'):
+                    # Check for components in the result structure (from decomposer)
+                    result_data = call.get('output_data', {}).get('result', {})
+                    if result_data and result_data.get('components'):
+                        components = result_data.get('components', [])
+                    elif call.get('output_data').get('components'):
+                        # Fallback to direct components access
+                        components = call.get('output_data').get('components', [])
                 
                 if components:
                     
@@ -1132,6 +1164,22 @@ class TraceHTMLReporter:
                 else:
                     color_name = input_data.get('color_name', call.get('metadata', {}).get('color_name', 'unknown'))
                     expert_name = f"color_resolution → '{color_name}'"
+            elif is_context_selection:
+                # This is a context selection call
+                code = ''  # Context selection doesn't generate code
+                output_data = call.get('output_data', {})
+                selected_contexts = output_data.get('selected_contexts', [])
+                context_count = output_data.get('context_count', len(selected_contexts))
+                confidence = output_data.get('confidence', 0)
+                # reasoning = output_data.get('reasoning', '')  # unused
+                method = output_data.get('method', 'llm')
+                
+                if method == "pattern_matching":
+                    expert_name = f"context_selection → {context_count} contexts [pattern matching]"
+                elif confidence > 0:
+                    expert_name = f"context_selection → {context_count} contexts ({confidence:.0%} confidence)"
+                else:
+                    expert_name = f"context_selection → {context_count} contexts"
             elif is_sketch_repair:
                 # This is a sketch repair call (non-LLM event)
                 code = ''  # Sketch repair doesn't have generated code in same format
@@ -1169,7 +1217,7 @@ class TraceHTMLReporter:
                 # This is a refinement call
                 code = parsed_response.get('refined_code', '') if parsed_response else ''
                 changes = parsed_response.get('changes_made', '') if parsed_response else ''
-                warnings = parsed_response.get('warnings', '') if parsed_response else ''
+                # warnings = parsed_response.get('warnings', '') if parsed_response else ''  # unused
                 
                 # Determine refinement type
                 if 'error_correction' in call.get('name', ''):
@@ -1308,6 +1356,9 @@ class TraceHTMLReporter:
                     <!-- Refinement Details (if this is a refinement call) -->
                     {self._generate_refinement_details(parsed_response, input_data, is_refinement) if is_refinement else ''}
                     
+                    <!-- Context Selection Details (if this is a context selection call) -->
+                    {self._generate_context_selection_details(call.get('output_data', {}), input_data, is_context_selection) if is_context_selection else ''}
+                    
                     <!-- Decomposition Components (if applicable) -->
                     {self._generate_decomposition_section(parsed_response) if parsed_response and 'components' in parsed_response else ''}
                     
@@ -1347,6 +1398,7 @@ class TraceHTMLReporter:
                                     'Decomposition' if is_decomposition else
                                     'State Analysis' if is_state_analysis else
                                     'Color Resolution' if is_color_resolution else
+                                    'Context Selection' if is_context_selection else
                                     'Refinement' if is_refinement else
                                     'Interaction' if parsed_response and parsed_response.get('is_interaction') else
                                     'Force' if not (is_drawing or is_temporal or is_utility) else
@@ -1645,7 +1697,7 @@ class TraceHTMLReporter:
         # Show which states this affects
         if input_data.get('affected_states'):
             states = input_data['affected_states']
-            section += f'''
+            section += '''
                 <div style="margin-bottom: 15px;">
                     <strong>Affected States:</strong>
                     <ul style="margin-left: 20px;">
@@ -1712,7 +1764,7 @@ class TraceHTMLReporter:
         # Show error info if this was an error correction
         has_error = input_data.get('has_error', False)
         if has_error:
-            section += f'''
+            section += '''
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #FFEBEE; border-left: 3px solid #F44336; border-radius: 4px;">
                     <strong style="color: #F44336;">Error Fixed:</strong><br>
                     This refinement was triggered by an error in the sketch execution.
@@ -1757,7 +1809,7 @@ class TraceHTMLReporter:
         
         # Show repair results
         if output_data.get('repair_success'):
-            section += f'''
+            section += '''
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #E8F5E9; border-left: 3px solid #4CAF50; border-radius: 4px;">
                     <strong style="color: #4CAF50;">✅ Repair Successful</strong>
                 </div>
@@ -1790,7 +1842,7 @@ class TraceHTMLReporter:
                     </div>
                 '''
         else:
-            section += f'''
+            section += '''
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #FFEBEE; border-left: 3px solid #F44336; border-radius: 4px;">
                     <strong style="color: #F44336;">❌ Repair Failed</strong>
                 </div>
@@ -1806,7 +1858,7 @@ class TraceHTMLReporter:
                 '''
             
             if output_data.get('exception'):
-                section += f'''
+                section += '''
                     <div style="margin-bottom: 15px;">
                         <strong>Type:</strong> 
                         <span style="color: var(--text-secondary);">Exception during repair process</span>
@@ -1924,6 +1976,88 @@ class TraceHTMLReporter:
         
         return section
     
+    def _generate_context_selection_details(self, output_data: Dict[str, Any], input_data: Dict[str, Any], is_context_selection: bool) -> str:
+        """Generate detailed HTML section for context selection results."""
+        if not is_context_selection:
+            return ''
+        
+        section = '''
+        <div class="context-selection-section">
+            <div class="section-title">🎯 Context Selection Details</div>
+            <div style="padding: 15px; background-color: var(--code-bg); border-radius: 4px;">
+        '''
+        
+        # Show selection summary
+        selected_contexts = output_data.get("selected_contexts", [])
+        context_count = output_data.get("context_count", len(selected_contexts))
+        confidence = output_data.get("confidence", 0)
+        reasoning = output_data.get("reasoning", "")
+        method = output_data.get("method", "llm")
+        
+        # Show what we're selecting contexts for
+        if input_data.get('description'):
+            description = input_data['description']
+            section += f'''
+                <div style="margin-bottom: 15px; padding: 10px; background-color: var(--bg-secondary); border-radius: 4px;">
+                    <strong>Selecting contexts for:</strong> {html.escape(description[:200])}{'...' if len(description) > 200 else ''}
+                </div>
+            '''
+        
+        # Show selection method and stats
+        section += f'''
+            <div style="margin-bottom: 15px;">
+                <strong>Selection Method:</strong> 
+                <span style="color: #2196F3;">{method.replace('_', ' ').title()}</span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>Contexts Selected:</strong> 
+                <span style="color: #4CAF50; font-weight: bold;">{context_count}</span>
+            </div>
+        '''
+        
+        # Show confidence if available
+        if confidence > 0:
+            confidence_color = '#4CAF50' if confidence > 0.8 else '#FF9800' if confidence > 0.5 else '#F44336'
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Confidence:</strong> 
+                    <span style="color: {confidence_color}; font-weight: bold;">{confidence:.1%}</span>
+                </div>
+            '''
+        
+        # Show reasoning if available
+        if reasoning:
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Selection Reasoning:</strong>
+                    <div style="padding: 10px; background-color: var(--bg-secondary); border-left: 3px solid var(--accent); border-radius: 4px; margin-top: 5px;">
+                        {html.escape(reasoning)}
+                    </div>
+                </div>
+            '''
+        
+        # Show selected contexts
+        if selected_contexts:
+            section += f'''
+                <div style="margin-bottom: 15px;">
+                    <strong>Selected Contexts ({len(selected_contexts)}):</strong>
+                    <div style="margin-top: 10px;">
+            '''
+            
+            for i, context in enumerate(selected_contexts):
+                context_name = context.replace('_', ' ').title()
+                section += f'''
+                    <div style="margin: 5px 0; padding: 8px; background-color: var(--bg-secondary); border-left: 3px solid #2196F3; border-radius: 4px;">
+                        <strong>{i+1}. {html.escape(context_name)}</strong>
+                        <span style="font-family: monospace; color: var(--text-secondary); margin-left: 10px;">({context})</span>
+                    </div>
+                '''
+            
+            section += '</div></div>'
+        
+        section += '</div></div>'
+        return section
+    
     def _format_code(self, code: str) -> str:
         """Apply basic syntax highlighting to Python code."""
         if not code:
@@ -1963,10 +2097,10 @@ class TraceHTMLReporter:
         
         return '\n'.join(formatted_lines)
     
-    def _generate_refinement_parent_section(self, call: Dict[str, Any], index: int) -> str:
+    def _generate_refinement_parent_section(self, call: Dict[str, Any], _: int) -> str:
         """Generate HTML section for two-stage refinement parent node."""
         input_data = call.get('input_data', {})
-        output_data = call.get('output_data', {})
+        # output_data = call.get('output_data', {})  # unused
         description = input_data.get('description', 'Refinement request')
         duration = call.get('duration_ms', 0)
         

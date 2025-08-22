@@ -197,13 +197,13 @@ class BehaviorDecomposer:
             result = await self.decomposition_agent.run(prompt, deps=deps)
             end_time = time.time()
             
-            # Log the LLM call (simplified for now - TODO: fix logging conflicts)
+            # Log the LLM call with full content for debugging
             try:
                 collector.log_llm_call(
                     model=self.model_name,
                     system_prompt="Decomposition agent system prompt",
-                    user_prompt=prompt[:200] + "..." if len(prompt) > 200 else prompt,
-                    response=str(result.data)[:200] + "..." if len(str(result.data)) > 200 else str(result.data)
+                    user_prompt=prompt,
+                    response=str(result.data)
                 )
             except Exception as e:
                 logger.warning(f"Failed to log LLM call: {e}")

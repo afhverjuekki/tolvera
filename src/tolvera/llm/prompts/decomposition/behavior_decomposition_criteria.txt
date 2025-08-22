@@ -1,28 +1,28 @@
 ## SUCCESS VS. FAILURE CRITERIA
 
 ### SUCCESS CRITERIA:
-✅ **Comprehensive Decomposition**: Every aspect of the description is captured in components
-✅ **Species Properly Detected**: All mentioned species extracted with correct colors and roles
-✅ **Expert Types Correct**: Force experts for movement, interaction for pairs, state_update for rules
-✅ **Implementation Details Provided**: Each component has 3-5 step-by-step instructions
-✅ **Parameters Listed**: All necessary parameters identified with descriptive names
-✅ **Biologically Plausible**: Behaviors follow real-world biological patterns
-✅ **Mathematically Sound**: Force relationships and parameters are physically reasonable
-✅ **Components Coordinate**: Multiple components work together without conflicts
-✅ **State Requirements Clear**: All needed custom states specified with proper types
-✅ **Never Empty Components**: ALWAYS generates at least 1 component (enforced by schema)
+✅ Comprehensive Decomposition: Every aspect of the description is captured in components
+✅ Species Properly Detected: All mentioned species extracted with correct colors and roles
+✅ Expert Types Correct: Force experts for movement, interaction for pairs, state_update for rules
+✅ Implementation Details Provided: Each component has 3-5 step-by-step instructions
+✅ Parameters Listed: All necessary parameters identified with descriptive names
+✅ Biologically Plausible: Behaviors follow real-world biological patterns
+✅ Mathematically Sound: Force relationships and parameters are physically reasonable
+✅ Components Coordinate: Multiple components work together without conflicts
+✅ State Requirements Clear: All needed custom states specified with proper types
+✅ Never Empty Components: ALWAYS generates at least 1 component (enforced by schema)
 
 ### FAILURE CRITERIA:
-❌ **Empty or Missing Components**: Returning zero components (schema violation)
-❌ **Generic Implementation**: Vague descriptions like "apply force" without specifics
-❌ **Missing Species Detection**: Not extracting colors, roles, or interaction pairs
-❌ **Wrong Expert Types**: Using 'force' for state updates or 'temporal' for physics
-❌ **No Implementation Details**: Missing step-by-step algorithmic guidance
-❌ **Unrealistic Parameters**: Force values that are too weak (<50) or too strong (>2000)
-❌ **Conflicting Components**: Experts that work against each other
-❌ **Missing State Analysis**: Not identifying required custom states
-❌ **Biological Implausibility**: Behaviors that contradict natural patterns
-❌ **Mathematical Errors**: Force relationships that don't follow physics principles
+❌ Empty or Missing Components: Returning zero components (schema violation)
+❌ Generic Implementation: Vague descriptions like "apply force" without specifics
+❌ Missing Species Detection: Not extracting colors, roles, or interaction pairs
+❌ Wrong Expert Types: Using 'force' for state updates or 'temporal' for physics
+❌ No Implementation Details: Missing step-by-step algorithmic guidance
+❌ Unrealistic Parameters: Force values that are too weak (<50) or too strong (>2000)
+❌ Conflicting Components: Experts that work against each other
+❌ Missing State Analysis: Not identifying required custom states
+❌ Biological Implausibility: Behaviors that contradict natural patterns
+❌ Mathematical Errors: Force relationships that don't follow physics principles
 
 TÖLVERA FRAMEWORK CONTEXT:
 - Particles have built-in properties: pos (vec2), vel (vec2), mass (f32), size (f32), species (i32), active (f32)
