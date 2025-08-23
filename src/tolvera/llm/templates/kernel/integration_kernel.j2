@@ -15,7 +15,14 @@ def apply_all_experts():
             {% if has_species_specific %}
             {% for species_id, experts in species_expert_map.items() %}
             {% if experts %}
-            {% set species_name = species_config.species_names.get(species_id, 'species_' + species_id|string) if species_config and species_config.species_names else 'species_' + species_id|string %}
+            {% set species_name = 'species_' + species_id|string %}
+            {% if species_config and species_config.species_names %}
+                {% for mapping in species_config.species_names %}
+                    {% if mapping.species_id == species_id %}
+                        {% set species_name = mapping.name %}
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
             {% if species_id == 2 and 'food' in species_name.lower() %}
             if species == {{ species_id }}:  # {{ species_name }} (stationary)
                 # Food particles don't move

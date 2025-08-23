@@ -8,8 +8,8 @@ from .synthesizer import Synthesizer
 from .state_manager import StateManager
 from .decomposer import BehaviorDecomposer
 from ..debug.tracing import get_collector
-from ..generation.kernel import IntegrationKernelGenerator
-from ..generation.sketch import SketchGenerator
+from .template_renderer import TemplateRenderer
+from .drawing_classifier import DrawingClassifier
 from .species_manager import SpeciesManager
 
 logger = logging.getLogger(__name__)
@@ -68,8 +68,7 @@ class BehaviorAgent:
         # Initialize decomposer (uses its own prompt loading)
         self.decomposer = BehaviorDecomposer(model_name, self.provider, api_key=api_key)
         
-        self.kernel_generator = IntegrationKernelGenerator()
-        self.sketch_generator = SketchGenerator()
+        self.template_renderer = TemplateRenderer()
         
         # Initialize SketchRefiner for architectural enhancement
         from .sketch_refiner import SketchRefiner
@@ -1135,11 +1134,10 @@ def {function_name}():
                 species_conditions[expert.name] = expert.applies_to_species
         
         # Generate kernel code with species configuration and conditions
-        kernel_code = self.kernel_generator.generate(
+        kernel_code = self.template_renderer.render_integration_kernel(
             single_expert_names=[e.name for e in single_experts],
             interaction_expert_names=[e.name for e in interaction_experts],
             expert_weights=self.expert_weights,
-            tolvera_instance=self.tv,
             species_config=self.current_species_config,  # Pass species config for proper mapping
             species_conditions=species_conditions,  # Pass explicit species conditions
             visual_expert_names=[e.name for e in visual_experts]  # Pass visual experts separately
@@ -1150,22 +1148,14 @@ def {function_name}():
         logger.info("Regenerated integration kernel with all experts")
     
     async def _regenerate_drawing_kernel(self):
-        from ..generation.drawing import DrawingKernelGenerator
-        
         # Separate drawing experts by type and order
         # Include both 'drawing' and 'visual' expert types
-        pre_draw = [e for e in self.experts if e.expert_type in ['drawing', 'visual'] and getattr(e, 'draw_order', None) == 'pre']
-        post_draw = [e for e in self.experts if e.expert_type in ['drawing', 'visual'] and getattr(e, 'draw_order', 'post') == 'post']
-        interaction_draw = [e for e in self.experts if e.expert_type == 'drawing_interaction']
+        visual_experts = [e for e in self.experts if e.expert_type in ['drawing', 'visual', 'drawing_interaction']]
         
-        # Generate drawing kernel code
-        drawing_generator = DrawingKernelGenerator()
-        kernel_code = drawing_generator.generate(
-            pre_draw_experts=[e.name for e in pre_draw],
-            post_draw_experts=[e.name for e in post_draw],
-            interaction_draw_experts=[e.name for e in interaction_draw],
-            expert_weights=self.expert_weights,
-            tolvera_instance=self.tv
+        # Generate drawing kernel code using template renderer
+        kernel_code = self.template_renderer.render_drawing_kernel(
+            visual_expert_names=[e.name for e in visual_experts],
+            function_name="draw"
         )
         
         # Store the generated kernel code for later use in sketch generation
@@ -1183,7 +1173,7 @@ def {function_name}():
             return
         
         # Generate utility kernel code
-        kernel_code = self.kernel_generator.generate_utility_kernel(
+        kernel_code = self.template_renderer.render_utility_kernel(
             utility_expert_names=[e.name for e in utility_experts],
             function_name="update_utilities"
         )
@@ -1440,9 +1430,6 @@ def deposit_trails():
     ) -> Dict[str, Any]:
         logger.info(f"Adding drawing behavior: {description}")
         
-        # Import drawing classifier
-        from ..generation.drawing import DrawingClassifier
-        
         # Classify the drawing behavior
         classifier = DrawingClassifier()
         classification = classifier.classify(description)
@@ -1570,7 +1557,7 @@ def deposit_trails():
             if hasattr(self, 'drawing_kernel_code') and self.drawing_kernel_code:
                 drawing_kernel_code = self.drawing_kernel_code
             else:
-                drawing_kernel_code = self.kernel_generator.generate_drawing_kernel_from_experts(
+                drawing_kernel_code = self.template_renderer.render_drawing_kernel(
                     visual_expert_names=[e.name for e in visual_experts],
                     function_name="draw"
                 )
@@ -1587,13 +1574,13 @@ def deposit_trails():
         utility_expert_code = "\n\n".join([e.code for e in utility_experts])
         utility_kernel_code = ""
         if utility_experts:
-            utility_kernel_code = self.kernel_generator.generate_utility_kernel(
+            utility_kernel_code = self.template_renderer.render_utility_kernel(
                 utility_expert_names=[e.name for e in utility_experts],
                 function_name="update_utilities"
             )
         
         # Generate complete sketch
-        sketch = self.sketch_generator.generate(
+        sketch = self.template_renderer.render_sketch(
             description=description,
             experts=[combined_expert_code],  # Now includes helpers
             kernel=kernel_code,
@@ -1801,7 +1788,7 @@ def deposit_trails():
         utility_expert_code = "\n\n".join([e.code for e in utility_experts])
         utility_kernel_code = ""
         if utility_experts and hasattr(self.kernel_generator, 'generate_utility_kernel'):
-            utility_kernel_code = self.kernel_generator.generate_utility_kernel(
+            utility_kernel_code = self.template_renderer.render_utility_kernel(
                 utility_expert_names=[e.name for e in utility_experts],
                 function_name="update_utilities"
             )
@@ -1810,7 +1797,7 @@ def deposit_trails():
         has_non_visual_experts = len(force_experts) > 0
         
         # Generate complete sketch
-        return self.sketch_generator.generate(
+        return self.template_renderer.render_sketch(
             description=description,
             experts=[combined_expert_code],
             kernel=kernel_code,
@@ -2015,11 +2002,10 @@ init_particles()
                 species_conditions[expert.name] = expert.applies_to_species
         
         # Generate kernel code with species configuration and conditions
-        kernel_code = self.kernel_generator.generate(
+        kernel_code = self.template_renderer.render_integration_kernel(
             single_expert_names=[e.name for e in single_experts],
             interaction_expert_names=[e.name for e in interaction_experts],
             expert_weights=self.expert_weights,
-            tolvera_instance=self.tv,
             species_config=self.current_species_config,
             species_conditions=species_conditions,
             visual_expert_names=[e.name for e in visual_experts]

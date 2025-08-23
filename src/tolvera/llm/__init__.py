@@ -5,7 +5,8 @@ from .core.state_manager import StateManager
 from .core.decomposer import BehaviorDecomposer
 from .core.sketch_refiner import SketchRefiner
 from .core.sketch_validator import SketchValidator, ValidatingBehaviorAgent
-from .generation.sketch import SketchGenerator
+from .core.template_renderer import TemplateRenderer
+from .core.drawing_classifier import DrawingClassifier
 
 __all__ = [
     "BehaviorAgent",
@@ -15,5 +16,6 @@ __all__ = [
     "SketchRefiner",
     "SketchValidator",
     "ValidatingBehaviorAgent",
-    "SketchGenerator",
+    "TemplateRenderer",
+    "DrawingClassifier",
 ]
