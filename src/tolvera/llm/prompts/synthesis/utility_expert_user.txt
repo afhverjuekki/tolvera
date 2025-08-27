@@ -1,0 +1,11 @@
+Generate a utility expert function for: {description}
+
+CRITICAL: The function MUST have this EXACT signature pattern:
+@ti.func
+def expert_<descriptive_name>():
+    # NO parameters in the function signature
+    # Access states directly: tv.s.llm_global.field[0].day_phase  # time-based states are global
+    # NO return statement (void function)
+    
+DO NOT include: pos, vel, mass, species, particle_idx parameters
+DO NOT include: return ti.math.vec2(...) or any force return

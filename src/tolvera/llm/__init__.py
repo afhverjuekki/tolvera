@@ -1,21 +1,15 @@
-
-from .core.behavior_agent import BehaviorAgent
-from .core.synthesizer import Synthesizer as BehaviorSynthesizer
+from .core.behavior_orchestrator import BehaviorOrchestrator
+from .core.code_generator import CodeGenerator
+from .core.behavior_analyzer import BehaviorAnalyzer
 from .core.state_manager import StateManager
-from .core.decomposer import BehaviorDecomposer
 from .core.sketch_refiner import SketchRefiner
-from .core.sketch_validator import SketchValidator, ValidatingBehaviorAgent
-from .core.template_renderer import TemplateRenderer
-from .core.drawing_classifier import DrawingClassifier
+from .templates.template_renderer import TemplateRenderer
 
 __all__ = [
-    "BehaviorAgent",
-    "BehaviorSynthesizer",
+    "BehaviorOrchestrator",
+    "CodeGenerator",
+    "BehaviorAnalyzer",
     "StateManager",
-    "BehaviorDecomposer",
     "SketchRefiner",
-    "SketchValidator",
-    "ValidatingBehaviorAgent",
     "TemplateRenderer",
-    "DrawingClassifier",
 ]

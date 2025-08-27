@@ -1,0 +1,28 @@
+Fix the following errors in this Tölvera sketch:
+
+ERROR LOGS:
+{error_logs}
+
+CRITICAL FIXES TO APPLY:
+1. If "Return inside non-static if" - restructure ALL expert functions to use single return
+2. If division errors - add safety checks for zero distances
+3. If undefined variables - ensure all variables declared before use
+4. If type errors - verify Taichi types (ti.f32, ti.i32, ti.math.vec2)
+5. If index errors - check particle bounds and array sizes
+6. If "function expects X arguments but got Y" or similar - THIS IS A FUNCTION SIGNATURE MISMATCH:
+   - Find the function definition (the @ti.func or def line)
+   - Count the parameters it expects
+   - Find ALL calls to that function
+   - Fix each call to pass the correct number and type of arguments
+   - CRITICAL: Modify the CALL sites, NOT the function definition
+   - Example: If particle_life_interactions expects (pos, vel, mass, species, idx), 
+     don't pass tv.p.field[i] - instead extract and pass pos, vel, mass, species, i separately
+
+FUNCTION SIGNATURE VERIFICATION PROTOCOL:
+- For EVERY @ti.func and @ti.kernel in the sketch:
+  1. Note its signature (parameter names, types, count)
+  2. Find ALL places where it's called
+  3. Verify each call matches the signature EXACTLY
+  4. If mismatch found, fix the CALL, not the definition
+
+Remember: You are an expert at fixing Taichi and Tölvera errors. Apply precise fixes, especially for function signature mismatches.{additional_context_section}

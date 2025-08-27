@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from tolvera import Tolvera
-from tolvera.llm import BehaviorAgent
+from tolvera.llm import BehaviorOrchestrator
 from tolvera.llm.debug.tracing import get_collector
 from tolvera.llm.debug.console_tracer import enable_console_tracing
 from tolvera.llm.debug.trace_html_report import generate_html_report
@@ -52,7 +52,10 @@ def save_trace_with_report(collector, trace, name_prefix):
     
     # Save JSON trace
     json_trace = collector.export_trace(trace.id, format="json")
-    json_path = f"examples/generated_sketches/traces/{name_prefix}_{timestamp}.json"
+    # Get project root (5 levels up from this file)
+    project_root = Path(__file__).parent.parent.parent.parent.parent
+    json_path = project_root / f"examples/generated_sketches/traces/{name_prefix}_{timestamp}.json"
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     with open(json_path, "w") as f:
         f.write(json_trace)
     print(f"\nJSON trace saved to: {json_path}")
@@ -66,7 +69,7 @@ def save_trace_with_report(collector, trace, name_prefix):
     
     # Save Mermaid diagram
     mermaid_trace = collector.export_trace(trace.id, format="mermaid")
-    mermaid_path = f"examples/generated_sketches/traces/{name_prefix}_{timestamp}.md"
+    mermaid_path = project_root / f"examples/generated_sketches/traces/{name_prefix}_{timestamp}.md"
     with open(mermaid_path, "w") as f:
         f.write(mermaid_trace)
     print(f"Mermaid diagram saved to: {mermaid_path}")
@@ -84,7 +87,7 @@ async def demo_basic_behaviors():
     main_trace = collector.start_trace("Basic Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=500, sn=2)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     # Combine behaviors into a single description to avoid state conflicts
     # combined_behavior = "two species, one blue and tangerine colored, repel one another."
@@ -96,7 +99,7 @@ async def demo_basic_behaviors():
     
     print(f"\nAdding behavior: {combined_behavior}")
     try:
-        result = await agent.add_behavior(combined_behavior, weight=1.0)
+        result = await orchestrator.add_behavior(combined_behavior, weight=1.0)
         print(f"✓ Behavior added successfully")
         print(f"  - Experts added: {result['experts_added']}")
         print(f"  - Pattern detected: {result.get('pattern_type', 'particle_system')}")
@@ -104,12 +107,12 @@ async def demo_basic_behaviors():
     except Exception as e:
         print(f"✗ Failed to add behavior: {e}")
     
-    experts = agent.get_expert_info()
+    experts = orchestrator.get_expert_info()
     print(f"\nTotal experts: {len(experts)}")
     for expert in experts:
         print(f"  - {expert['name']}: {expert['description']} (weight={expert['weight']})")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Basic particle physics demo",
         filename="demo_basic_behaviors",
         use_timestamp=True
@@ -120,7 +123,7 @@ async def demo_basic_behaviors():
     
     save_trace_with_report(collector, main_trace, "demo_basic")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def demo_complex_behaviors():
@@ -135,7 +138,7 @@ async def demo_complex_behaviors():
     main_trace = collector.start_trace("Complex Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=5)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     complex_description = """
     Two species, one blue and one teal, are competing for food (green particles).  The blue one is quicker than the teal and runs away with the food while
@@ -152,7 +155,7 @@ async def demo_complex_behaviors():
     
     try:
         # Use regular add_behavior which will detect ecosystem pattern and handle appropriately
-        result = await agent.add_behavior(complex_description, weight=1.0)
+        result = await orchestrator.add_behavior(complex_description, weight=1.0)
         
         print(f"\n✓ Complex behavior synthesized successfully")
         print(f"  - Pattern detected: {result.get('pattern_type', 'unknown')}")
@@ -160,16 +163,16 @@ async def demo_complex_behaviors():
         print(f"  - Experts added: {result.get('experts_added', 0)}")
         print(f"  - States created: {result.get('states_created', 0)}")
         
-        if agent.current_species_config:
+        if orchestrator.current_species_config:
             print("\n🐟 Detected Species Configuration:")
-            if agent.current_species_config.species_names:
-                for sid, name in agent.current_species_config.species_names.items():
+            if orchestrator.current_species_config.species_names:
+                for sid, name in orchestrator.current_species_config.species_names.items():
                     print(f"  • Species {sid}: {name}")
         
     except Exception as e:
         print(f"✗ Failed to add complex behavior: {e}")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Ecosystem simulation with predator-prey dynamics",
         filename="demo_complex_ecosystem",
         use_timestamp=True
@@ -180,7 +183,7 @@ async def demo_complex_behaviors():
     
     save_trace_with_report(collector, main_trace, "demo_complex")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def demo_drawing_behaviors():
@@ -195,14 +198,14 @@ async def demo_drawing_behaviors():
     main_trace = collector.start_trace("Drawing Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=200, sn=3)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     # Combine movement behaviors to avoid state conflicts
     movement_behavior = "particles move in circular orbits and species 0 and species 1 attract each other"
     
     print(f"\nAdding movement behavior: {movement_behavior}")
     try:
-        result = await agent.add_behavior(movement_behavior, 1.0)
+        result = await orchestrator.add_behavior(movement_behavior, 1.0)
         print(f"✓ Movement behavior added: {result['experts_added']} experts")
     except Exception as e:
         print(f"✗ Failed to add movement behavior: {e}")
@@ -216,12 +219,12 @@ async def demo_drawing_behaviors():
     print("\nAdding drawing behaviors:")
     for description, weight, order in drawing_behaviors:
         try:
-            result = await agent.add_drawing_behavior(description, weight, order)
+            result = await orchestrator.add_drawing_behavior(description, weight, order)
             print(f"✓ {description}: {result['experts_added']} drawing experts added")
         except Exception as e:
             print(f"✗ {description}: Failed - {e}")
     
-    experts = agent.get_expert_info()
+    experts = orchestrator.get_expert_info()
     print(f"\nTotal experts: {len(experts)}")
     
     movement_experts = [e for e in experts if e['expert_type'] in ['single', 'interaction']]
@@ -235,7 +238,7 @@ async def demo_drawing_behaviors():
     for expert in drawing_experts:
         print(f"  - {expert['name']}: {expert['description']}")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Visual effects demo with trails and glows",
         filename="demo_drawing_effects",
         use_timestamp=True
@@ -245,7 +248,7 @@ async def demo_drawing_behaviors():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_drawing")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def demo_species_interactions():
@@ -260,7 +263,7 @@ async def demo_species_interactions():
     main_trace = collector.start_trace("Species Interactions Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=800, sn=6)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     interactions = [
         "red predators hunt green prey that try to escape",
@@ -269,28 +272,28 @@ async def demo_species_interactions():
     print("\nAdding interaction behaviors:")
     for description in interactions:
         try:
-            result = await agent.add_behavior(description, 1.0)
+            result = await orchestrator.add_behavior(description, 1.0)
             print(f"✓ {description}: {result['experts_added']} experts added")
             if 'species_count' in result:
                 print(f"  └─ Detected species: {result['species_count']}")
         except Exception as e:
             print(f"✗ {description}: Failed - {e}")
     
-    if agent.current_species_config:
+    if orchestrator.current_species_config:
         print("\n📊 Dynamic Species Configuration:")
-        print(f"  - Total species: {len(agent.current_species_config.species_ids)}")
-        if agent.current_species_config.species_names:
+        print(f"  - Total species: {len(orchestrator.current_species_config.species_ids)}")
+        if orchestrator.current_species_config.species_names:
             print("  - Named species:")
-            for sid, name in agent.current_species_config.species_names.items():
+            for sid, name in orchestrator.current_species_config.species_names.items():
                 print(f"    • Species {sid}: {name}")
-        if agent.current_species_config.interaction_pairs:
+        if orchestrator.current_species_config.interaction_pairs:
             print("  - Interaction pairs:")
-            for s1, s2 in agent.current_species_config.interaction_pairs:
-                n1 = agent.current_species_config.species_names.get(s1, f"Species {s1}")
-                n2 = agent.current_species_config.species_names.get(s2, f"Species {s2}")
+            for s1, s2 in orchestrator.current_species_config.interaction_pairs:
+                n1 = orchestrator.current_species_config.species_names.get(s1, f"Species {s1}")
+                n2 = orchestrator.current_species_config.species_names.get(s2, f"Species {s2}")
                 print(f"    • {n1} ↔ {n2}")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Multi-species ecosystem with dynamic species detection",
         filename="demo_species_interactions",
         use_timestamp=True
@@ -300,7 +303,7 @@ async def demo_species_interactions():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_species")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def demo_species_detection():
@@ -315,7 +318,7 @@ async def demo_species_detection():
     main_trace = collector.start_trace("Species Detection Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=600, sn=8)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     test_behaviors = [
         ("particles move randomly", "Single species behavior"),
@@ -329,20 +332,20 @@ async def demo_species_detection():
         print(f"\n📝 Description: '{description}'")
         print(f"   Expected: {expected}")
         
-        test_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+        test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
         
         try:
             result = await test_agent.add_behavior(description, 1.0)
             
-            if test_agent.current_species_config:
-                detected = len(test_agent.current_species_config.species_ids)
+            if test_orchestrator.current_species_config:
+                detected = len(test_orchestrator.current_species_config.species_ids)
                 print(f"   ✓ Detected: {detected} species")
                 
-                if test_agent.current_species_config.species_names:
-                    print("     Species names:", list(test_agent.current_species_config.species_names.values()))
+                if test_orchestrator.current_species_config.species_names:
+                    print("     Species names:", list(test_orchestrator.current_species_config.species_names.values()))
                 
-                if test_agent.current_species_config.colors:
-                    print(f"     Colors assigned: {len(test_agent.current_species_config.colors)}")
+                if test_orchestrator.current_species_config.colors:
+                    print(f"     Colors assigned: {len(test_orchestrator.current_species_config.colors)}")
             else:
                 print("   ⚠️  No species configuration detected")
                 
@@ -358,10 +361,10 @@ async def demo_species_detection():
     and green sea turtles swimming peacefully
     """
     
-    result = await agent.add_behavior(complex, 1.0)
+    result = await orchestrator.add_behavior(complex, 1.0)
     print(f"\n✓ Added complex behavior with {result['species_count']} species")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Species detection demonstration",
         filename="demo_species_detection",
         use_timestamp=True
@@ -371,7 +374,7 @@ async def demo_species_detection():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_species_detection")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def demo_state_generation():
@@ -386,7 +389,7 @@ async def demo_state_generation():
     main_trace = collector.start_trace("State Generation Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=4)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     state_behaviors = [
         {
@@ -412,7 +415,7 @@ async def demo_state_generation():
         print(f"🎯 Expected states: {', '.join(test['expected_states'])}")
         
         try:
-            test_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+            test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
             
             result = await test_agent.add_behavior(test['description'], weight=1.0)
             
@@ -459,7 +462,7 @@ async def demo_state_generation():
     print("Comparison: Simple behavior without state requirements")
     print("-" * 50)
     
-    simple_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    simple_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     simple_behavior = "particles drift randomly"
     print(f"📝 Behavior: {simple_behavior}")
@@ -479,14 +482,14 @@ async def demo_state_generation():
     print("\n\n" + "="*50)
     print("Generating example sketch with Game of Life states...")
     
-    gol_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    gol_orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
-    await gol_agent.add_behavior(
+    await gol_orchestrator.add_behavior(
         "particles form a cellular automaton where each cell lives or dies based on neighbor count",
         weight=1.0
     )
     
-    _, sketch_path = gol_agent.generate_sketch(
+    _, sketch_path = gol_orchestrator.generate_sketch(
         description="Game of Life with automatic state generation",
         filename="demo_state_generation_gol",
         use_timestamp=True
@@ -497,7 +500,7 @@ async def demo_state_generation():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_state_generation")
     
-    return gol_agent, sketch_path
+    return gol_orchestrator, sketch_path
 
 
 async def demo_artificial_life_patterns():
@@ -512,7 +515,7 @@ async def demo_artificial_life_patterns():
     main_trace = collector.start_trace("Artificial Life Patterns Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=4)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     alife_patterns = [
         {
@@ -532,7 +535,7 @@ async def demo_artificial_life_patterns():
         print(f"   Expected pattern: {pattern['expected_pattern']}")
         
         try:
-            test_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+            test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
             
             print("   🔍 Using add_behavior to detect and synthesize pattern...")
             result = await test_agent.add_behavior(
@@ -553,8 +556,8 @@ async def demo_artificial_life_patterns():
                         print(f"      {category.capitalize()}: {', '.join(available_states[category])}")
             
             # Check for helper functions
-            if test_agent.helper_functions:
-                print(f"\n   🔧 Helper functions generated: {list(test_agent.helper_functions.keys())}")
+            if test_agent.synthesized_helpers:
+                print(f"\n   🔧 Helper functions generated: {list(test_agent.synthesized_helpers.keys())}")
             
         except Exception as e:
             print(f"\n   ❌ Error: {e}")
@@ -563,7 +566,7 @@ async def demo_artificial_life_patterns():
     print("Generating combined a-life sketch...")
     print("-" * 60)
     
-    combined_agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    combined_orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     # Single combined behavior to avoid state conflicts
     combined_pattern = """
@@ -574,7 +577,7 @@ async def demo_artificial_life_patterns():
     
     print("\nAdding combined a-life behavior:")
     try:
-        result = await combined_agent.add_behavior(combined_pattern, weight=1.0)
+        result = await combined_orchestrator.add_behavior(combined_pattern, weight=1.0)
         print(f"  ✓ Added combined behavior")
         print(f"    - Pattern: {result.get('pattern_type', 'unknown')}")
         print(f"    - Experts: {result.get('experts_added', 0)}")
@@ -582,7 +585,7 @@ async def demo_artificial_life_patterns():
     except Exception as e:
         print(f"  ✗ Failed to add combined behavior: {e}")
     
-    _, sketch_path = combined_agent.generate_sketch(
+    _, sketch_path = combined_orchestrator.generate_sketch(
         description="Artificial life patterns demonstration",
         filename="demo_alife_patterns",
         use_timestamp=True
@@ -592,7 +595,7 @@ async def demo_artificial_life_patterns():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_alife")
     
-    return combined_agent, sketch_path
+    return combined_orchestrator, sketch_path
 
 
 async def demo_custom_behavior():
@@ -607,7 +610,7 @@ async def demo_custom_behavior():
     main_trace = collector.start_trace("Custom Behavior Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=500, sn=3)
-    agent = BehaviorAgent(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     print("\nEnter custom particle behaviors (or 'done' to finish):")
     print("\nExamples:")
@@ -632,14 +635,14 @@ async def demo_custom_behavior():
     for description in behaviors:
         try:
             if any(kw in description.lower() for kw in ['draw', 'trail', 'sparkle', 'glow', 'line']):
-                await agent.add_drawing_behavior(description, 1.0)
+                await orchestrator.add_drawing_behavior(description, 1.0)
             else:
-                await agent.add_behavior(description, 1.0)
+                await orchestrator.add_behavior(description, 1.0)
             print(f"✓ {description}: Success")
         except Exception as e:
             print(f"✗ {description}: Failed - {e}")
     
-    _, sketch_path = agent.generate_sketch(
+    _, sketch_path = await orchestrator.generate_sketch_async(
         description="Custom behavior demonstration",
         filename="demo_custom_behaviors",
         use_timestamp=True
@@ -649,7 +652,7 @@ async def demo_custom_behavior():
     main_trace.complete("success")
     save_trace_with_report(collector, main_trace, "demo_custom")
     
-    return agent, sketch_path
+    return orchestrator, sketch_path
 
 
 async def main():
@@ -667,8 +670,10 @@ async def main():
         print("\nAlternatively, set ANTHROPIC_API_KEY or OPENAI_API_KEY")
         return
     
-    Path("examples/generated_sketches").mkdir(parents=True, exist_ok=True)
-    Path("examples/generated_sketches/traces").mkdir(parents=True, exist_ok=True)
+    # Get project root (5 levels up from this file)
+    project_root = Path(__file__).parent.parent.parent.parent.parent
+    (project_root / "examples/generated_sketches").mkdir(parents=True, exist_ok=True)
+    (project_root / "examples/generated_sketches/traces").mkdir(parents=True, exist_ok=True)
     
     while True:
         print("\n" + "="*80)
@@ -717,8 +722,8 @@ async def main():
             await demo_state_generation()
             await demo_artificial_life_patterns()
             print("\n✅ All demos completed!")
-            print("\nGenerated sketches are in: examples/generated_sketches/")
-            print("Trace files are in: examples/generated_sketches/traces/")
+            print(f"\nGenerated sketches are in: {project_root}/examples/generated_sketches/")
+            print(f"Trace files are in: {project_root}/examples/generated_sketches/traces/")
         else:
             print("\nInvalid choice. Please try again.")
         
@@ -756,7 +761,9 @@ if __name__ == "__main__":
         print("=" * 60)
     
     # Load environment variables
-    env_path = Path.cwd() / ".env"
+    # Get project root (5 levels up from this file)
+    project_root = Path(__file__).parent.parent.parent.parent.parent
+    env_path = project_root / ".env"
     if env_path.exists():
         load_dotenv(env_path)
         print(f"✓ Loaded environment from: {env_path}")

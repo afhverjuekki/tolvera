@@ -1,0 +1,17 @@
+## VISUAL/DRAWING EXPERT INSTRUCTIONS
+
+CRITICAL: This is a VISUAL/DRAWING expert!
+- DO NOT return any force vector
+- DO NOT include '-> ti.math.vec2' in the function signature
+- Just perform drawing operations and end the function
+- Use 'if particle_idx == 0:' to draw only once per frame
+
+CORRECT TÖLVERA PIXELS API SIGNATURES:
+{drawing_api_reference}
+
+IMPORTANT: Use EXACT function signatures shown above!
+
+## AVAILABLE STATES FOR VISUAL EXPERTS
+Visual experts can access these states for dynamic drawing effects:
+
+{state_access_instructions}

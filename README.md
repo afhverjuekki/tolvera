@@ -38,7 +38,7 @@ All generated as complete, runnable Python code with GPU acceleration via Taichi
 
 4. **Launch the interface:**
    ```bash
-   poetry run python examples/tolvera_textual_ui.py
+   poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
    ```
 
 ## API Key Configuration
@@ -48,7 +48,7 @@ All generated as complete, runnable Python code with GPU acceleration via Taichi
 ### Step 1: Copy Environment Template
 
 ```bash
-cp .env.example .env
+cp src/tolvera/llm/.env.example .env
 ```
 
 ### Step 2: Choose a Provider & Get API Key
@@ -98,7 +98,7 @@ When you launch Tölvera, it will show which providers are configured:
 ### Launch Command
 
 ```bash
-poetry run python examples/tolvera_textual_ui.py
+poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
 ```
 
 ### First Run Experience
@@ -181,8 +181,8 @@ Description: "Red predators hunt blue fish while green algae grows slowly"
 
 **"No providers configured"**
 
-- Check your `.env` file exists and has valid API keys
-- There's an `.env.example` you can use to format your `.env` after
+- Check your `.env` file exists and has valid API keys  
+- There's an `.env.example` in `src/tolvera/llm/` you can use to format your `.env` after
 - Verify API key format (no quotes, no extra spaces)
 - Test API key on the provider's website
 
@@ -224,5 +224,5 @@ Generate detailed HTML reports of the synthesis process
 **Ready to begin? Run the interface and see what sketches you create!**
 
 ```bash
-poetry run python examples/tolvera_textual_ui.py
+poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
 ```

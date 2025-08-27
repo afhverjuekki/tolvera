@@ -5,21 +5,21 @@ Drawing operations work with the pixel buffer (tv.px) to create visual effects.
 
 ### Basic Drawing Operations
 
-1. **Pixel Operations**:
+1. Pixel Operations:
    - NOT directly setting pixels - use drawing primitives instead
    - Colors as `ti.Vector([r, g, b, a])` or `ti.math.vec4(r, g, b, a)` where values are 0.0-1.0
 
-2. **Line Drawing**:
+2. Line Drawing:
    - `tv.px.line(x1, y1, x2, y2, color)` - Draw a line between two points
    - Coordinates are automatically cast to integers internally
    - Example: `tv.px.line(p1.pos.x, p1.pos.y, p2.pos.x, p2.pos.y, ti.Vector([1., 0., 0., 1.]))`
 
-3. **Circle Drawing**:
+3. Circle Drawing:
    - `tv.px.circle(x, y, radius, color)` - Draw a filled circle
    - Center coordinates and radius can be float, internally cast
    - Example: `tv.px.circle(p.pos.x, p.pos.y, 5, species_color)`
 
-4. **Rectangle Drawing**:
+4. Rectangle Drawing:
    - `tv.px.rect(x, y, width, height, color)` - Draw a filled rectangle
    - Example: `tv.px.rect(tv.x/2-50, tv.y/2-50, 100, 100, ti.Vector([1., 0., 0., 1.]))`
 
@@ -203,11 +203,11 @@ def draw_with_species_colors():
 
 ### Important Constraints
 
-1. **Coordinate Conversion**: Always cast float coordinates to integers
-2. **Bounds Checking**: Ensure drawing stays within pixel buffer bounds
-3. **Alpha Blending**: Use alpha channel for transparency effects
-4. **Performance**: Limit complex calculations in drawing functions
-5. **Color Range**: Keep RGBA values between 0.0 and 1.0
+1. Coordinate Conversion: Always cast float coordinates to integers
+2. Bounds Checking: Ensure drawing stays within pixel buffer bounds
+3. Alpha Blending: Use alpha channel for transparency effects
+4. Performance: Limit complex calculations in drawing functions
+5. Color Range: Keep RGBA values between 0.0 and 1.0
 """
 
 DRAWING_API_REFERENCE = """
@@ -253,7 +253,7 @@ tv.px.rect(50, 50, 100, 50, ti.math.vec4(1.0, 1.0, 1.0, 1.0))
 ### Coordinate System
 - Origin (0, 0) at top-left corner
 - X axis: left to right (0 to tv.x)
-- Y axis: **top to bottom** (0 to tv.y) - screen coordinates
+- Y axis: top to bottom (0 to tv.y) - screen coordinates
 - Use modulo for wrapping: `px = ti.cast(pos.x, ti.i32) % tv.x`
 
 ### From Asterboids Example

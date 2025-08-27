@@ -1,20 +1,13 @@
-"""
-Sketch Refiner Module - Two-stage architectural refactoring of generated Tölvera sketches
-"""
-
-import logging
 import re
 from typing import Optional, Dict, Any
 from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from .prompt_loader import get_prompt_loader
+from ..prompts.prompt_loader import get_prompt_loader
 
 from ..debug.tracing import get_collector, LLMCallData
-from .model_factory import ModelFactory
+from .llm_factory import ModelFactory
 from .conversation_manager import ConversationManager
-
-logger = logging.getLogger(__name__)
 
 
 class AnalysisResponse(BaseModel):
@@ -58,7 +51,6 @@ class SketchRefiner:
         # Use model factory to create the appropriate model
         self.model = ModelFactory.create_model(model_name, api_key)
         self.provider = ModelFactory.get_provider_for_model(model_name)
-        logger.info(f"SketchRefiner using provider '{self.provider}' with model '{model_name}'")
         
         # Load exemplar sketches
         self._load_exemplars()
@@ -79,7 +71,7 @@ class SketchRefiner:
     
     def _load_exemplars(self):
         """Load full exemplar sketches as reference."""
-        exemplar_dir = Path(__file__).parent.parent.parent.parent.parent / "examples/generated_sketches/exemplars"
+        exemplar_dir = Path(__file__).parent.parent.parent.parent.parent / "examples/exemplars"
         
         exemplars = {}
         exemplar_files = {
@@ -94,12 +86,9 @@ class SketchRefiner:
                 if path.exists():
                     with open(path, 'r') as f:
                         exemplars[name] = f.read()
-                    logger.info(f"Loaded exemplar: {name}")
                 else:
-                    logger.warning(f"Exemplar not found: {path}")
                     exemplars[name] = f"# Exemplar {name} not found"
-            except Exception as e:
-                logger.error(f"Failed to load exemplar {name}: {e}")
+            except Exception:
                 exemplars[name] = f"# Failed to load exemplar {name}"
         
         self.exemplars = exemplars
@@ -127,8 +116,7 @@ class SketchRefiner:
                 self.drawing_patterns = ""
                 self.temporal_patterns = ""
                 
-        except ImportError as e:
-            logger.warning(f"Could not load context patterns: {e}")
+        except ImportError:
             self.taichi_fundamentals = ""
             self.taichi_crashes = ""
             self.movement_patterns = ""
@@ -138,23 +126,21 @@ class SketchRefiner:
             self.drawing_patterns = ""
             self.temporal_patterns = ""
     
-    def _create_analysis_agent(self) -> Agent:
+    async def _create_analysis_agent(self) -> Agent:
         """Create the Stage 1 analysis agent."""
         
-        # Load analysis prompt using PromptLoader
+        # Load analysis prompt using dynamic context selection
         loader = get_prompt_loader()
-        system_prompt = loader.load_prompt("refinement/sketch_analysis_system.txt",
-                                          slime_exemplar=self.exemplars.get('slime', '# Slime exemplar not loaded'),
-                                          boids_exemplar=self.exemplars.get('boids', '# Pheromone exemplar not loaded'),
-                                          particle_life_exemplar=self.exemplars.get('particle_life', '# Particle life exemplar not loaded'),
-                                          taichi_crashes=self.taichi_crashes)
+        system_prompt = await loader.load_prompt_with_dynamic_context_async(
+            "refinement/sketch_analysis_system.txt",
+            description="analysis agent for sketch improvement",
+            refinement_type="analysis",
+            slime_exemplar=self.exemplars.get('slime', '# Slime exemplar not loaded'),
+            boids_exemplar=self.exemplars.get('boids', '# Pheromone exemplar not loaded'),
+            particle_life_exemplar=self.exemplars.get('particle_life', '# Particle life exemplar not loaded'),
+            taichi_crashes=self.taichi_crashes
+        )
         
-        # Log the assembled system prompt
-        logger.info(f"[SKETCH_REFINER] Analysis Agent System Prompt assembled: {len(system_prompt)} chars")
-        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
-        if logger.isEnabledFor(logging.DEBUG):
-            # In debug mode, log the full prompt
-            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -164,23 +150,17 @@ class SketchRefiner:
         
         return agent
     
-    def _create_implementation_agent(self) -> Agent:
+    async def _create_implementation_agent(self) -> Agent:
         """Create the Stage 2 implementation agent."""
         
         # Load implementation prompt using dynamic context selection
         loader = get_prompt_loader()
-        system_prompt = loader.load_prompt_with_dynamic_context(
+        system_prompt = await loader.load_prompt_with_dynamic_context_async(
             "refinement/sketch_implementation_system.txt",
             description="implementation agent for architectural refinement",
             refinement_type="implementation"
         )
         
-        # Log the assembled system prompt
-        logger.info(f"[SKETCH_REFINER] Implementation Agent System Prompt assembled: {len(system_prompt)} chars")
-        logger.debug(f"[SKETCH_REFINER] System prompt: {system_prompt}")
-        if logger.isEnabledFor(logging.DEBUG):
-            # In debug mode, log the full prompt
-            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -190,23 +170,17 @@ class SketchRefiner:
         
         return agent
     
-    def _create_single_stage_refinement_agent(self) -> Agent:
+    async def _create_single_stage_refinement_agent(self) -> Agent:
         """Create the single-stage refinement agent for quick fixes and repairs."""
         
         # Load single-stage refinement prompt using dynamic context selection
         loader = get_prompt_loader()
-        system_prompt = loader.load_prompt_with_dynamic_context(
+        system_prompt = await loader.load_prompt_with_dynamic_context_async(
             "refinement/single_state_refinement_system.txt",
             description="single stage refinement for error correction and features",
             refinement_type="error_correction"
         )
         
-        # Log the assembled system prompt
-        logger.info(f"[SKETCH_REFINER] Single-Stage Agent System Prompt assembled: {len(system_prompt)} chars")
-        logger.debug(f"[SKETCH_REFINER] System prompt preview (first 500 chars): {system_prompt[:500]}")
-        if logger.isEnabledFor(logging.DEBUG):
-            # In debug mode, log the full prompt
-            logger.debug(f"[SKETCH_REFINER] Full system prompt:\n{system_prompt}")
         
         agent = Agent(
             self.model,
@@ -231,32 +205,26 @@ class SketchRefiner:
         Returns:
             Dictionary with analysis results and plan
         """
-        logger.info("Stage 1: Analyzing sketch and creating implementation plan")
         
         # Lazily create analysis agent if needed
         if self.analysis_agent is None:
-            self.analysis_agent = self._create_analysis_agent()
+            self.analysis_agent = await self._create_analysis_agent()
         
         collector = get_collector()
         
         with collector.trace_node("analyze_sketch", "analysis", description=description) as node:
             
-            prompt = f"""Analyze this Tölvera sketch and create a detailed implementation plan.
-
-USER'S GOAL: {description}
-
-DRAFT SKETCH:
-```python
-{sketch_code}
-```
-
-Analyze the sketch against the user's goal and the architectural patterns in the exemplars. Create a comprehensive implementation plan that addresses ALL issues and missing features."""
+            # Load the analysis prompt template
+            from ..prompts.prompt_loader import get_prompt_loader
+            loader = get_prompt_loader()
+            prompt = loader.load_prompt(
+                "refinement/analysis_user.txt",
+                description=description,
+                sketch_code=sketch_code
+            )
             
             try:
                 with collector.trace_node("analysis_llm_call", "llm_call", model=self.model_name) as llm_node:
-                    # Log the user prompt being sent
-                    logger.info(f"[SKETCH_REFINER] Running analysis with user prompt: {len(prompt)} chars")
-                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.analysis_agent.run(prompt)
                     
@@ -279,11 +247,9 @@ Analyze the sketch against the user's goal and the architectural patterns in the
                     if llm_node:
                         llm_node.llm_call = llm_data
                     
-                    logger.info("Analysis complete - plan created")
                     return analysis
                     
             except Exception as e:
-                logger.error(f"Analysis failed: {e}")
                 if node:
                     node.set_error(str(e))
                 return {
@@ -308,35 +274,31 @@ Analyze the sketch against the user's goal and the architectural patterns in the
         Returns:
             Dictionary with refactored code
         """
-        logger.info("Stage 2: Implementing refactoring based on plan")
         
         # Lazily create implementation agent if needed
         if self.implementation_agent is None:
-            self.implementation_agent = self._create_implementation_agent()
+            self.implementation_agent = await self._create_implementation_agent()
         
         collector = get_collector()
         
         with collector.trace_node("implement_refinement", "implementation", description=description) as node:
             
-            prompt = f"""Implement this refactoring plan to create a complete, working Tölvera sketch.
-
-USER'S GOAL: {description}
-
-IMPLEMENTATION PLAN:
-{plan}
-
-ORIGINAL SKETCH TO REFACTOR:
-```python
-{sketch_code}
-```
-
-Following the plan exactly, provide the COMPLETE refactored sketch with all errors fixed and architectural enhancements added."""
+            # Load BASE_CONTEXT for library documentation
+            from ..context.library_docs import BASE_CONTEXT
+            
+            # Load the implementation prompt template
+            from ..prompts.prompt_loader import get_prompt_loader
+            loader = get_prompt_loader()
+            prompt = loader.load_prompt(
+                "refinement/implementation_user.txt",
+                description=description,
+                plan=plan,
+                sketch_code=sketch_code,
+                base_context=BASE_CONTEXT
+            )
             
             try:
                 with collector.trace_node("implementation_llm_call", "llm_call", model=self.model_name) as llm_node:
-                    # Log the user prompt being sent
-                    logger.info(f"[SKETCH_REFINER] Running implementation with user prompt: {len(prompt)} chars")
-                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.implementation_agent.run(prompt)
                     
@@ -358,11 +320,9 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
                     if llm_node:
                         llm_node.llm_call = llm_data
                     
-                    logger.info("Implementation complete - sketch refactored")
                     return refinement
                     
             except Exception as e:
-                logger.error(f"Implementation failed: {e}")
                 if node:
                     node.set_error(str(e))
                 return {
@@ -386,7 +346,6 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
         Returns:
             Dictionary with refined code and process details
         """
-        logger.info(f"Starting two-stage refinement for: {description}")
         
         collector = get_collector()
         
@@ -399,7 +358,6 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
             analysis = await self.analyze_sketch(sketch_code, description)
             
             if not analysis['success']:
-                logger.error(f"Stage 1 failed: {analysis.get('error')}")
                 if parent_node:
                     parent_node.set_error(f"Analysis failed: {analysis.get('error')}")
                 return {
@@ -424,7 +382,6 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
             )
             
             if not implementation['success']:
-                logger.error(f"Stage 2 failed: {implementation.get('error')}")
                 if parent_node:
                     parent_node.set_error(f"Implementation failed: {implementation.get('error')}")
                 return {
@@ -503,11 +460,10 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
         Returns:
             Dictionary with refined_code, changes_made, warnings, and success flag
         """
-        logger.info(f"Single-stage refinement: {refinement_request}")
         
         # Lazily create refinement agent if needed
         if self.refinement_agent is None:
-            self.refinement_agent = self._create_single_stage_agent()
+            self.refinement_agent = await self._create_single_stage_refinement_agent()
         
         collector = get_collector()
         refinement_type = "error_correction" if error_info else "feature_addition"
@@ -526,22 +482,10 @@ Following the plan exactly, provide the COMPLETE refactored sketch with all erro
             # Build conversation context
             conversation_context = self.conversation_manager.get_conversation_context()
             
-            prompt = f"""Refine this Tölvera sketch based on the user's request.
-
-{conversation_context}
-
-## CURRENT REQUEST
-{refinement_request}
-
-## CURRENT SKETCH
-```python
-{sketch_code}
-```
-
-IMPORTANT: Review the conversation history above to understand the user's evolving requirements and avoid repeating previous mistakes or undoing previous improvements."""
-            
+            # Build error and signature sections if needed
+            error_section = ""
             if error_info:
-                prompt += f"""
+                error_section = f"""
 
 ERROR INFORMATION:
 The sketch crashed with this error:
@@ -550,32 +494,29 @@ The sketch crashed with this error:
 Fix this error as part of the refinement.
 """
                 
-                # Add specialized context for signature mismatches
-                if has_signature_issue:
-                    prompt += f"""
+            signature_section = ""
+            if error_info and has_signature_issue:
+                signature_section = f"""
 
 DETECTED: Function signature mismatch error!
 {self._build_signature_mismatch_context()}
 """
             
-            prompt += """
-
-Apply the requested changes while:
-1. Preserving all existing behaviors not mentioned in the request
-2. Following Taichi best practices (no return in conditionals!)
-3. Maintaining the sketch structure
-4. Ensuring the sketch will run without errors
-5. Verifying ALL function calls match their definitions exactly
-
-Return the COMPLETE refined sketch code.
-"""
+            # Load the single-stage refinement prompt template
+            from ..prompts.prompt_loader import get_prompt_loader
+            loader = get_prompt_loader()
+            prompt = loader.load_prompt(
+                "refinement/single_stage_user.txt",
+                conversation_context=conversation_context,
+                refinement_request=refinement_request,
+                sketch_code=sketch_code,
+                error_section=error_section,
+                signature_section=signature_section
+            )
             
             try:
                 with collector.trace_node("refinement_llm_call", "llm_call",
                                         model=self.model_name) as llm_node:
-                    # Log the user prompt being sent
-                    logger.info(f"[SKETCH_REFINER] Running single-stage refinement with user prompt: {len(prompt)} chars")
-                    logger.debug(f"[SKETCH_REFINER] User prompt: {prompt}")
                     
                     result = await self.refinement_agent.run(prompt)
                     
@@ -624,7 +565,6 @@ Return the COMPLETE refined sketch code.
                     }
                     
             except Exception as e:
-                logger.error(f"Refinement failed: {e}")
                 if node:
                     node.set_error(str(e))
                 
@@ -664,40 +604,26 @@ Return the COMPLETE refined sketch code.
         Returns:
             Dictionary with refined_code, changes_made, warnings, and success flag
         """
-        logger.info("Repairing sketch based on error logs")
         
-        # Build specialized repair request
-        repair_request = f"""Fix the following errors in this Tölvera sketch:
-
-ERROR LOGS:
-{error_logs}
-
-CRITICAL FIXES TO APPLY:
-1. If "Return inside non-static if" - restructure ALL expert functions to use single return
-2. If division errors - add safety checks for zero distances
-3. If undefined variables - ensure all variables declared before use
-4. If type errors - verify Taichi types (ti.f32, ti.i32, ti.math.vec2)
-5. If index errors - check particle bounds and array sizes
-6. If "function expects X arguments but got Y" or similar - THIS IS A FUNCTION SIGNATURE MISMATCH:
-   - Find the function definition (the @ti.func or def line)
-   - Count the parameters it expects
-   - Find ALL calls to that function
-   - Fix each call to pass the correct number and type of arguments
-   - CRITICAL: Modify the CALL sites, NOT the function definition
-   - Example: If particle_life_interactions expects (pos, vel, mass, species, idx), 
-     don't pass tv.p.field[i] - instead extract and pass pos, vel, mass, species, i separately
-
-FUNCTION SIGNATURE VERIFICATION PROTOCOL:
-- For EVERY @ti.func and @ti.kernel in the sketch:
-  1. Note its signature (parameter names, types, count)
-  2. Find ALL places where it's called
-  3. Verify each call matches the signature EXACTLY
-  4. If mismatch found, fix the CALL, not the definition
-
-Remember: You are an expert at fixing Taichi and Tölvera errors. Apply precise fixes, especially for function signature mismatches."""
+        # Load BASE_CONTEXT for library documentation
+        from ..context.library_docs import BASE_CONTEXT
         
+        # Load the repair request prompt template
+        from ..prompts.prompt_loader import get_prompt_loader
+        loader = get_prompt_loader()
+        
+        # Build additional context section if needed
+        additional_context_section = ""
         if additional_context:
-            repair_request += f"\n\nAdditional context: {additional_context}"
+            additional_context_section = f"\n\nAdditional context: {additional_context}\n\n{BASE_CONTEXT}"
+        else:
+            additional_context_section = f"\n\n{BASE_CONTEXT}"
+        
+        repair_request = loader.load_prompt(
+            "refinement/repair_request.txt",
+            error_logs=error_logs,
+            additional_context_section=additional_context_section
+        )
         
         # Use refine_sketch with error info
         return await self.refine_sketch(
@@ -713,53 +639,10 @@ Remember: You are an expert at fixing Taichi and Tölvera errors. Apply precise 
         Returns:
             String containing detailed guidance for fixing signature mismatches
         """
-        return """
-## FUNCTION SIGNATURE MISMATCH REPAIR GUIDE
-
-### Common Signature Mismatch Patterns
-
-1. Passing Structs Instead of Fields
-   WRONG: particle_interactions(tv.p.field[i], tv.p.field[j])
-   RIGHT: particle_interactions(tv.p.field[i].pos, tv.p.field[i].vel, tv.p.field[i].mass, tv.p.field[i].species, i)
-
-2. Wrong Parameter Order
-   WRONG: calculate_force(mass, vel, pos, species)
-   RIGHT: calculate_force(pos, vel, mass, species)  # Match the definition order
-
-3. Missing Parameters
-   WRONG: apply_behavior(pos, vel)
-   RIGHT: apply_behavior(pos, vel, mass, species, particle_idx)
-
-4. Extra Parameters
-   WRONG: simple_gravity(pos, vel, mass, species, extra_param)
-   RIGHT: simple_gravity(pos, vel, mass)  # Only pass what's expected
-
-### Verification Checklist
-- [ ] Count parameters in function definition
-- [ ] Check parameter types in definition
-- [ ] Find all function calls
-- [ ] Verify each call matches exactly
-- [ ] Extract struct fields if needed
-- [ ] Pass scalars/vectors, not structs
-
-### Example Fix Pattern
-```python
-# If you see this pattern:
-force = expert_func(tv.p.field[i])  # Passing whole particle
-
-# Check the function definition:
-@ti.func
-def expert_func(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, idx: ti.i32):
-    # Expects 5 specific parameters
-
-# Fix the call:
-pos_i = tv.p.field[i].pos
-vel_i = tv.p.field[i].vel  
-mass_i = tv.p.field[i].mass
-species_i = tv.p.field[i].species
-force = expert_func(pos_i, vel_i, mass_i, species_i, i)
-```
-"""
+        # Load the signature mismatch guide from external file
+        from ..prompts.prompt_loader import get_prompt_loader
+        loader = get_prompt_loader()
+        return loader.load_prompt("refinement/signature_mismatch_guide.txt")
     
     def _sanitize_refined_code(self, code: str) -> str:
         """
@@ -825,4 +708,3 @@ force = expert_func(pos_i, vel_i, mass_i, species_i, i)
     def clear_conversation_history(self) -> None:
         """Clear conversation history. Used when resetting the UI."""
         self.conversation_manager.clear_history()
-        logger.info("SketchRefiner conversation history cleared")

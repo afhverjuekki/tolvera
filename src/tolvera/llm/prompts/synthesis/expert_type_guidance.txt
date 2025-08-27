@@ -1,0 +1,37 @@
+# Expert Type Guidance
+
+## Force Expert
+Focus on physics-related states that affect forces:
+- "particles chase food" needs 'consumed' state (ti.i32) to mark eaten food
+- "energy depletes over time" needs 'energy' state (ti.f32) that affects movement
+- "particles get tired" needs 'energy' or 'stamina' state
+- "magnetic attraction" might need 'charge' state (ti.f32)
+- "particles return home" needs 'home_pos' state (ti.math.vec2)
+
+## Interaction Expert
+Focus on relationship and detection states:
+- "predator hunts prey" needs 'hunt_radius' state (ti.f32) for detection range
+- "particles form bonds" needs 'bond_strength' or 'connection_count' states
+- "species interact differently" needs species-specific parameters
+- "particles remember encounters" needs 'last_interaction_time' state
+
+## Visual Expert
+Focus on animation and display states:
+- "particles blink" needs 'blink_timer' or 'blink_phase' state (ti.f32)
+- "color changes over time" needs 'color_phase' or 'hue_shift' state
+- "particles pulse" needs 'pulse_phase' state for animation
+- "trails fade" needs 'trail_intensity' state
+
+## Temporal Update
+Focus on time-dependent state changes:
+- "day/night cycle" needs 'day_phase' state (ti.f32) with periodic updates
+- "aging particles" needs 'age' state (ti.f32) that increments
+- "energy regeneration" needs energy state with recovery rules
+- "seasonal changes" needs 'season' state with transitions
+
+## Utility Expert
+Focus on helper states and flags:
+- "grid-based behavior" needs 'grid_x', 'grid_y' states (ti.i32)
+- "cellular automaton" needs 'is_alive', 'neighbor_count' states
+- "state machines" needs 'current_state' enumeration
+- "counters and timers" needs accumulator states

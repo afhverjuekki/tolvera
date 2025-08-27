@@ -1,18 +1,11 @@
 """
 Conversation Manager - Manages conversational memory for sketch refinement and repair.
-
-This module provides conversational memory capabilities for the sketch refinement system,
-allowing the AI to maintain context across multiple refinement/repair interactions.
 """
 
-import logging
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic_ai.messages import ModelMessage
-from pydantic_ai.messages import ModelMessagesTypeAdapter
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,8 +76,6 @@ class ConversationManager:
         
         # Trim history if it gets too long
         self._trim_history()
-        
-        logger.info(f"Added conversation entry: {interaction_type} - {'success' if success else 'failed'}")
     
     def get_conversation_context(self, include_timestamps: bool = False) -> str:
         """
@@ -196,7 +187,6 @@ class ConversationManager:
         """Clear all conversation history."""
         self.conversation_history.clear()
         self.pydantic_message_history.clear()
-        logger.info("Conversation history cleared")
     
     def _trim_history(self) -> None:
         """Trim conversation history to stay within limits."""
@@ -205,7 +195,6 @@ class ConversationManager:
             # Keep the most recent entries
             excess = len(self.conversation_history) - self.max_history_length
             self.conversation_history = self.conversation_history[excess:]
-            logger.debug(f"Trimmed {excess} old conversation entries")
         
         # Trim pydantic message history - keep last N messages
         # This is approximate since we don't calculate exact token counts
@@ -213,7 +202,6 @@ class ConversationManager:
         if len(self.pydantic_message_history) > max_messages:
             excess = len(self.pydantic_message_history) - max_messages
             self.pydantic_message_history = self.pydantic_message_history[excess:]
-            logger.debug(f"Trimmed {excess} old pydantic messages")
     
     def export_history(self, format: str = "dict") -> Any:
         """
@@ -266,5 +254,3 @@ class ConversationManager:
                     error_info=entry_data.get("error_info")
                 )
                 self.conversation_history.append(entry)
-        
-        logger.info(f"Imported {len(self.conversation_history)} conversation entries")

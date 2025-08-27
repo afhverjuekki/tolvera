@@ -21,8 +21,8 @@ Simple emergence from attraction/repulsion rules:
 ```python
 from tolvera import Tolvera, run
 
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
+def main(kwargs):
+    tv = Tolvera(kwargs)
     
     @tv.render
     def _():
@@ -62,8 +62,8 @@ ECOSYSTEM_PATTERNS = """
 import taichi as ti
 from tolvera import Tolvera, run
 
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
+def main(kwargs):
+    tv = Tolvera(kwargs)
     
     # Get GOL grid parameters
     gx = tv.x/2 - tv.v.gol.px.px.shape[0]/2
@@ -124,8 +124,8 @@ Gray-Scott reaction-diffusion patterns:
 ```python
 from tolvera import Tolvera, run
 
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
+def main(kwargs):
+    tv = Tolvera(kwargs)
     
     @tv.render
     def _():
@@ -146,8 +146,8 @@ Cellular automaton patterns:
 import taichi as ti
 from tolvera import Tolvera, run
 
-def main(**kwargs):
-    tv = Tolvera(**kwargs)
+def main(kwargs):
+    tv = Tolvera(kwargs)
     
     # Set GOL update speed
     tv.v.gol.set_speed(10)

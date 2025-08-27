@@ -1,0 +1,405 @@
+"""
+Comprehensive Tölvera Pixels API Documentation
+===============================================
+This module provides complete documentation for the Tölvera pixel manipulation and drawing API.
+All signatures and types are verified against the actual implementation in pixels.py.
+"""
+
+PIXELS_API = """
+# Tölvera Drawing/Pixels API Reference (tv.px)
+
+## Core Drawing Functions
+
+All drawing functions are accessed through `tv.px` and must be called from Taichi kernel context.
+
+### Basic Shapes - EXACT SIGNATURES
+
+```python
+# Draw a single pixel
+tv.px.point(x: ti.i32, y: ti.i32, rgba: ti.math.vec4)
+
+# Draw an anti-aliased line (Xiaolin Wu's algorithm)
+tv.px.line(x0: ti.f32, y0: ti.f32, x1: ti.f32, y1: ti.f32, rgba: ti.math.vec4)
+
+# Draw a rectangle
+tv.px.rect(x: ti.i32, y: ti.i32, w: ti.i32, h: ti.i32, rgba: ti.math.vec4, fill: ti.i32 = 1)
+# fill: 1 = filled (default), 0 = outline only
+
+# Draw a circle
+tv.px.circle(x: ti.i32, y: ti.i32, r: ti.i32, rgba: ti.math.vec4, fill: ti.i32 = 1)
+# fill: 1 = filled (default), 0 = outline only
+
+# Draw a triangle
+tv.px.triangle(a: ti.math.vec2, b: ti.math.vec2, c: ti.math.vec2, rgba: ti.math.vec4, fill: ti.i32 = 1)
+# Points must be vec2, not separate coordinates
+
+# Draw a polygon (uses crossing/winding algorithm)
+tv.px.polygon(x: ti.template(), y: ti.template(), rgba: ti.math.vec4, fill: ti.i32 = 1)
+# x, y are arrays of coordinates
+```
+
+## Color Format - CRITICAL
+
+Colors MUST be `ti.math.vec4` with values in range [0.0, 1.0]:
+
+```python
+# CORRECT color creation
+red = ti.math.vec4(1.0, 0.0, 0.0, 1.0)      # Opaque red
+green = ti.math.vec4(0.0, 1.0, 0.0, 0.5)    # Semi-transparent green
+white = ti.math.vec4(1.0, 1.0, 1.0, 1.0)    # White
+black = ti.math.vec4(0.0, 0.0, 0.0, 1.0)    # Black
+
+# Also valid (older style)
+blue = ti.Vector([0.0, 0.0, 1.0, 1.0])
+```
+
+## Direct Pixel Access
+
+### Reading/Writing Pixels
+```python
+# Direct pixel access (read/write)
+color = tv.px.px.rgba[x, y]  # Get pixel color at (x, y)
+tv.px.px.rgba[x, y] = ti.math.vec4(r, g, b, a)  # Set pixel color
+
+# Pixel field dimensions
+width = tv.px.x   # or tv.x
+height = tv.px.y  # or tv.y
+```
+
+### Boundary Checking
+```python
+# Always check bounds before pixel access
+if 0 <= x < tv.x and 0 <= y < tv.y:
+    tv.px.px.rgba[x, y] = color
+```
+
+## Pixel Effects (Python Scope)
+
+These methods are called from the render function, NOT from Taichi kernels:
+
+```python
+# Diffusion/blur effect
+tv.px.diffuse(0.99)  # 0.99 = slight blur, lower = more blur
+
+# Decay/fade effect  
+tv.px.decay(0.98)    # 0.98 = slow fade, lower = faster fade
+
+# Clear screen to black
+tv.px.clear()
+
+# Blend modes (Python scope only)
+tv.px.blend_add(other_pixels)   # Additive blending
+tv.px.blend_mul(other_pixels)   # Multiplicative blending
+tv.px.blend_mix(other_pixels, amount)  # Linear interpolation
+```
+
+## Particle Rendering
+
+### Automatic Particle Drawing
+```python
+# Draw all particles with species colors
+tv.px.particles(tv.p, tv.s.species())
+
+# Draw with specific shape
+tv.px.particles(tv.p, tv.s.species(), shape='circle')
+# Shapes: 'point', 'line', 'rect', 'circle', 'triangle'
+```
+
+## Trail/Pheromone Patterns
+
+### Particle Trail Deposition
+```python
+@ti.func
+def deposit_trail(particle_idx: ti.i32):
+    '''Deposit pheromone/trail at particle position.'''
+    if tv.p.field[particle_idx].active > 0:
+        # Get particle position as integer coordinates
+        x = ti.cast(tv.p.field[particle_idx].pos.x, ti.i32)
+        y = ti.cast(tv.p.field[particle_idx].pos.y, ti.i32)
+        
+        # Check bounds
+        if 0 <= x < tv.x and 0 <= y < tv.y:
+            # Get species color
+            species = tv.p.field[particle_idx].species
+            color = tv.s.species.field[species].rgba
+            
+            # Deposit with intensity
+            intensity = 0.1
+            tv.px.px.rgba[x, y] += color * intensity
+```
+
+### Trail Diffusion Pattern
+```python
+@ti.kernel
+def diffuse_trails():
+    '''Diffuse and decay trails over time.'''
+    decay_rate = 0.99
+    
+    for x, y in ti.ndrange(tv.x, tv.y):
+        # Sample neighbors
+        total = ti.math.vec4(0.0, 0.0, 0.0, 0.0)
+        count = 0
+        
+        for dx, dy in ti.ndrange((-1, 2), (-1, 2)):
+            nx = (x + dx) % tv.x  # Wrap boundaries
+            ny = (y + dy) % tv.y
+            total += tv.px.px.rgba[nx, ny]
+            count += 1
+        
+        # Apply diffusion and decay
+        tv.px.px.rgba[x, y] = (total / count) * decay_rate
+```
+
+## Drawing Visual Effects
+
+### Glowing Points
+```python
+@ti.func
+def draw_glow(x: ti.f32, y: ti.f32, radius: ti.f32, color: ti.math.vec4):
+    '''Draw a glowing point with radial falloff.'''
+    xi = ti.cast(x, ti.i32)
+    yi = ti.cast(y, ti.i32)
+    ri = ti.cast(radius, ti.i32)
+    
+    for dx in range(-ri, ri + 1):
+        for dy in range(-ri, ri + 1):
+            px = xi + dx
+            py = yi + dy
+            
+            if 0 <= px < tv.x and 0 <= py < tv.y:
+                dist = ti.sqrt(dx * dx + dy * dy)
+                if dist <= radius:
+                    # Radial falloff
+                    intensity = 1.0 - (dist / radius)
+                    tv.px.px.rgba[px, py] += color * intensity * 0.1
+```
+
+### Connecting Lines Between Particles
+```python
+@ti.func
+def draw_connections(i: ti.i32, max_dist: ti.f32):
+    '''Draw lines between nearby particles.'''
+    if tv.p.field[i].active > 0:
+        pos_i = tv.p.field[i].pos
+        
+        for j in range(tv.pn):
+            if i < j and tv.p.field[j].active > 0:
+                pos_j = tv.p.field[j].pos
+                dist = (pos_j - pos_i).norm()
+                
+                if dist < max_dist:
+                    # Fade based on distance
+                    alpha = 1.0 - (dist / max_dist)
+                    color = ti.math.vec4(1.0, 1.0, 1.0, alpha * 0.3)
+                    tv.px.line(pos_i.x, pos_i.y, pos_j.x, pos_j.y, color)
+```
+
+## Visual Expert Pattern
+
+Visual experts are special - they draw but don't return forces:
+
+```python
+@ti.func
+def visual_expert(pos: ti.math.vec2, vel: ti.math.vec2, 
+                  mass: ti.f32, species: ti.i32, 
+                  particle_idx: ti.i32) -> ti.math.vec2:
+    '''Visual effect expert - draws but returns zero force.'''
+    
+    # Draw only once per frame (using first particle)
+    if particle_idx == 0:
+        # Draw background effects, grids, etc.
+        tv.px.rect(100, 100, 50, 50, ti.math.vec4(0.2, 0.2, 0.5, 0.3))
+    
+    # Draw per-particle effects
+    if tv.p.field[particle_idx].active > 0:
+        # Draw particle trail
+        x = ti.cast(pos.x, ti.i32)
+        y = ti.cast(pos.y, ti.i32)
+        if 0 <= x < tv.x and 0 <= y < tv.y:
+            color = tv.s.species.field[species].rgba
+            tv.px.px.rgba[x, y] = color * 0.5
+    
+    # Visual experts return zero force
+    return ti.math.vec2(0.0, 0.0)
+```
+
+## Common Drawing Patterns
+
+### Safe Pixel Writing
+```python
+# Always cast to integer and check bounds
+x_int = ti.cast(pos.x, ti.i32)
+y_int = ti.cast(pos.y, ti.i32)
+if 0 <= x_int < tv.x and 0 <= y_int < tv.y:
+    tv.px.px.rgba[x_int, y_int] = color
+```
+
+### Color Mixing
+```python
+# Additive blending (for glow effects)
+tv.px.px.rgba[x, y] += color * intensity
+
+# Alpha blending
+old_color = tv.px.px.rgba[x, y]
+new_color = old_color * (1.0 - alpha) + color * alpha
+tv.px.px.rgba[x, y] = new_color
+```
+
+### Animated Effects
+```python
+# Use frame counter for animation
+t = ti.cast(tv.ctx.i[None], ti.f32) * 0.01
+pulse = (ti.sin(t) + 1.0) * 0.5  # 0.0 to 1.0 pulse
+color = base_color * pulse
+```
+
+## Performance Tips
+
+1. **Minimize Overdraw**: Check if pixel needs update before writing
+2. **Use Integer Coordinates**: Cast float positions early
+3. **Batch Similar Operations**: Group all lines, then all circles, etc.
+4. **Limit Effect Radius**: Don't process entire screen for local effects
+5. **Early Exit**: Skip drawing for inactive/distant particles
+"""
+
+PIXELS_PATTERNS = """
+# Advanced Drawing Patterns and Visual Effects
+
+## Trail Systems
+
+### Velocity-Based Trails
+```python
+@ti.func
+def draw_velocity_trail(i: ti.i32):
+    '''Draw trail showing particle velocity direction.'''
+    if tv.p.field[i].active > 0:
+        pos = tv.p.field[i].pos
+        vel = tv.p.field[i].vel
+        
+        # Scale velocity for visualization
+        vel_norm = vel.norm()
+        if vel_norm > 0.001:
+            # Trail behind particle
+            trail_length = 20.0
+            trail_end = pos - (vel / vel_norm) * trail_length
+            
+            # Fade color based on species
+            species = tv.p.field[i].species
+            color = tv.s.species.field[species].rgba * 0.3
+            
+            tv.px.line(pos.x, pos.y, trail_end.x, trail_end.y, color)
+```
+
+### Persistent Trail Map
+```python
+# Use separate field for trail persistence
+trail_field = ti.field(dtype=ti.f32, shape=(tv.x, tv.y, 4))  # RGBA
+
+@ti.kernel
+def update_trails():
+    # Deposit new trails
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            x = ti.cast(tv.p.field[i].pos.x, ti.i32)
+            y = ti.cast(tv.p.field[i].pos.y, ti.i32)
+            if 0 <= x < tv.x and 0 <= y < tv.y:
+                trail_field[x, y, :] += species_color * 0.1
+    
+    # Decay and diffuse
+    for x, y in ti.ndrange(tv.x, tv.y):
+        trail_field[x, y, :] *= 0.99  # Decay
+        # Copy to display
+        tv.px.px.rgba[x, y] = ti.math.vec4(
+            trail_field[x, y, 0],
+            trail_field[x, y, 1],
+            trail_field[x, y, 2],
+            trail_field[x, y, 3]
+        )
+```
+
+## Grid and Background Effects
+
+### Dynamic Grid
+```python
+@ti.func
+def draw_grid(spacing: ti.i32, color: ti.math.vec4):
+    '''Draw a grid overlay.'''
+    # Vertical lines
+    for x in range(0, tv.x, spacing):
+        for y in range(tv.y):
+            tv.px.px.rgba[x, y] = color
+    
+    # Horizontal lines
+    for y in range(0, tv.y, spacing):
+        for x in range(tv.x):
+            tv.px.px.rgba[x, y] = color
+```
+
+### Gradient Background
+```python
+@ti.func
+def draw_gradient_background():
+    '''Draw vertical gradient background.'''
+    for x, y in ti.ndrange(tv.x, tv.y):
+        t = ti.cast(y, ti.f32) / ti.cast(tv.y, ti.f32)
+        color = ti.math.vec4(
+            t * 0.1,      # Red increases down
+            (1.0 - t) * 0.1,  # Green decreases down
+            0.2,          # Constant blue
+            1.0
+        )
+        tv.px.px.rgba[x, y] = color
+```
+
+## Particle Visualization
+
+### Particle Halos
+```python
+@ti.func
+def draw_particle_halo(i: ti.i32):
+    '''Draw glowing halo around particle.'''
+    if tv.p.field[i].active > 0:
+        pos = tv.p.field[i].pos
+        size = tv.p.field[i].size
+        species = tv.p.field[i].species
+        base_color = tv.s.species.field[species].rgba
+        
+        # Draw concentric circles for glow
+        for r in range(1, ti.cast(size * 3, ti.i32)):
+            intensity = 1.0 - (r / (size * 3))
+            color = base_color * intensity * 0.2
+            tv.px.circle(
+                ti.cast(pos.x, ti.i32),
+                ti.cast(pos.y, ti.i32),
+                r, color, fill=0  # Outline only
+            )
+```
+
+### Species-Specific Shapes
+```python
+@ti.func
+def draw_species_shape(i: ti.i32):
+    '''Draw different shapes per species.'''
+    if tv.p.field[i].active > 0:
+        pos = tv.p.field[i].pos
+        species = tv.p.field[i].species
+        color = tv.s.species.field[species].rgba
+        
+        xi = ti.cast(pos.x, ti.i32)
+        yi = ti.cast(pos.y, ti.i32)
+        
+        if species == 0:  # Predator - triangle
+            size = 8
+            p1 = ti.math.vec2(xi, yi - size)
+            p2 = ti.math.vec2(xi - size//2, yi + size//2)
+            p3 = ti.math.vec2(xi + size//2, yi + size//2)
+            tv.px.triangle(p1, p2, p3, color)
+        elif species == 1:  # Prey - circle
+            tv.px.circle(xi, yi, 4, color)
+        else:  # Others - square
+            tv.px.rect(xi - 3, yi - 3, 6, 6, color)
+```
+"""
+
+# Export all documentation
+__all__ = ['PIXELS_API', 'PIXELS_PATTERNS']

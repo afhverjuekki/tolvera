@@ -791,7 +791,9 @@ class TraceHTMLReporter:
         prompt_lower = prompt.lower()
         
         # Check for specific prompt types in order of specificity
-        if "decomposing complex behavior" in prompt_lower:
+        if "expert context selector" in prompt_lower:
+            return "Context Selection System Prompt"
+        elif "decomposing complex behavior" in prompt_lower:
             return "Behavior Decomposition Prompt"
         elif "analyze what custom states" in prompt_lower or "analyzing particle behaviors and determining what states" in prompt_lower:
             return "State Analysis Prompt"
@@ -929,9 +931,11 @@ class TraceHTMLReporter:
                 if parsed and isinstance(parsed, dict):
                     needs_states = parsed.get('needs_states', False)
                     if needs_states:
-                        global_states = parsed.get('global_states', [])
-                        particle_states = parsed.get('particle_states', [])
-                        species_states = parsed.get('species_states', [])
+                        # Parse states using the unified parser
+                        parsed_states = self._parse_state_analysis_response(parsed)
+                        global_states = parsed_states.get('global_states', [])
+                        particle_states = parsed_states.get('particle_states', [])
+                        species_states = parsed_states.get('species_states', [])
                         
                         global_count = len(global_states) if isinstance(global_states, list) else global_states if isinstance(global_states, int) else 0
                         particle_count = len(particle_states) if isinstance(particle_states, list) else particle_states if isinstance(particle_states, int) else 0
@@ -1123,11 +1127,14 @@ class TraceHTMLReporter:
                         component_prefix = "component: "
                 
                 if parsed_response:
-                    # Count actual states from lists
-                    global_states = parsed_response.get('global_states', [])
-                    particle_states = parsed_response.get('particle_states', [])
-                    species_states = parsed_response.get('species_states', [])
-                    temporal_updates = parsed_response.get('temporal_updates', [])
+                    # Parse states using the unified parser
+                    parsed_states = self._parse_state_analysis_response(parsed_response)
+                    
+                    # Count actual states from parsed data
+                    global_states = parsed_states.get('global_states', [])
+                    particle_states = parsed_states.get('particle_states', [])
+                    species_states = parsed_states.get('species_states', [])
+                    temporal_updates = parsed_states.get('temporal_updates', [])
                     
                     global_count = len(global_states) if isinstance(global_states, list) else global_states if isinstance(global_states, int) else 0
                     particle_count = len(particle_states) if isinstance(particle_states, list) else particle_states if isinstance(particle_states, int) else 0
@@ -1519,6 +1526,36 @@ class TraceHTMLReporter:
         section += '</div></div>'
         return section
     
+    def _parse_state_analysis_response(self, parsed_response: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse state analysis response, handling both unified and legacy formats."""
+        if not parsed_response:
+            return {'global_states': [], 'particle_states': [], 'species_states': [], 'temporal_updates': []}
+        
+        # Check for unified format first (states array with category field)
+        if 'states' in parsed_response:
+            states_by_category = {'global': [], 'particle': [], 'species': []}
+            
+            for state in parsed_response.get('states', []):
+                if isinstance(state, dict) and 'category' in state:
+                    category = state['category']
+                    if category in states_by_category:
+                        states_by_category[category].append(state)
+            
+            return {
+                'global_states': states_by_category['global'],
+                'particle_states': states_by_category['particle'],
+                'species_states': states_by_category['species'],
+                'temporal_updates': parsed_response.get('temporal_updates', [])
+            }
+        
+        # Fall back to legacy format (separate arrays)
+        return {
+            'global_states': parsed_response.get('global_states', []),
+            'particle_states': parsed_response.get('particle_states', []),
+            'species_states': parsed_response.get('species_states', []),
+            'temporal_updates': parsed_response.get('temporal_updates', [])
+        }
+    
     def _generate_state_analysis_details(self, parsed_response: Dict[str, Any], is_state_analysis: bool, input_data: Dict[str, Any] = None) -> str:
         """Generate detailed HTML section for state analysis responses."""
         if not is_state_analysis or not parsed_response:
@@ -1550,9 +1587,12 @@ class TraceHTMLReporter:
         '''
         
         if needs_states:
+            # Parse states using the unified parser
+            parsed_states = self._parse_state_analysis_response(parsed_response)
+            
             # Show each category of states
             for category in ['global_states', 'particle_states', 'species_states']:
-                states = parsed_response.get(category, [])
+                states = parsed_states.get(category, [])
                 if states:
                     category_name = category.replace('_states', '').capitalize()
                     section += f'''
@@ -1593,7 +1633,7 @@ class TraceHTMLReporter:
                     section += '</div></div>'
             
             # Show temporal updates
-            temporal_updates = parsed_response.get('temporal_updates', [])
+            temporal_updates = parsed_states.get('temporal_updates', [])
             if temporal_updates:
                 section += f'''
                 <div style="margin: 15px 0;">

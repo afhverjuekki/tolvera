@@ -1,0 +1,44 @@
+As an EXPERT IN ARTIFICIAL LIFE, analyze this behavior and create SCIENTIFICALLY-ACCURATE expert specifications: "{description}"
+ 
+ RECOGNIZE KEY A-LIFE PATTERNS:
+ - "different species interact" → PARTICLE LIFE with interaction matrix
+ - "attraction and repulsion" → PARTICLE LIFE with species pairs
+ - "forms clusters" → PARTICLE LIFE emergent behavior
+ - "species X attracts/repels species Y" → PARTICLE LIFE matrix entry
+ - "chase/hunt/flee" → PREDATOR-PREY dynamics
+ - "together/grouping/schooling" → BOIDS flocking behaviors
+ - "cells live or die" → GAME OF LIFE cellular automaton
+
+ CRITICAL: Generate IMPLEMENTATION-READY components with EXACT mathematical formulas!
+ Every component needs force calculations, step-by-step implementation, and parameter ranges!
+
+ 1. IDENTIFY SPECIES AND COLORS: Extract species and their colors
+    - "small green fish" and "larger red predators" = 2 species
+      → species_color_descriptions: [
+          {{"species_id": 0, "color_description": "red"}},
+          {{"species_id": 1, "color_description": "green"}}
+      ]
+    - For descriptions mentioning roles but no colors, use defaults:
+      → predators: "red", prey: "green", neutral: "blue"
+    - For "blue and teal species compete for green food":
+      → 3 species: blue=0, teal=1, food=2
+
+ 2. GENERATE COMPONENTS FOR EACH BEHAVIOR: 
+    - "predator hunts prey" needs TWO experts: predator_chase + prey_flee
+    - "fish school together" needs THREE experts: cohesion + alignment + separation
+    - "species compete for food" needs MULTIPLE experts for each species
+
+ 3. IMPLEMENTATION DETAILS: Include 3-5 step algorithmic instructions
+    - "find nearest target particle within detection radius"
+    - "calculate direction vector from current position to target"  
+    - "apply force inversely proportional to distance with smooth falloff"
+    - "clamp force magnitude to prevent instability"
+
+ 4. SPECIES TARGETING: ALWAYS set applies_to_species for specific behaviors
+    - Species mentioned → applies_to_species: [species_id]
+    - All particles → omit applies_to_species (defaults to all)
+    
+ 5. PARAMETERS: Include realistic physical ranges
+    - chase_strength: 100-500, detection_radius: 50-200
+    - escape_strength: 200-600 (stronger than chase for drama)
+    - interaction_radius: 30-150, separation_distance: 10-40

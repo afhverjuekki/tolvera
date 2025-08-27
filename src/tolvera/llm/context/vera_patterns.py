@@ -3,9 +3,9 @@ SPECIES_INTERACTION_PATTERNS = """
 
 ### FUNDAMENTAL PRINCIPLE: Force → Velocity → Position Chain
 The Tölvera particle system follows this flow:
-1. **Experts return FORCE vectors** (ti.math.vec2)
-2. **Forces are applied to particle velocity**: `vel += force * dt`
-3. **Position updates use velocity AND speed**: `pos += vel * speed * dt`
+1. Experts return FORCE vectors (ti.math.vec2)
+2. Forces are applied to particle velocity: `vel += force * dt`
+3. Position updates use velocity AND speed: `pos += vel * speed * dt`
 
 The `speed` attribute (lines 221-224 in particles.py) is CRITICAL:
 - Each particle has individual `speed` attribute (randomized 0.1-1.0)
@@ -58,21 +58,21 @@ Use different detection radii for different behaviors:
 ### 3. Force Magnitude Guidelines (Working with Speed System)
 Forces interact with particle `speed` attribute in position updates:
 
-**Understanding the Chain**: 
+Understanding the Chain: 
 - Expert returns force → `vel += force * dt` → `pos += vel * speed * dt`
 - Higher `speed` = more movement per unit velocity
 - Forces should be scaled appropriately for the speed range (0.1-1.0)
 
-**Recommended Force Magnitudes**:
-- **Chase forces**: 300-500 (predators catch prey but not instantly)
-- **Flee forces**: 400-600 (prey escapes but creates chase dynamic)  
-- **Flocking cohesion**: 50-150 (gentle group attraction)
-- **Flocking separation**: 200-400 (avoid collisions effectively)
-- **Random wander**: 30-100 (subtle idle movement)
-- **Gravity**: 100-300 (constant downward force)
-- **Attraction to point**: 150-300 (pulls particles toward target)
+Recommended Force Magnitudes:
+- Chase forces: 300-500 (predators catch prey but not instantly)
+- Flee forces: 400-600 (prey escapes but creates chase dynamic)  
+- Flocking cohesion: 50-150 (gentle group attraction)
+- Flocking separation: 200-400 (avoid collisions effectively)
+- Random wander: 30-100 (subtle idle movement)
+- Gravity: 100-300 (constant downward force)
+- Attraction to point: 150-300 (pulls particles toward target)
 
-**Force-Speed Interaction Example**:
+Force-Speed Interaction Example:
 ```python
 # Slow particles (speed=0.2) with force=300: movement = vel * 0.2 * dt
 # Fast particles (speed=0.8) with force=300: movement = vel * 0.8 * dt
@@ -159,7 +159,7 @@ if nearby_count > 0:
 ### 9. VERA FORCE API COMPATIBILITY
 Our experts must be compatible with Tölvera's underlying force system:
 
-**From vera/forces.py - Key Patterns:**
+From vera/forces.py - Key Patterns:
 ```python
 # attract_particle() pattern - returns velocity change
 @ti.func
@@ -172,7 +172,7 @@ def attract_particle(p: Particle, pos: ti.math.vec2, mass: ti.f32, radius: ti.f3
     return vel
 ```
 
-**Our Expert Functions Should Follow Similar Patterns:**
+Our Expert Functions Should Follow Similar Patterns:
 ```python
 @ti.func
 def expert_chase(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
@@ -202,7 +202,7 @@ def expert_chase(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti
     return force
 ```
 
-**Key Vera-Compatible Principles:**
+Key Vera-Compatible Principles:
 - Always check `.active > 0.0` before processing particles
 - Use `.norm()` for distances, manual normalization for directions
 - Apply distance-based scaling factors

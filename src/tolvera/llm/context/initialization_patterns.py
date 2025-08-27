@@ -18,6 +18,7 @@ def init_particles():
             (ti.random() - 0.5) * 100.0
         ])
         tv.p.field[i].mass = 0.5 + ti.random() * 0.5
+        tv.p.field[i].speed = 20.0 + ti.random() * 0.5
         tv.p.field[i].size = 3.0 + ti.random() * 4.0  # Visible size 3-7
         tv.p.field[i].species = 0  # Single species
 ```
@@ -120,6 +121,7 @@ def init_ring_formation():
         tv.p.field[i].active = 1.0
         tv.p.field[i].mass = 1.0
         tv.p.field[i].size = 5.0
+        tv.p.field[i].speed = 20.0
 ```
 
 ## Wave Initialization (Wave Patterns, Oscillations)

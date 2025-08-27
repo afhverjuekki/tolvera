@@ -138,7 +138,7 @@ def parallel_process():
         
 ## Common Pitfalls and Solutions
 ### Variable Declaration in Conditionals - CRITICAL RULE!
-**ALL VARIABLES MUST BE DECLARED BEFORE CONDITIONALS**
+ALL VARIABLES MUST BE DECLARED BEFORE CONDITIONALS
 
 # WRONG - Variable defined inside conditional (COMPILATION ERROR!)
 if species == 0:
@@ -226,7 +226,7 @@ Based on vera class template from examples:
 
 @ti.data_oriented
 class CustomBehavior:
-    def __init__(self, tolvera, **kwargs):
+    def __init__(self, tolvera, kwargs):
         self.tv = tolvera
         self.kwargs = kwargs
         

@@ -4,11 +4,13 @@ Context injection framework for LLM prompts.
 
 from .library_docs import (
     TOLVERA_CORE_API,
-    PIXELS_API,
-    TAICHI_ESSENTIALS,
-    STATE_ACCESS_PATTERNS,
-    BOUNDARY_HANDLING
+    TAICHI_ESSENTIALS
 )
+from .pixels_api import PIXELS_API, PIXELS_PATTERNS
+from .particles_api import PARTICLES_API, PARTICLE_PATTERNS
+
+# Backward compatibility alias
+TOLVERA_PIXELS_API = PIXELS_API
 from .patterns import (
     MOVEMENT_PATTERNS,
     FLOCKING_PATTERNS,
@@ -34,10 +36,12 @@ from .alife_patterns import (
 
 __all__ = [
     'TOLVERA_CORE_API',
+    'TOLVERA_PIXELS_API',
     'PIXELS_API',
+    'PIXELS_PATTERNS',
+    'PARTICLES_API',
+    'PARTICLE_PATTERNS',
     'TAICHI_ESSENTIALS',
-    'STATE_ACCESS_PATTERNS',
-    'BOUNDARY_HANDLING',
     'MOVEMENT_PATTERNS',
     'FLOCKING_PATTERNS',
     'INTERACTION_PATTERNS',

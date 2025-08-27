@@ -1,5 +1,4 @@
-
-from .models import (
+from .data_models import (
     BehaviorSynthesisRequest,
     BehaviorSynthesisResponse,
     ExpertFunction,
@@ -10,10 +9,11 @@ from .models import (
     ForceComputation,
     VectorExpression
 )
-from .synthesizer import Synthesizer as BehaviorSynthesizer
+from .code_generator import CodeGenerator
 from .state_manager import StateManager
-from .behavior_agent import BehaviorAgent
-from .decomposer import BehaviorDecomposer, DecomposedBehavior, BehaviorComponent, SpeciesColorMapping
+from .behavior_orchestrator import BehaviorOrchestrator
+from .behavior_analyzer import BehaviorAnalyzer, DecomposedBehavior, BehaviorComponent, SpeciesColorMapping
+from .behavior_registry import ExpertRegistry, ExpertInfo
 
 __all__ = [
     'BehaviorSynthesisRequest',
@@ -25,11 +25,13 @@ __all__ = [
     'TemporalUpdate',
     'ForceComputation',
     'VectorExpression',
-    'BehaviorSynthesizer',
+    'CodeGenerator',
     'StateManager',
-    'BehaviorAgent',
-    'BehaviorDecomposer',
+    'BehaviorOrchestrator',
+    'BehaviorAnalyzer',
     'DecomposedBehavior',
     'BehaviorComponent',
-    'SpeciesColorMapping'
+    'SpeciesColorMapping',
+    'ExpertRegistry',
+    'ExpertInfo'
 ]

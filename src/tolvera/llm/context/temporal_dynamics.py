@@ -251,27 +251,27 @@ if resting:
 
 When generating temporal updates:
 
-1. **Identify temporal keywords**:
+1. Identify temporal keywords:
    - "over time" → continuous update each frame
    - "gradually" → small increments (0.99x or ±0.01)
    - "quickly" → larger changes (0.9x or ±0.1)
    - "slowly" → tiny changes (0.999x or ±0.001)
    
-2. **Choose appropriate rates**:
+2. Choose appropriate rates:
    - Decay: multiply by (1.0 - decay_rate)
    - Growth: multiply by (1.0 + growth_rate)
    - Linear change: add/subtract constant
    
-3. **Apply constraints**:
+3. Apply constraints:
    - Always clamp: value = max(min_val, min(max_val, value))
    - Check thresholds for state changes
    
-4. **Create behavioral coupling**:
+4. Create behavioral coupling:
    - Map state ranges to behavior modifications
    - Use smooth transitions: lerp or curve functions
    - Define critical points for discrete changes
 
-5. **Consider update frequency**:
+5. Consider update frequency:
    - Every frame: continuous processes
    - Every N frames: discrete updates
    - Conditional: based on events or thresholds

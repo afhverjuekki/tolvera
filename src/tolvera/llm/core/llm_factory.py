@@ -1,18 +1,13 @@
 """
 Model Factory for Multi-Provider LLM Support
 
-This module provides a factory for creating pydantic-ai model instances
-for different LLM providers including OpenAI, Anthropic, Mistral, HuggingFace,
-Ollama, and Google Gemini.
+This module provides a factory for creating pydantic-ai model instances for different LLM providers including OpenAI, Anthropic, Mistral, HuggingFace, Ollama, and Google Gemini.
 """
 
 import os
-import logging
 from typing import Optional, Dict, Any, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
-
-logger = logging.getLogger(__name__)
 
 
 class ModelFactory:
@@ -73,7 +68,6 @@ class ModelFactory:
         for env_path in env_paths:
             if env_path.exists():
                 load_dotenv(env_path)
-                logger.debug(f"Loaded environment from: {env_path}")
                 break
     
     @classmethod
@@ -206,8 +200,6 @@ class ModelFactory:
         # Parse the model string to get provider and actual model name
         provider, actual_model = cls.parse_model_string(model_name)
         
-        logger.info(f"Creating model for provider '{provider}' with model '{actual_model}'")
-        
         # Get provider configuration
         if provider not in cls.PROVIDERS:
             raise ValueError(
@@ -268,7 +260,6 @@ class ModelFactory:
                 
                 # Create OpenAI model with Ollama provider
                 model = OpenAIModel(actual_model, provider=provider_instance)
-                logger.info(f"Created Ollama model '{actual_model}' with host: {ollama_host}")
                 
             elif provider == 'google':
                 # Google provider needs special handling
@@ -280,7 +271,6 @@ class ModelFactory:
                 
                 if use_vertex:
                     provider_instance = GoogleProvider(vertexai=True, location=location, **kwargs)
-                    logger.info(f"Using Vertex AI with location: {location}")
                 else:
                     provider_instance = GoogleProvider(api_key=api_key, **kwargs)
                 
@@ -302,11 +292,9 @@ class ModelFactory:
                         os.environ[env_var] = api_key
                 model = model_class(actual_model, **kwargs)
             
-            logger.info(f"Successfully created {provider} model: {actual_model}")
             return model
             
         except Exception as e:
-            logger.error(f"Failed to create {provider} model: {e}")
             raise ValueError(f"Failed to create {provider} model: {e}") from e
     
     @classmethod

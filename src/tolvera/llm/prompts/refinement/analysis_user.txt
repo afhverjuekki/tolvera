@@ -1,0 +1,10 @@
+Analyze this Tölvera sketch and create a detailed implementation plan.
+
+USER'S GOAL: {description}
+
+DRAFT SKETCH:
+```python
+{sketch_code}
+```
+
+Analyze the sketch against the user's goal and the architectural patterns in the exemplars. Create a comprehensive implementation plan that addresses ALL issues and missing features.

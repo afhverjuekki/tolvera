@@ -23,8 +23,7 @@ from textual.reactive import reactive
 from textual.binding import Binding
 from textual.message import Message
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Imports are now using absolute package paths - no sys.path manipulation needed
 
 from tolvera import Tolvera
 from tolvera.llm import BehaviorAgent
@@ -32,7 +31,7 @@ from tolvera.llm.core.sketch_refiner import SketchRefiner
 from tolvera.llm.debug.tracing import get_collector
 from tolvera.llm.debug.console_tracer import enable_console_tracing
 from tolvera.llm.debug.trace_html_report import generate_html_report
-from tolvera.llm.core.model_factory import ModelFactory
+from tolvera.llm.core.llm_factory import ModelFactory
 from dotenv import load_dotenv
 
 # Import enhanced components
@@ -1769,7 +1768,9 @@ class TolveraTextualUI(App):
     def on_mount(self):
         """Initialize the application when mounted."""
         # Load environment variables
-        env_path = Path.cwd() / ".env"
+        # Get project root (5 levels up from this file)
+        project_root = Path(__file__).parent.parent.parent.parent.parent
+        env_path = project_root / ".env"
         if env_path.exists():
             load_dotenv(env_path)
             self.log_message(f"🧬 Loaded environment from: {env_path}")
@@ -1790,8 +1791,10 @@ class TolveraTextualUI(App):
         self.collector.capture_llm_content = True
         
         # Initialize directories
-        Path("examples/generated_sketches").mkdir(parents=True, exist_ok=True)
-        Path("examples/generated_sketches/traces").mkdir(parents=True, exist_ok=True)
+        # Get project root (5 levels up from this file)
+        project_root = Path(__file__).parent.parent.parent.parent.parent
+        (project_root / "examples/generated_sketches").mkdir(parents=True, exist_ok=True)
+        (project_root / "examples/generated_sketches/traces").mkdir(parents=True, exist_ok=True)
         
         # Show welcome screen first
         self.set_timer(0.1, self.show_welcome_screen)
@@ -2108,9 +2111,7 @@ class TolveraTextualUI(App):
             _, sketch_path = await self.behavior_agent.generate_sketch_async(
                 description=description,
                 filename="textual_sketch",
-                use_timestamp=True,
-                validate=False,
-                auto_fix=True
+                use_timestamp=True
             )
             
             self.current_sketch_path = sketch_path
@@ -2794,7 +2795,9 @@ class TolveraTextualUI(App):
         """Open the trace report in browser."""
         if self.main_trace:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            json_path = f"examples/generated_sketches/traces/textual_trace_{timestamp}.json"
+            # Get project root (5 levels up from this file)
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            json_path = project_root / f"examples/generated_sketches/traces/textual_trace_{timestamp}.json"
             
             # Save trace
             json_trace = self.collector.export_trace(self.main_trace.id, format="json")

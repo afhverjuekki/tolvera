@@ -59,22 +59,22 @@ def main(**kwargs):
         tv.px.diffuse(0.99)
         
         # Pre-particle drawing
-        {% for call in pre_draw_calls -%}
-        {{ call }}
+        {% for call in pre_draw_calls %}
+        {{ call | indent(8, False) }}
         {% endfor %}
         
         # Apply behaviors and physics
-        {% for call in update_calls -%}
-        {{ call }}
+        {% for call in update_calls %}
+        {{ call | indent(8, False) }}
         {% endfor %}
         
         # Post-particle drawing
-        {% for call in post_draw_calls -%}
-        {{ call }}
+        {% for call in post_draw_calls %}
+        {{ call | indent(8, False) }}
         {% endfor %}
         
         # Render particles
-        {{ render_particles_call }}
+        {{ render_particles_call | indent(8, False) }}
         
         return tv.px
 

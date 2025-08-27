@@ -1,0 +1,5 @@
+## SPECIES-SPECIFIC BEHAVIOR INSTRUCTIONS
+
+{species_specific_message}
+
+{species_detection_message}

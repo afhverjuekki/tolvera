@@ -78,7 +78,9 @@ class SaveDialog(ModalScreen):
         filename = filename_input.value or self.default_name
         if not filename.endswith(".py"):
             filename += ".py"
-        self.result_path = Path("examples/generated_sketches") / filename
+        # Get project root (7 levels up from this file)
+        project_root = Path(__file__).parent.parent.parent.parent.parent.parent.parent
+        self.result_path = project_root / "examples/generated_sketches" / filename
         self.dismiss(str(self.result_path))
     
     @on(Button.Pressed, "#cancel")
