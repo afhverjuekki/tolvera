@@ -1,228 +1,136 @@
-# Tölvera Natural Language Interface
+# Tölvera
 
-This branch specifically focuses on extending Tölvera with a natural language interface for generating complex particle behaviors, simulations, and alife patterns from text descriptions.
+> ⭐️ Tölvera has been selected for Mozilla's first Builders Accelerator! [Read the announcement](https://blog.mozilla.org/en/mozilla/14-ai-projects-to-watch-mozillas-first-builders-accelerator-cohort-kicks-off/) and join our [Discord](https://discord.gg/ER7tWds9vM)!
 
-## What You Can Create
+![type:video](https://www.youtube.com/embed/BmoinLR8Otc)
 
-- **Particle Behavior**: "Particle repel the center of the screen"
-- **Physical Simulations**: "Particles fall with gravity and bounce off boundaries"
-- **Species Interactions**: "Species one repels species two."
-- **Complex Behaviors**: "Red hunters chase blue prey that try to escape""
+[Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems.
+It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own.
 
-All generated as complete, runnable Python code with GPU acceleration via Taichi.
+With built-in support for Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper) and interactive machine learning (IML) via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla), Tölvera interfaces with and rapidly maps onto existing creative computing software and hardware, striving to be both an accessible and powerful tool for exploring [diverse intelligence](https://www.frontiersin.org/articles/10.3389/fnsys.2022.768201/full) in artistic contexts.
 
-## Quick Start
+Inspired by our lab's location in Iceland, the word Tölvera is an Icelandic [kenning](https://en.wikipedia.org/wiki/Kenning) based on _tölva_ meaning computer, from _tala_ (number) and _völva_ (prophetess), and _vera_ (being), composed together as _number being_.
 
-### Prerequisites
+We have employed Tölvera in various collaborative artistic works, including musical performances, compositions, and multimedia installations (see [`references.bib`](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib) for peer-reviewed publications).
+Tölvera's role in these pieces has mainly been "mappable behaviour engine", where interface inputs can control Tölvera programs, and Tölvera runtime data can control interface outputs, in practically any combination.
+In this way, and to controllable degrees, Tölvera can contribute to the underlying dynamics of a given interactive scenario.
+It can also add a [visual component](https://www.youtube.com/watch?v=W2c8vFmdANY), and equally has been used without projection in [other works](https://marcodonnarumma.com/works/ex-silens/).
 
-- **Python 3.10-3.12** (Python 3.13+ not supported due to Taichi)
-- **Poetry** (Python package manager)
-- **API Key** from at least one supported provider (see configuration below)
+Tölvera makes use of [Taichi](https://www.taichi-lang.org/), a domain-specific language embedded in Python that enables parallelisation, and is experimental software subject to change.
 
-### Installation
+We would be happy to have you join us on our [Discord](https://discord.gg/ER7tWds9vM) server!
 
-1. **Clone the repository:**
+## Showcase & Examples
 
-   ```bash
-   git clone https://github.com/Intelligent-Instruments-Lab/tolvera.git
-   cd tolvera
-   ```
+Examples can be found at [iil-examples/tolvera](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera).
+See also the [guide](https://afhverjuekki.github.io/tolvera/guide), [reference](https://afhverjuekki.github.io/tolvera/reference/tolvera/context) and [experiments](https://afhverjuekki.github.io/tolvera/experiments) pages.
 
-2. **Install dependencies:**
+[Visit the YouTube Playlist](https://www.youtube.com/embed/ahSXjnYHZLU?&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x) (if you'd like to add a video, please get in touch).
 
-   ```bash
-   poetry install
-   ```
+![type:video](https://www.youtube.com/embed/ahSXjnYHZLU?&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x)
 
-3. **Configure API keys** (see next section)
+<!-- [![](assets/images/tolvera.jpg)](https://www.youtube.com/watch?v=ahSXjnYHZLU&list=PL8bdQleKUA1vNez5gw-pfQB21Q1-vHn3x&pp=gAQBiAQB) -->
 
-4. **Launch the interface:**
-   ```bash
-   poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
-   ```
+## Install
 
-## API Key Configuration
+Taichi [supports numerous operating systems and backends](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends).
+If you plan on using Vulkan for graphics (recommended for macOS), you may need to [install the Vulkan SDK](https://docs.taichi-lang.org/docs/hello_world#supported-systems-and-backends) first and restart your machine.
 
-**Important**: API keys are required to use this natural language interface. You can try using with Ollama, but these smaller models hallucinate too much to be dependable for generating these types of Tölvera sketches. You need at least one provider configured.
+Tölvera is [registered on PyPI](https://pypi.org/project/tolvera) and can be installed via a Python package manager such as `pip`:
 
-### Step 1: Copy Environment Template
-
-```bash
-cp src/tolvera/llm/.env.example .env
+```sh
+pip install tolvera
 ```
 
-### Step 2: Choose a Provider & Get API Key
+## Develop
 
-#### **Gemini (Recommended)**
+For development, we use [`poetry`](https://python-poetry.org/).
+Fork/clone this repository and install the package with `poetry:
 
-- **Best for**: Tölvera synthesis, fast and reliable
-- **Get API Key**: [Google AI Studio](https://makersuite.google.com/app/apikey)
-- **Add to .env**: `GEMINI_API_KEY=your-api-key-here`
-
-#### **OpenAI (GPT-5)**
-
-- **Best for**: High-quality code generation
-- **Get API Key**: [OpenAI Platform](https://platform.openai.com/api-keys)
-- **Add to .env**: `OPENAI_API_KEY=your-api-key-here`
-
-#### **Anthropic (Claude)**
-
-- **Best for**: Complex reasoning and analysis
-- **Get API Key**: [Anthropic Console](https://console.anthropic.com/)
-- **Add to .env**: `ANTHROPIC_API_KEY=your-api-key-here`
-
-#### **Mistral AI**
-
-- **Best for**: European users, good balance
-- **Get API Key**: [Mistral Console](https://console.mistral.ai/api-keys/)
-- **Add to .env**: `MISTRAL_API_KEY=your-api-key-here`
-
-#### **Local Models (Ollama)**
-
-- **Best for**: Privacy, no API costs
-- **Setup**:
-  1. Install [Ollama](https://ollama.ai/)
-  2. `ollama pull llama3.2`
-  3. `ollama serve`
-- **No API key required**
-
-### Step 3: Verify Configuration
-
-When you launch Tölvera, it will show which providers are configured:
-
-- **Green**: Provider ready
-- **Red**: Provider not configured
-
-## Running the Application
-
-### Launch Command
-
-```bash
-poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
+```sh
+git clone https://github.com/Intelligent-Instruments-Lab/tolvera # (or clone your own fork)
+cd tolvera
+poetry install
 ```
 
-### First Run Experience
+## Documentation
 
-1. **Welcome Screen**: Introduction to Tölvera with animated examples
-2. **Model Selection**: Choose your AI provider and model
-3. **Agent Initialization**: ~10-30 seconds setup (one-time)
-4. **Ready to Create**: Start generating!
+Documentation is written using [MkDocs](https://www.mkdocs.org/).
 
-### Interface Overview
-
-- **Description Input**: Write what you want to create
-- **Generate Button**: Transform text into code
-- **Code Editor**: View and edit generated Python
-- **Controls**: Run, save, load, and refine your creations
-- **Chat Panel**: Iteratively improve your simulations
-- **Status Logs**: Monitor generation progress
-
-## Getting Started Tutorial
-
-### Interactive Tutorial
-
-Press **F2** at any time to launch the interactive tutorial that walks you through:
-
-1. **Your First Generation**: Create a simple two-species simulation
-2. **Running Simulations**: Launch and stop your Tölvera sketch
-3. **Refinement Chat**: Modify behaviors with natural language
-4. **Diff Viewing**: See exactly what the LLM changed
-5. **Advanced Features**: Save, load, and export capabilities
-
-### Getting Help
-
-- **F1**: General help and keyboard shortcuts
-- **F2**: Interactive tutorial (anytime)
-- **Ctrl+T**: Toggle chat panel
-- **Status Logs**: Real-time progress and error information
-- **Trace Report**: See the process for all the calls to the LLM
-
-## Example Workflows
-
-### Simple Behavior
-
-```
-Description: "Particles are attracted to the center and repel each other"
-→ Click Generate → Click Run → Watch the simulation!
+```sh
+mkdocs serve # serve the docs locally
+mkdocs build # build the docs
+mkdocs gh-deploy # deploy via github pages
 ```
 
-### Complex Ecosystem
+## Known Issues & Limitations
 
-```
-Description: "Red predators hunt blue fish while green algae grows slowly"
-→ LLM detects 3 species → Generates predator-prey behaviors → Creates ecosystem
-```
+- Tölvera does not support Intel-based Apple devices (due to [`anguilla`](https://github.com/Intelligent-Instruments-Lab/anguilla)'s FAISS dependency, and Mediapipe not supporting Intel Macs).
+- On macOS, [an OpenMP issue](https://github.com/pytorch/pytorch/issues/78490) may prevent Tölvera programs from running, which can be addressed by adding the following environment variable:
 
-### Iterative Refinement
-
-```
-1. Generate initial behavior
-2. Run and observe
-3. Chat: "Make the predators faster and add boundaries"
-4. LLM refines the code
-5. Run updated simulation
+```sh
+export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 
-## Keyboard Shortcuts
+- Sonification via [SignalFlow](https://signalflow.dev) does not work on Windows.
+- Mediapipe versions [may need to be downgraded](https://github.com/google/mediapipe/issues/5168) in order to work on macOS and Windows.
+- `OSError: Could not find any hidapi library`: this is due to the DualSense (PS5 controller) class. On macOS you can `brew install hidapi` and it should work.
 
-| Key        | Action            |
-| ---------- | ----------------- |
-| **Ctrl+N** | New sketch        |
-| **Ctrl+R** | Run simulation    |
-| **Ctrl+S** | Save sketch       |
-| **Ctrl+T** | Toggle chat panel |
-| **F1**     | Help dialog       |
-| **F2**     | Tutorial          |
-| **Ctrl+Q** | Quit application  |
+## Contribute
 
-## Troubleshooting
+We welcome [Pull Requests](https://github.com/Intelligent-Instruments-Lab/tolvera/pulls) across all areas of the project:
 
-### Common Issues
+- Addressing [Issues](https://github.com/Intelligent-Instruments-Lab/tolvera/issues)
+- Adding features (see [Issues](https://github.com/Intelligent-Instruments-Lab/tolvera/issues) and [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussion))
+- [Examples](https://github.com/Intelligent-Instruments-Lab/iil-examples/tree/main/tolvera)
+- [Tests](https://github.com/afhverjuekki/tolvera)
+- [Documentation](https://afhverjuekki.github.io/tolvera/)
 
-**"No providers configured"**
+## Community
 
-- Check your `.env` file exists and has valid API keys  
-- There's an `.env.example` in `src/tolvera/llm/` you can use to format your `.env` after
-- Verify API key format (no quotes, no extra spaces)
-- Test API key on the provider's website
+To discuss Tölvera with developers and other users:
 
-**"Generation failed"**
+- Use GitHub [Issues](https://github.com/Intelligent-Instruments-Lab/tolvera/issues) to report bugs and make specific feature requests.
+- Use GitHub [Discussions](https://github.com/Intelligent-Instruments-Lab/tolvera/discussions) to share ideas and ask questions.
+- Use [Discord](https://discord.gg/ER7tWds9vM) for further support, sharing your work, and general chat.
 
-- Check status logs for detailed error messages
-- Try simplifying your description
+Across the project, we follow the [Berlin Code of Conduct](https://berlincodeofconduct.org/).
+Please get in touch if you experience or witness any conduct issues.
 
-**Ollama Issues**
+## Roadmap
 
-- Ensure Ollama is running: `ollama serve`
-- Check model is installed: `ollama list`
-- Verify connection: `curl http://localhost:11434/api/tags`
+See [Discussion](https://github.com/Intelligent-Instruments-Lab/tolvera/discussion).
 
-### Getting Support
+## Citation
 
-- **Status Logs**: Always check for detailed error messages
-- **Copy Logs Button**: Share logs when asking for help
-- **GitHub Issues**: [Report bugs](https://github.com/mclemcrew/tolvera/tree/week11)
-- **Documentation**: [Full docs](https://afhverjuekki.github.io/tolvera/)
-- **Contact Me**: There's probably a lot wrong with the system right now. Pinging me (@MClem) on the Tölvera Discord is a great way to get my attention! Otherwise, feel free to post an issue on
+Tölvera is being written about and used in a number of contexts (see [references.bib](https://github.com/Intelligent-Instruments-Lab/tolvera/blob/main/references.bib)).
+The current canonical citation is our [NIME 2024](https://www.nime2024.org/) paper:
 
-## Some Other Features
-
-### Multiple AI Providers
-
-Switch between providers anytime with **"Change Model"** button
-
-### Code Saving
-
-Save complete Tölvera sketches to run later
-
-### Debug Tracing
-
-Generate detailed HTML reports of the synthesis process
-
----
-
-**Ready to begin? Run the interface and see what sketches you create!**
-
-```bash
-poetry run python src/tolvera/llm/examples/tolvera_textual_ui.py
+```bibtex
+@inproceedings{armitageTolveraComposingBasal2024,
+  title = {T{\"o}lvera: {{Composing With Basal Agencies}}},
+  booktitle = {Proc. {{New Interfaces}} for {{Musical Expression}}},
+  author = {Armitage, Jack and Shepardson, Victor and Magnusson, Thor},
+  year = {2024},
+  address = {Utrecht, NL},
+}
 ```
+
+## Inspiration
+
+- [Michael Levin](<https://en.wikipedia.org/wiki/Michael_Levin_(biologist)>)
+- [SwissGL](https://swiss.gl)
+- [Lenia](https://chakazul.github.io/lenia.html)
+- Particle Life (attributed to various, see for example [Clusters](https://www.ventrella.com/Clusters/))
+- [Journey to the Microcosmos](https://www.youtube.com/@journeytomicro)
+- [Complexity Explorables](https://www.complexity-explorables.org/)
+
+## Contact
+
+Tölvera is developed by [Jack Armitage](https://jackarmitage.com).
+
+## Acknowledgements
+
+We thank the Taichi community for their project that makes Tölvera possible.
+
+Tölvera was originally created at the [Intelligent Instruments Lab](https://iil.is).
