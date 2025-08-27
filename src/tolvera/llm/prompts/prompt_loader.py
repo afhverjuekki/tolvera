@@ -47,38 +47,38 @@ class PromptLoader:
         """
         contexts = {}
         
-        # Import mapping - from existing prompts.py imports
+        # Import mapping - now all patterns are loaded via __init__ or library_docs
         context_imports = {
             'core_api': ('tolvera.llm.context.library_docs', 'TOLVERA_CORE_API'),
             'pixels_api': ('tolvera.llm.context.library_docs', 'TOLVERA_PIXELS_API'),
-            'taichi_fundamentals': ('tolvera.llm.context.taichi_patterns', 'TAICHI_FUNDAMENTALS'),
-            'taichi_crashes': ('tolvera.llm.context.taichi_patterns', 'TAICHI_CRASH_FIXES'),
-            'state_access': ('tolvera.llm.context.library_docs', 'STATE_ACCESS_PATTERNS'),
-            'boundaries': ('tolvera.llm.context.library_docs', 'BOUNDARY_HANDLING'),
-            'movement': ('tolvera.llm.context.patterns', 'MOVEMENT_PATTERNS'),
-            'flocking': ('tolvera.llm.context.patterns', 'FLOCKING_PATTERNS'),
-            'interaction': ('tolvera.llm.context.patterns', 'INTERACTION_PATTERNS'),
-            'temporal': ('tolvera.llm.context.patterns', 'TEMPORAL_PATTERNS'),
-            'cellular': ('tolvera.llm.context.patterns', 'CELLULAR_AUTOMATA_PATTERNS'),
-            'emergent': ('tolvera.llm.context.patterns', 'EMERGENT_PATTERNS'),
-            'drawing': ('tolvera.llm.context.drawing_patterns', 'DRAWING_PATTERNS'),
-            'drawing_api': ('tolvera.llm.context.drawing_patterns', 'DRAWING_API_REFERENCE'),
-            'vera_patterns': ('tolvera.llm.context.vera_patterns', 'VERA_PATTERNS'),
-            'vera_interactions': ('tolvera.llm.context.vera_patterns', 'INTERACTION_PATTERNS_VERA'),
-            'species_interactions': ('tolvera.llm.context.vera_patterns', 'SPECIES_INTERACTION_PATTERNS'),
-            'alife_patterns': ('tolvera.llm.context.taichi_patterns', 'ARTIFICIAL_LIFE_PATTERNS'),
-            'iml_patterns': ('tolvera.llm.context.taichi_patterns', 'IML_PATTERNS'),
-            'evolution': ('tolvera.llm.context.alife_patterns', 'EVOLUTION_PATTERNS'),
-            'ecosystem': ('tolvera.llm.context.alife_patterns', 'ECOSYSTEM_PATTERNS'),
-            'morphogenesis': ('tolvera.llm.context.alife_patterns', 'MORPHOGENETIC_PATTERNS'),
-            'swarm': ('tolvera.llm.context.alife_patterns', 'SWARM_INTELLIGENCE'),
-            'initialization': ('tolvera.llm.context.initialization_patterns', 'INITIALIZATION_PATTERNS'),
-            'species_initialization': ('tolvera.llm.context.initialization_patterns', 'SPECIES_INITIALIZATION_PATTERNS'),
-            'temporal_updates': ('tolvera.llm.context.temporal_patterns_extended', 'TEMPORAL_UPDATE_PATTERNS'),
-            'temporal_dynamics': ('tolvera.llm.context.temporal_dynamics', 'TEMPORAL_DYNAMICS_PATTERNS'),
-            'temporal_examples': ('tolvera.llm.context.temporal_dynamics', 'TEMPORAL_UPDATE_EXAMPLES'),
-            'temporal_patterns_extended': ('tolvera.llm.context.temporal_patterns_extended', 'TEMPORAL_UPDATE_PATTERNS'),
-            'configuration': ('tolvera.llm.context.temporal_patterns_extended', 'TEMPORAL_CONFIGURATION_PATTERNS')
+            'taichi_fundamentals': ('tolvera.llm.context', 'TAICHI_FUNDAMENTALS'),
+            'taichi_crashes': ('tolvera.llm.context.library_docs', 'TAICHI_CRASH_FIXES'),
+            'state_access': ('tolvera.llm.context.library_docs', 'TOLVERA_STATE_API'),
+            'boundaries': ('tolvera.llm.context.context_loader', 'load_section("patterns.txt", "BOUNDARY_PATTERNS")'),
+            'movement': ('tolvera.llm.context', 'MOVEMENT_PATTERNS'),
+            'flocking': ('tolvera.llm.context', 'FLOCKING_PATTERNS'),
+            'interaction': ('tolvera.llm.context', 'INTERACTION_PATTERNS'),
+            'temporal': ('tolvera.llm.context', 'TEMPORAL_PATTERNS'),
+            'cellular': ('tolvera.llm.context', 'CELLULAR_AUTOMATA_PATTERNS'),
+            'emergent': ('tolvera.llm.context', 'EMERGENT_PATTERNS'),
+            'drawing': ('tolvera.llm.context', 'DRAWING_PATTERNS'),
+            'drawing_api': ('tolvera.llm.context', 'DRAWING_API_REFERENCE'),
+            'vera_patterns': ('tolvera.llm.context', 'VERA_PATTERNS'),
+            'vera_interactions': ('tolvera.llm.context', 'INTERACTION_PATTERNS_VERA'),
+            'species_interactions': ('tolvera.llm.context', 'SPECIES_INTERACTION_PATTERNS'),
+            'alife_patterns': ('tolvera.llm.context', 'ARTIFICIAL_LIFE_PATTERNS'),
+            'iml_patterns': ('tolvera.llm.context', 'IML_PATTERNS'),
+            'evolution': ('tolvera.llm.context', 'EVOLUTION_PATTERNS'),
+            'ecosystem': ('tolvera.llm.context', 'ECOSYSTEM_PATTERNS'),
+            'morphogenesis': ('tolvera.llm.context', 'MORPHOGENETIC_PATTERNS'),
+            'swarm': ('tolvera.llm.context', 'SWARM_INTELLIGENCE'),
+            'initialization': ('tolvera.llm.context.context_loader', 'load_section("initialization_patterns.txt", "main")'),
+            'species_initialization': ('tolvera.llm.context.context_loader', 'load_section("initialization_patterns.txt", "SPECIES_INITIALIZATION_PATTERNS")'),
+            'temporal_updates': ('tolvera.llm.context.context_loader', 'load_section("temporal_patterns_extended.txt", "main")'),
+            'temporal_dynamics': ('tolvera.llm.context.context_loader', 'load_section("temporal_dynamics.txt", "main")'),
+            'temporal_examples': ('tolvera.llm.context.context_loader', 'load_section("temporal_dynamics.txt", "TEMPORAL_UPDATE_EXAMPLES")'),
+            'temporal_patterns_extended': ('tolvera.llm.context.context_loader', 'load_section("temporal_patterns_extended.txt", "main")'),
+            'configuration': ('tolvera.llm.context.context_loader', 'load_section("temporal_patterns_extended.txt", "TEMPORAL_CONFIGURATION_PATTERNS")')
         }
         
         for context_name in context_names:
@@ -88,7 +88,16 @@ class PromptLoader:
                     # Import the module and get the attribute
                     import importlib
                     module = importlib.import_module(module_path)
-                    content = getattr(module, attr_name, '')
+                    
+                    # Check if attr_name is a function call (for dynamic loading)
+                    if '(' in attr_name:
+                        # Execute the function call
+                        from ..context.context_loader import load_section
+                        content = eval(attr_name)
+                    else:
+                        # Get the attribute normally
+                        content = getattr(module, attr_name, '')
+                    
                     contexts[context_name] = content
                 except ImportError:
                     contexts[context_name] = f"# {context_name} context not available"

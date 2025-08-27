@@ -1,8 +1,0 @@
-@ti.kernel
-def {{ function_name }}():
-    """Pure drawing kernel."""
-    {% for line in drawing_code_lines %}
-    {% if line.strip() %}
-    {{ line }}
-    {% endif %}
-    {% endfor %}

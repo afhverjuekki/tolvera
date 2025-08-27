@@ -1,11 +1,3 @@
-"""
-Comprehensive Taichi Language Essentials for Tölvera
-====================================================
-This module provides complete documentation of Taichi language features,
-patterns, and critical rules for GPU-accelerated particle simulations.
-"""
-
-TAICHI_ESSENTIALS = """
 # Taichi Language Essentials for Tölvera
 
 ## Type System
@@ -309,9 +301,11 @@ if dist > max_range:
 # Vectorized operation
 new_pos = pos + vel * dt  # Better than component-wise
 ```
-"""
 
-TAICHI_CRASH_FIXES = """
+---
+TAICHI_CRASH_FIXES
+---
+
 # Common Taichi Crash Patterns and Fixes
 
 ## Return Statement Crashes
@@ -370,7 +364,3 @@ color = tv.px.px.rgba[x, y]  # CRASH if x,y outside screen
 if 0 <= x < tv.x and 0 <= y < tv.y:
     color = tv.px.px.rgba[x, y]
 ```
-"""
-
-# Export all documentation
-__all__ = ['TAICHI_ESSENTIALS', 'TAICHI_CRASH_FIXES']

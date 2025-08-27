@@ -116,8 +116,8 @@ def main(**kwargs):
         })
     
     # Per-particle state
-    if 'llm_particles' not in tv.s:
-        tv.s.set('llm_particles', {
+    if 'llm_particle' not in tv.s:
+        tv.s.set('llm_particle', {
             'state': {
                 'heading': (ti.f32, 0.0, 6.28),  # Current heading in radians
                 'trail_strength': (ti.f32, 0.0, 10.0),  # Individual trail deposition
@@ -152,8 +152,8 @@ def main(**kwargs):
         for i in range(tv.pn):
             vel = tv.p.field[i].vel
             heading = ti.atan2(vel.y, vel.x)
-            tv.s.llm_particles.field[i].heading = heading
-            tv.s.llm_particles.field[i].trail_strength = 5.0
+            tv.s.llm_particle.field[i].heading = heading
+            tv.s.llm_particle.field[i].trail_strength = 5.0
     
     init_particle_headings()
     
@@ -218,7 +218,7 @@ def main(**kwargs):
     @ti.func
     def chemotaxis_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
         """Follow chemical trails using sensory feedback."""
-        heading = tv.s.llm_particles.field[particle_idx].heading
+        heading = tv.s.llm_particle.field[particle_idx].heading
         
         # Sense and get turn direction
         turn = sense_trails(pos, heading, species)
@@ -229,7 +229,7 @@ def main(**kwargs):
         
         # Update heading
         new_heading = heading + turn * tv.s.llm_species.field[species].attraction_strength
-        tv.s.llm_particles.field[particle_idx].heading = new_heading
+        tv.s.llm_particle.field[particle_idx].heading = new_heading
         
         # Calculate force towards new heading
         desired_vel = ti.Vector([
@@ -305,7 +305,7 @@ def main(**kwargs):
                 
                 # Deposit trail at current position
                 if xi >= 0 and xi < tv.x and yi >= 0 and yi < tv.y:
-                    strength = tv.s.llm_particles.field[i].trail_strength
+                    strength = tv.s.llm_particle.field[i].trail_strength
                     trail_field[xi, yi] += deposit_amount * strength
     
     @ti.kernel
@@ -411,7 +411,7 @@ def main(**kwargs):
         """Draw sensor rays for visualization."""
         if tv.p.field[i].active > 0 and i < 100:  # Only first 100 for performance
             pos = tv.p.field[i].pos
-            heading = tv.s.llm_particles.field[i].heading
+            heading = tv.s.llm_particle.field[i].heading
             species = tv.p.field[i].species
             
             sensor_dist = tv.s.llm_global.field[0].sensor_distance

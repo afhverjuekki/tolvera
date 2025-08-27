@@ -1,4 +1,3 @@
-DRAWING_PATTERNS = """
 ## Drawing Expert Patterns (Based on Tölvera Examples)
 
 Drawing operations work with the pixel buffer (tv.px) to create visual effects.
@@ -208,9 +207,11 @@ def draw_with_species_colors():
 3. Alpha Blending: Use alpha channel for transparency effects
 4. Performance: Limit complex calculations in drawing functions
 5. Color Range: Keep RGBA values between 0.0 and 1.0
-"""
 
-DRAWING_API_REFERENCE = """
+---
+DRAWING_API_REFERENCE
+---
+
 ## Pixel Buffer Drawing API (Tölvera) - CORRECT SIGNATURES
 
 The pixel buffer `tv.px` provides methods for drawing operations:
@@ -264,4 +265,3 @@ v2 = ti.Vector([pos.x + size * ti.cos(ang + offset), pos.y + size * ti.sin(ang +
 v3 = ti.Vector([pos.x + size * ti.cos(ang - offset), pos.y + size * ti.sin(ang - offset)])
 tv.px.triangle(v1, v2, v3, ti.Vector([1.,1.,1.,1.]))
 ```
-"""

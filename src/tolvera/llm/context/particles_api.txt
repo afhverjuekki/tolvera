@@ -1,11 +1,3 @@
-"""
-Comprehensive Tölvera Particles API Documentation
-==================================================
-This module provides complete documentation for the Tölvera particle system API.
-All signatures and types are verified against the actual implementation.
-"""
-
-PARTICLES_API = """
 # Tölvera Particles API Reference
 
 ## Particle Data Structure (tv.p.field[i])
@@ -227,9 +219,11 @@ tv.p.field[tv.pn].pos  # ERROR: max index is tv.pn-1
 if i < tv.pn:
     pos = tv.p.field[i].pos
 ```
-"""
 
-PARTICLE_PATTERNS = """
+---
+PARTICLE_PATTERNS
+---
+
 # Particle Force Calculation Patterns
 
 ## Expert Function Signature
@@ -283,7 +277,3 @@ acceleration = total_force / mass
 velocity += acceleration * dt
 position += velocity * dt
 ```
-"""
-
-# Export all documentation
-__all__ = ['PARTICLES_API', 'PARTICLE_PATTERNS']

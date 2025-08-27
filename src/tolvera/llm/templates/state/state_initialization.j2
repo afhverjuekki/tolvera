@@ -1,55 +1,76 @@
+{#- State Initialization Template -#}
+{#- This template generates both container and value initialization code -#}
+{%- if categories %}
 # === State Initialization ===
-{% if global_states %}
-# Global states
-if 'llm_global' not in tv.s:
-    global_states = {
-        {% for name, state in global_states.items() %}
-        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
-        {% endfor %}
-    }
-    tv.s.set('llm_global', {
-        'state': global_states,
-        'shape': 1,
-        'osc': ('get', 'set'),
-        'randomise': {{ global_randomise | lower }}
-    })
-{% endif %}
+{%- for cat in categories if cat.has_states %}
 
-{% if particle_states %}
-# Particle states
-if 'llm_particle' not in tv.s:
-    particle_states = {
-        {% for name, state in particle_states.items() %}
-        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
-        {% endfor %}
-    }
-    tv.s.set('llm_particle', {
-        'state': particle_states,
-        'shape': tv.pn,
-        'osc': ('get',),
-        'randomise': {{ particle_randomise | lower }}
+# {{ cat.name|capitalize }} states
+if '{{ cat.container_name }}' not in tv.s:
+    tv.s.set('{{ cat.container_name }}', {
+        'state': {
+            {%- for name, state in cat.states.items() %}
+            '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
+            {%- endfor %}
+        },
+        'shape': {{ cat.shape }},
+        'osc': ({% for item in cat.osc %}'{{ item }}'{% if not loop.last %}, {% endif %}{% endfor %}),
+        'randomise': {{ cat.randomise | lower }}
     })
-{% endif %}
+{%- endfor %}
 
-{% if species_states %}
-# Species states
-if 'llm_species' not in tv.s:
-    species_states = {
-        {% for name, state in species_states.items() %}
-        '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
-        {% endfor %}
-    }
-    tv.s.set('llm_species', {
-        'state': species_states,
-        'shape': tv.sn,
-        'osc': ('get', 'set'),
-        'randomise': {{ species_randomise | lower }}
-    })
-{% endif %}
+{#- Value Initialization Section -#}
+{%- set ns = namespace(has_global_init=false, has_particle_init=false, has_species_init=false) %}
 
-{% if init_values %}
-# Initialize state values
-{% for init_code in init_values %}
-{{ init_code }}
-{% endfor %}
-{% endif %}
+{%- for cat in categories if cat.has_states %}
+    {%- if cat.name == 'global' and cat.init_values %}
+        {%- set ns.has_global_init = true %}
+    {%- elif cat.name == 'particle' and cat.needs_explicit_init %}
+        {%- set ns.has_particle_init = true %}
+    {%- elif cat.name == 'species' and cat.init_values %}
+        {%- set ns.has_species_init = true %}
+    {%- endif %}
+{%- endfor %}
+
+{%- if ns.has_global_init or ns.has_particle_init or ns.has_species_init %}
+
+# === State Value Initialization ===
+{%- endif %}
+
+{%- if ns.has_global_init %}
+{%- for cat in categories if cat.name == 'global' and cat.init_values %}
+
+# Initialize global state values
+{%- for init_stmt in cat.init_values %}
+{{ init_stmt }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+
+{%- if ns.has_particle_init %}
+{%- for cat in categories if cat.name == 'particle' and cat.needs_explicit_init %}
+
+# Initialize particle state values
+@ti.kernel
+def init_particle_states():
+    for i in range(tv.pn):
+        {%- for init_stmt in cat.particle_kernel_statements %}
+        {{ init_stmt }}
+        {%- endfor %}
+
+init_particle_states()
+{%- endfor %}
+{%- endif %}
+
+{%- if ns.has_species_init %}
+{%- for cat in categories if cat.name == 'species' and cat.init_values %}
+
+# Initialize species state values
+{%- for init_stmt in cat.init_values %}
+{{ init_stmt }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+
+{%- else %}
+# No custom states defined
+{%- endif %}

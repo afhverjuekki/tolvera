@@ -61,27 +61,6 @@ def main(**kwargs):
         tv.s.species.field[i].rgba = colors[i]
     
     # === State Initialization ===
-    # Rogue boid metrics storage
-    tv.s.set('species_metrics', {
-        'state': {
-            'rogue_pos': (ti.math.vec2, 0.0, max(tv.x, tv.y)),
-            'rogue_vel_mag': (ti.f32, 0.0, 500.0),
-            'particle_count': (ti.i32, 0, tv.pn)
-        }, 'shape': tv.sn, 'osc': ('get',),
-    })
-    
-    # Smoothed metrics for OSC output
-    tv.s.set('smooth_metrics', {
-        'state': {
-            'smooth_x': (ti.f32, 0.0, 1.0),
-            'smooth_y': (ti.f32, 0.0, 1.0), 
-            'smooth_vel': (ti.f32, 0.0, 1.0),
-            'prev_x': (ti.f32, 0.0, 1.0),
-            'prev_y': (ti.f32, 0.0, 1.0),
-            'prev_vel': (ti.f32, 0.0, 1.0),
-        }, 'shape': tv.sn, 'osc': ('get',),
-    })
-    
     # Smoothing factor - adjust between 0.0 (no smoothing) and 1.0 (heavy smoothing)
     SMOOTHING_FACTOR = 0.0  # Higher = smoother but more lag
     
@@ -99,6 +78,17 @@ def main(**kwargs):
             'alignment_weight': (ti.f32, 0.5, 2.0),
             'cohesion_weight': (ti.f32, 0.5, 2.0),
             'inter_species_avoidance': (ti.f32, 0.0, 5.0),
+            # Rogue boid metrics storage
+            'rogue_pos': (ti.math.vec2, 0.0, max(tv.x, tv.y)),
+            'rogue_vel_mag': (ti.f32, 0.0, 500.0),
+            'particle_count': (ti.i32, 0, tv.pn),
+            # Smoothed metrics for OSC output
+            'smooth_x': (ti.f32, 0.0, 1.0),
+            'smooth_y': (ti.f32, 0.0, 1.0), 
+            'smooth_vel': (ti.f32, 0.0, 1.0),
+            'prev_x': (ti.f32, 0.0, 1.0),
+            'prev_y': (ti.f32, 0.0, 1.0),
+            'prev_vel': (ti.f32, 0.0, 1.0),
         }, 'shape': tv.sn, 'osc': ('get', 'set')
     })
     tv.s.llm_global.field[0].perception_radius = 80.0
@@ -200,7 +190,7 @@ def main(**kwargs):
         for s in range(tv.sn):
             if _p_count[s] > 0:
                 _avg_pos[s] /= _p_count[s]
-            tv.s.species_metrics.field[s].particle_count = _p_count[s]
+            tv.s.llm_species.field[s].particle_count = _p_count[s]
 
         # --- PASS 2: Find the Rogue Boid (furthest from average) ---
         for s in range(tv.sn):
@@ -218,39 +208,39 @@ def main(**kwargs):
         for s in range(tv.sn):
             if _rogue_idx[s] != -1:
                 rogue_boid = tv.p.field[_rogue_idx[s]]
-                tv.s.species_metrics.field[s].rogue_pos = rogue_boid.pos
-                tv.s.species_metrics.field[s].rogue_vel_mag = rogue_boid.vel.norm()
+                tv.s.llm_species.field[s].rogue_pos = rogue_boid.pos
+                tv.s.llm_species.field[s].rogue_vel_mag = rogue_boid.vel.norm()
             else: # If no boids of this species exist
-                tv.s.species_metrics.field[s].rogue_pos = ti.math.vec2(0.0)
-                tv.s.species_metrics.field[s].rogue_vel_mag = 0.0
+                tv.s.llm_species.field[s].rogue_pos = ti.math.vec2(0.0)
+                tv.s.llm_species.field[s].rogue_vel_mag = 0.0
 
     # === Smoothing kernel for OSC data ===
     @ti.kernel
     def smooth_species_metrics():
         for s in range(tv.sn):
             # Get current raw values (normalized)
-            current_x = tv.s.species_metrics.field[s].rogue_pos.x / tv.x
-            current_y = tv.s.species_metrics.field[s].rogue_pos.y / tv.y
-            current_vel = tv.s.species_metrics.field[s].rogue_vel_mag / tv.s.llm_global.field[0].max_speed
+            current_x = tv.s.llm_species.field[s].rogue_pos.x / tv.x
+            current_y = tv.s.llm_species.field[s].rogue_pos.y / tv.y
+            current_vel = tv.s.llm_species.field[s].rogue_vel_mag / tv.s.llm_global.field[0].max_speed
             
             # Apply exponential smoothing
-            tv.s.smooth_metrics.field[s].smooth_x = (
-                SMOOTHING_FACTOR * tv.s.smooth_metrics.field[s].prev_x + 
+            tv.s.llm_species.field[s].smooth_x = (
+                SMOOTHING_FACTOR * tv.s.llm_species.field[s].prev_x + 
                 (1.0 - SMOOTHING_FACTOR) * current_x
             )
-            tv.s.smooth_metrics.field[s].smooth_y = (
-                SMOOTHING_FACTOR * tv.s.smooth_metrics.field[s].prev_y + 
+            tv.s.llm_species.field[s].smooth_y = (
+                SMOOTHING_FACTOR * tv.s.llm_species.field[s].prev_y + 
                 (1.0 - SMOOTHING_FACTOR) * current_y
             )
-            tv.s.smooth_metrics.field[s].smooth_vel = (
-                SMOOTHING_FACTOR * tv.s.smooth_metrics.field[s].prev_vel + 
+            tv.s.llm_species.field[s].smooth_vel = (
+                SMOOTHING_FACTOR * tv.s.llm_species.field[s].prev_vel + 
                 (1.0 - SMOOTHING_FACTOR) * current_vel
             )
             
             # Store current values as previous for next frame
-            tv.s.smooth_metrics.field[s].prev_x = tv.s.smooth_metrics.field[s].smooth_x
-            tv.s.smooth_metrics.field[s].prev_y = tv.s.smooth_metrics.field[s].smooth_y
-            tv.s.smooth_metrics.field[s].prev_vel = tv.s.smooth_metrics.field[s].smooth_vel
+            tv.s.llm_species.field[s].prev_x = tv.s.llm_species.field[s].smooth_x
+            tv.s.llm_species.field[s].prev_y = tv.s.llm_species.field[s].smooth_y
+            tv.s.llm_species.field[s].prev_vel = tv.s.llm_species.field[s].smooth_vel
 
     # === OSC Receivers ===
     @tv.osc.map.receive_args(
@@ -271,41 +261,41 @@ def main(**kwargs):
         if learn_mode == 1 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/0/x', count=2)
             def send_s0_x() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[0].smooth_x, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[0].smooth_x, 0, 1)]
         if learn_mode == 2 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/0/y', count=2)
             def send_s0_y() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[0].smooth_y, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[0].smooth_y, 0, 1)]
         if learn_mode == 3 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/0/vel', count=2)
             def send_s0_vel() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[0].smooth_vel, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[0].smooth_vel, 0, 1)]
     if tv.sn > 1:
         if learn_mode == 4 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/1/x', count=2)
             def send_s1_x() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[1].smooth_x, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[1].smooth_x, 0, 1)]
         if learn_mode == 5 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/1/y', count=2)
             def send_s1_y() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[1].smooth_y, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[1].smooth_y, 0, 1)]
         if learn_mode == 6 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/1/vel', count=2)
             def send_s1_vel() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[1].smooth_vel, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[1].smooth_vel, 0, 1)]
     if tv.sn > 2:
         if learn_mode == 7 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/2/x', count=2)
             def send_s2_x() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[2].smooth_x, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[2].smooth_x, 0, 1)]
         if learn_mode == 8 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/2/y', count=2)
             def send_s2_y() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[2].smooth_y, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[2].smooth_y, 0, 1)]
         if learn_mode == 9 or learn_mode == 0:
             @tv.osc.map.send_args(val=(0.5,0,1), send_mode='broadcast', name='metrics/2/vel', count=2)
             def send_s2_vel() -> list[float]:
-                return [np.clip(tv.s.smooth_metrics.field[2].smooth_vel, 0, 1)]
+                return [np.clip(tv.s.llm_species.field[2].smooth_vel, 0, 1)]
 
     @ti.kernel
     def draw_visuals():

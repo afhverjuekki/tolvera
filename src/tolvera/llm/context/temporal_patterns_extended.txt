@@ -1,9 +1,3 @@
-"""
-Extended temporal patterns for time-based state evolution.
-These patterns provide context-aware temporal updates instead of rigid templates.
-"""
-
-TEMPORAL_UPDATE_PATTERNS = """
 # Temporal State Update Patterns
 
 ## Context-Aware Energy Dynamics
@@ -301,9 +295,11 @@ def update_learning():
 7. Use dt = 1.0/60.0 for frame-independent updates
 8. Store temporal state in llm_global for shared time (day_phase, season)
 9. Store per-particle temporal state in llm_particle (age, phase, energy)
-"""
 
-TEMPORAL_CONFIGURATION_PATTERNS = """
+---
+TEMPORAL_CONFIGURATION_PATTERNS
+---
+
 # System Configuration Patterns
 
 ## Species Count Configuration
@@ -342,4 +338,3 @@ particle_sizes = {
     'leader': 10.0,  # Prominent particles
 }
 ```
-"""

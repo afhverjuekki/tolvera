@@ -1,9 +1,3 @@
-"""
-Temporal dynamics patterns for time-based state evolution.
-Provides rich context for the LLM to understand and generate temporal updates.
-"""
-
-TEMPORAL_DYNAMICS_PATTERNS = """
 # Temporal State Dynamics Patterns
 
 ## Energy Systems
@@ -275,9 +269,11 @@ When generating temporal updates:
    - Every frame: continuous processes
    - Every N frames: discrete updates
    - Conditional: based on events or thresholds
-"""
 
-TEMPORAL_UPDATE_EXAMPLES = """
+---
+TEMPORAL_UPDATE_EXAMPLES
+---
+
 # Example Temporal Update Implementations
 
 ## Example 1: Energy System with Activity Coupling
@@ -422,9 +418,11 @@ def update_temperature_dynamics():
                 # Hot particles move erratically
                 tv.p.field[i].vel += ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * 10.0
 ```
-"""
 
-TEMPORAL_SYNTHESIS_PROMPTS = """
+---
+TEMPORAL_SYNTHESIS_PROMPTS
+---
+
 # Prompts for Temporal Update Synthesis
 
 ## Prompt Template for Temporal Analysis
@@ -493,4 +491,3 @@ When analyzing "{description}" for temporal dynamics:
   }
 }
 ```
-"""

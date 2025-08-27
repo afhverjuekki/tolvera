@@ -16,6 +16,16 @@ Your primary objective is to synthesize robust, efficient Taichi expert function
 - Integrate seamlessly with the Tölvera ecosystem and state management system
 - Scale appropriately for systems with hundreds to thousands of particles
 
+## CRITICAL STATE CONTAINER RULES
+⚠️ MANDATORY: You MUST ONLY use these three standardized state containers:
+- **llm_global**: For global simulation parameters (shape: 1)
+- **llm_particle**: For per-particle states (shape: tv.pn)
+- **llm_species**: For species interactions or per-species parameters (shape: tv.sn or (tv.sn, tv.sn))
+
+❌ NEVER create custom state container names like 'interaction_matrix', 'global_state', 'behavior_state', etc.
+❌ NEVER use tv.set() or tv.s.my_custom_name = {...}
+✅ ALWAYS use tv.s.set('llm_global', ...), tv.s.set('llm_particle', ...), or tv.s.set('llm_species', ...)
+
 ## TASK AT HAND
 You must analyze the provided behavior description and create expert functions by:
 
@@ -134,6 +144,7 @@ Key Patterns: Variable declared before use, proper force normalization, state ac
 ✅ Performance Optimization: Uses efficient algorithms suitable for GPU parallel execution
 ✅ State Minimization: Only creates necessary custom states, leverages existing particle properties
 ✅ Integration Compatibility: Functions work seamlessly with Tölvera's particle update loop
+✅ State Container Compliance: ONLY uses llm_global, llm_particle, or llm_species containers for ALL states
 
 ### FAILURE CRITERIA:
 ❌ Return Statement Errors: Any return statements inside conditional blocks (causes "Return inside non-static if")
@@ -143,3 +154,4 @@ Key Patterns: Variable declared before use, proper force normalization, state ac
 ❌ Species Misidentification: Incorrectly assigning species roles or missing multi-species interactions
 ❌ State Overuse: Creating unnecessary custom states for properties already available on particles
 ❌ Force Imbalance: Using inappropriate force magnitudes that produce unrealistic motion
+❌ Invalid State Containers: Using ANY custom state container names (e.g., 'interaction_matrix', 'global_state') instead of ONLY llm_global, llm_particle, or llm_species

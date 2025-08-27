@@ -142,45 +142,22 @@ class TemplateRenderer:
             visual_expert_names=visual_expert_names
         )
     
-    def render_pure_drawing_kernel(
-        self,
-        drawing_code: str,
-        function_name: str = "draw"
-    ) -> str:
-        """
-        Render a kernel for pure drawing behaviors without particles.
+    def _clean_code_section(self, code: str) -> str:
+        """Remove trailing quotes from code sections that might break the file."""
+        if not code:
+            return code
         
-        Args:
-            drawing_code: The drawing code to execute
-            function_name: Name of the drawing function
-            
-        Returns:
-            Generated drawing kernel code
-        """
-        # Split drawing code into lines for template processing
-        drawing_code_lines = drawing_code.split('\n')
+        # Remove trailing triple quotes and variations
+        code = code.rstrip()
         
-        template = self.env.get_template('kernel/pure_drawing_kernel.j2')
+        # Check for various quote patterns at the end
+        patterns_to_remove = ['"""', "'''", '""', "''", '"', "'"]
+        for pattern in patterns_to_remove:
+            if code.endswith(pattern):
+                code = code[:-len(pattern)].rstrip()
+                # Silently remove trailing quotes
         
-        return template.render(
-            function_name=function_name,
-            drawing_code_lines=drawing_code_lines
-        )
-    
-    def render_pixel_diffusion_kernel(self) -> str:
-        """Render pixel diffusion kernel."""
-        template = self.env.get_template('kernel/pixel_diffusion.j2')
-        return template.render()
-    
-    def render_pixel_decay_kernel(self) -> str:
-        """Render pixel decay kernel."""
-        template = self.env.get_template('kernel/pixel_decay.j2')
-        return template.render()
-    
-    def render_pixel_deposition_kernel(self) -> str:
-        """Render pixel deposition kernel."""
-        template = self.env.get_template('kernel/pixel_deposition.j2')
-        return template.render()
+        return code
     
     def render_sketch(
         self,
@@ -276,218 +253,35 @@ class TemplateRenderer:
         else:
             render_particles_call = "# No particle rendering (only visual behaviors)"
         
-        template = self.env.get_template('sketch/main_sketch.j2')
+        # Clean all code sections to remove trailing quotes
+        cleaned_experts = [self._clean_code_section(e) for e in experts] if experts else []
+        
+        template = self.env.get_template('sketch/final_sketch.j2')
         
         return template.render(
             description=description,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            config_code=config_code.strip(),
-            init_code=init_code.strip() if init_code else "# No initialization code",
-            state_code=state_code.strip() if state_code else "# No custom states needed",
-            environmental_fields=environmental_fields if environmental_fields else "# No environmental fields",
-            expert_code="\n\n".join(experts) if experts else "# No expert functions",
-            kernel_code=kernel,
-            temporal_code=temporal_code if temporal_code else "# No temporal updates needed",
-            utility_code=utility_code if utility_code else "# No utility functions",
-            utility_kernel=utility_kernel if utility_kernel else "# No utility kernel",
-            drawing_code=drawing_code if drawing_code else "# No drawing functions",
-            drawing_kernel=drawing_kernel if drawing_kernel else "# No drawing kernel",
-            respawn_code=respawn_code if respawn_code else "# No respawn functions",
+            config_code=self._clean_code_section(config_code).strip(),
+            init_code=self._clean_code_section(init_code).strip() if init_code else "# No initialization code",
+            state_code=self._clean_code_section(state_code).strip() if state_code else "# No custom states needed",
+            environmental_fields=self._clean_code_section(environmental_fields) if environmental_fields else "# No environmental fields",
+            expert_code="\n\n".join(cleaned_experts) if cleaned_experts else "# No expert functions",
+            kernel_code=self._clean_code_section(kernel),
+            temporal_code=self._clean_code_section(temporal_code) if temporal_code else "# No temporal updates needed",
+            utility_code=self._clean_code_section(utility_code) if utility_code else "# No utility functions",
+            utility_kernel=self._clean_code_section(utility_kernel) if utility_kernel else "# No utility kernel",
+            drawing_code=self._clean_code_section(drawing_code) if drawing_code else "# No drawing functions",
+            drawing_kernel=self._clean_code_section(drawing_kernel) if drawing_kernel else "# No drawing kernel",
+            respawn_code=self._clean_code_section(respawn_code) if respawn_code else "# No respawn functions",
             pre_draw_calls=pre_draw_calls,
             post_draw_calls=post_draw_calls,
             update_calls=update_calls,
             render_particles_call=render_particles_call
         )
     
-    def render_pure_drawing_sketch(
-        self,
-        description: str,
-        drawing_code: str,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        Render a pure drawing sketch without particle systems.
-        
-        Args:
-            description: Description of what to draw
-            drawing_code: The drawing kernel/function code
-            metadata: Optional metadata
-            
-        Returns:
-            Complete pure drawing sketch code
-        """
-        template = self.env.get_template('sketch/pure_drawing_sketch.j2')
-        
-        return template.render(
-            description=description,
-            timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            drawing_code=drawing_code.strip()
-        )
-    
-    def render_drawing_instructions(
-        self,
-        interaction_type: str,
-        description: str,
-        function_signature: str,
-        additional_access: str,
-        example_code: str,
-        draw_order_info: str = ""
-    ) -> str:
-        """
-        Render drawing instructions for LLM prompts.
-        
-        Args:
-            interaction_type: Type of interaction (e.g., "Single Particle", "Particle-Particle")
-            description: Description of what to draw
-            function_signature: The function signature template
-            additional_access: Additional access patterns
-            example_code: Example drawing code
-            draw_order_info: Optional draw order information
-            
-        Returns:
-            Rendered drawing instructions
-        """
-        template = self.env.get_template('drawing/drawing_instructions.j2')
-        
-        return template.render(
-            interaction_type=interaction_type,
-            description=description,
-            function_signature=function_signature,
-            additional_access=additional_access,
-            example_code=example_code,
-            draw_order_info=draw_order_info
-        )
-    
     # ========== Data Model Code Generation Methods ==========
     # These methods generate code from data model structures,
     # enforcing separation between data definition and code generation
-    
-    def render_vector_expression(self, expr: Any) -> str:
-        """
-        Render a VectorExpression data model to Taichi code.
-        
-        Args:
-            expr: VectorExpression instance
-            
-        Returns:
-            Taichi vector code
-        """
-        return f"ti.math.vec2({expr.x}, {expr.y})"
-    
-    def render_state_access(self, access: Any) -> str:
-        """
-        Render a StateAccess data model to assignment code.
-        
-        Args:
-            access: StateAccess instance
-            
-        Returns:
-            State access assignment code
-        """
-        return f"{access.var_name} = tv.s.llm_{access.category}.field[{access.index_expr}].{access.state_name}"
-    
-    def render_conditional_force(self, force: Any) -> str:
-        """
-        Render a ConditionalForce data model to conditional expression.
-        
-        Args:
-            force: ConditionalForce instance
-            
-        Returns:
-            Conditional force expression
-        """
-        if force.force_if_false:
-            force_true = self.render_vector_expression(force.force_if_true)
-            force_false = self.render_vector_expression(force.force_if_false)
-            return f"({force_true} if {force.condition} else {force_false})"
-        else:
-            force_true = self.render_vector_expression(force.force_if_true)
-            return f"({force_true} if {force.condition} else ti.math.vec2(0.0, 0.0))"
-    
-    def render_force_computation(self, comp: Any, indent: int = 1) -> str:
-        """
-        Render a ForceComputation data model to computation code.
-        
-        Args:
-            comp: ForceComputation instance
-            indent: Indentation level
-            
-        Returns:
-            Force computation code
-        """
-        ind = "    " * indent
-        lines = []
-        
-        # State accesses
-        for state in comp.state_accesses:
-            lines.append(self.render_state_access(state))
-        
-        # Helper variables
-        for kv_pair in comp.helper_variables:
-            lines.append(f"{kv_pair.key} = {kv_pair.value}")
-        
-        # Start with base force
-        base_force = self.render_vector_expression(comp.base_force)
-        lines.append(f"force = {base_force}")
-        
-        # Add conditional forces
-        for cond_force in comp.conditional_forces:
-            lines.append(f"force += {self.render_conditional_force(cond_force)}")
-        
-        return f"\n{ind}".join(lines)
-    
-    def render_drawing_operation(self, op: Any) -> str:
-        """
-        Render a DrawingOperation data model to drawing code.
-        
-        Args:
-            op: DrawingOperation instance
-            
-        Returns:
-            Drawing operation code
-        """
-        if op.operation == "set":
-            return f"px.set({', '.join(op.args)}, {op.color})"
-        elif op.operation == "line":
-            return f"px.line({', '.join(op.args)}, {op.color})"
-        elif op.operation == "circle":
-            return f"px.circle({', '.join(op.args)}, {op.color})"
-        elif op.operation == "rect":
-            return f"px.rect({', '.join(op.args)}, {op.color})"
-        return ""
-    
-    def render_drawing_computation(self, comp: Any, indent: int = 1) -> str:
-        """
-        Render a DrawingComputation data model to drawing code.
-        
-        Args:
-            comp: DrawingComputation instance
-            indent: Indentation level
-            
-        Returns:
-            Drawing computation code
-        """
-        ind = "    " * indent
-        lines = []
-        
-        # State accesses
-        for state in comp.state_accesses:
-            lines.append(self.render_state_access(state))
-        
-        # Helper variables
-        for kv_pair in comp.helper_variables:
-            lines.append(f"{kv_pair.key} = {kv_pair.value}")
-        
-        # Drawing operations
-        for op in comp.drawing_operations:
-            lines.append(self.render_drawing_operation(op))
-        
-        # Conditionals (if any)
-        for cond in comp.conditionals:
-            cond_lines = self.render_conditional_force(cond).split('\n')
-            lines.extend(cond_lines)
-        
-        return f"\n{ind}".join(lines)
     
     def render_expert_function(self, expert: Any) -> str:
         """
@@ -545,113 +339,129 @@ def expert_{expert.name}({params}) -> ti.math.vec2:
     
     return force'''
     
-    def render_species_init_code(
-        self,
-        config: Any,
-        particle_count: int,
-        screen_size: Tuple[int, int]
-    ) -> str:
+    def render_force_computation(self, comp: Any, indent: int = 1) -> str:
         """
-        Render species configuration to initialization code.
+        Render a ForceComputation data model to computation code.
         
         Args:
-            config: SpeciesConfiguration instance
-            particle_count: Number of particles
-            screen_size: Screen dimensions
+            comp: ForceComputation instance
+            indent: Indentation level
             
         Returns:
-            Initialization code string
+            Force computation code
         """
-        num_species = len(config.species_ids)
+        ind = "    " * indent
+        lines = []
         
-        # Get default colors from ColorResolver
-        from ..core.color_resolver import ColorResolver
-        color_resolver = ColorResolver()
-        default_colors_dict = color_resolver.get_default_species_colors(max(8, num_species))
+        # State accesses
+        for state in comp.state_accesses:
+            lines.append(self.render_state_access(state))
         
-        # Convert to list format for backward compatibility
-        default_colors = [default_colors_dict[i] for i in range(max(8, num_species))]
+        # Helper variables
+        for kv_pair in comp.helper_variables:
+            lines.append(f"{kv_pair.key} = {kv_pair.value}")
         
-        # Build initialization code
-        init_code = ""
+        # Start with base force
+        base_force = self.render_vector_expression(comp.base_force)
+        lines.append(f"force = {base_force}")
         
-        # Add species mapping if multiple species
-        if num_species > 1:
-            init_code += f"# Species mapping\nspecies_map = ti.field(dtype=ti.i32, shape={num_species})\n"
-            for i, sid in enumerate(config.species_ids):
-                init_code += f"species_map[{i}] = {sid}\n"
-            init_code += "\n"
+        # Add conditional forces
+        for cond_force in comp.conditional_forces:
+            lines.append(f"force += {self.render_conditional_force(cond_force)}")
         
-        # Add species comments if names are available
-        if config.species_names:
-            init_code += "# Species configuration:\n"
-            for mapping in config.species_names:
-                init_code += f"# Species {mapping.species_id}: {mapping.name}\n"
-            init_code += "\n"
-        
-        init_code += f"""@ti.kernel
-def init_particles():
-    for i in range(tv.pn):
-        tv.p.field[i].active = 1.0
-        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
-        tv.p.field[i].vel = ti.Vector([
-            (ti.random() - 0.5) * 100.0,
-            (ti.random() - 0.5) * 100.0
-        ])
-        tv.p.field[i].size = 5.0
-        tv.p.field[i].mass = 1.0
-        tv.p.field[i].speed = 20.0
-        # Assign species cyclically
-        tv.p.field[i].species = {config.species_ids[0] if num_species == 1 else f"species_map[i % {num_species}]"}
-
-init_particles()
-"""
-        
-        # Set colors with semantic awareness
-        color_code = "\n# Set species colors\n"
-        
-        # Build a dict for quick lookup from the list format
-        colors_dict = {}
-        if config.colors:
-            for mapping in config.colors:
-                colors_dict[mapping.species_id] = mapping.rgba
-        
-        for idx, species_id in enumerate(config.species_ids):
-            if species_id in colors_dict:
-                color = colors_dict[species_id]
-            elif idx < len(default_colors):
-                color = default_colors[idx]
-            else:
-                # Generate distinct color using golden ratio
-                import colorsys
-                hue = (idx * 0.618033988749895) % 1.0
-                rgb = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
-                color = [rgb[0], rgb[1], rgb[2], 1.0]
-            color_code += f"tv.s.species.field[{species_id}].rgba = {color}\n"
-        
-        return init_code + color_code
+        return f"\n{ind}".join(lines)
     
-    def render_temporal_update_kernel(self, update: Any) -> str:
+    def render_drawing_computation(self, comp: Any, indent: int = 1) -> str:
         """
-        Render a TemporalUpdate data model to kernel code.
+        Render a DrawingComputation data model to drawing code.
         
         Args:
-            update: TemporalUpdate instance
+            comp: DrawingComputation instance
+            indent: Indentation level
             
         Returns:
-            Temporal update kernel code
+            Drawing computation code
         """
-        if not update.frame_updates:
-            return "@ti.kernel\ndef update_temporal_states():\n    pass"
+        ind = "    " * indent
+        lines = []
         
-        update_lines = []
-        for mapping in update.frame_updates:
-            update_lines.append(f"    tv.s.llm_global.field[0].{mapping.state_name} = {mapping.update_expression}")
+        # State accesses
+        for state in comp.state_accesses:
+            lines.append(self.render_state_access(state))
         
-        return f'''@ti.kernel
-def update_temporal_states():
-    frame = tv.ctx.i[None]
-    fps = 60.0
-    day_frames = {update.day_duration} * fps
+        # Helper variables
+        for kv_pair in comp.helper_variables:
+            lines.append(f"{kv_pair.key} = {kv_pair.value}")
+        
+        # Drawing operations
+        for op in comp.drawing_operations:
+            lines.append(self.render_drawing_operation(op))
+        
+        # Conditionals (if any)
+        for cond in comp.conditionals:
+            cond_lines = self.render_conditional_force(cond).split('\n')
+            lines.extend(cond_lines)
+        
+        return f"\n{ind}".join(lines)
     
-{chr(10).join(update_lines)}'''
+    def render_vector_expression(self, expr: Any) -> str:
+        """
+        Render a VectorExpression data model to Taichi code.
+        
+        Args:
+            expr: VectorExpression instance
+            
+        Returns:
+            Taichi vector code
+        """
+        return f"ti.math.vec2({expr.x}, {expr.y})"
+    
+    def render_state_access(self, access: Any) -> str:
+        """
+        Render a StateAccess data model to assignment code.
+        
+        Args:
+            access: StateAccess instance
+            
+        Returns:
+            State access assignment code
+        """
+        return f"{access.var_name} = tv.s.llm_{access.category}.field[{access.index_expr}].{access.state_name}"
+    
+    def render_conditional_force(self, force: Any) -> str:
+        """
+        Render a ConditionalForce data model to conditional expression.
+        
+        Args:
+            force: ConditionalForce instance
+            
+        Returns:
+            Conditional force expression
+        """
+        if force.force_if_false:
+            force_true = self.render_vector_expression(force.force_if_true)
+            force_false = self.render_vector_expression(force.force_if_false)
+            return f"({force_true} if {force.condition} else {force_false})"
+        else:
+            force_true = self.render_vector_expression(force.force_if_true)
+            return f"({force_true} if {force.condition} else ti.math.vec2(0.0, 0.0))"
+    
+    def render_drawing_operation(self, op: Any) -> str:
+        """
+        Render a DrawingOperation data model to drawing code.
+        
+        Args:
+            op: DrawingOperation instance
+            
+        Returns:
+            Drawing operation code
+        """
+        if op.operation == "set":
+            return f"px.set({', '.join(op.args)}, {op.color})"
+        elif op.operation == "line":
+            return f"px.line({', '.join(op.args)}, {op.color})"
+        elif op.operation == "circle":
+            return f"px.circle({', '.join(op.args)}, {op.color})"
+        elif op.operation == "rect":
+            return f"px.rect({', '.join(op.args)}, {op.color})"
+        return ""

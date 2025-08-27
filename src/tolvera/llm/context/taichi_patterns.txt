@@ -1,4 +1,3 @@
-TAICHI_FUNDAMENTALS = """
 # Taichi Fundamentals for Tölvera
 
 ## ⚠️ CRITICAL TAICHI RULES - VIOLATING THESE WILL CRASH THE CODE! ⚠️
@@ -10,17 +9,19 @@ TAICHI_FUNDAMENTALS = """
 attraction = tv.s.llm_species.field[species].attraction_matrix[other_species]  # CRASH!
 ```
 
-✅ CORRECT - For 2D interaction matrix:
+✅ CORRECT - ALWAYS use llm_species for 2D interaction matrix:
 ```python
-# Option 1: Define as 2D field with shape (tv.sn, tv.sn)
-tv.s.set('interaction_matrix', {
-    'state': {'attraction': (ti.f32, -200.0, 200.0)},
-    'shape': (tv.sn, tv.sn),  # 2D shape for species pairs!
-})
-# Access: tv.s.interaction_matrix.field[species1, species2].attraction
+# CRITICAL: Only use llm_species for species pair interactions
+if 'llm_species' not in tv.s:
+    tv.s.set('llm_species', {
+        'state': {'attraction': (ti.f32, -200.0, 200.0)},
+        'shape': (tv.sn, tv.sn),  # 2D shape for species pairs!
+        'osc': ('get', 'set'),
+        'randomise': True
+    })
+# Access: tv.s.llm_species.field[species1, species2].attraction
 
-# Option 2: Use separate 1D fields per species
-# Access: tv.s.llm_species.field[species].attraction_to_species_0
+# NEVER create custom state names like 'interaction_matrix' or 'global_state'!
 ```
 
 ### 2. RETURN STATEMENTS IN CONDITIONALS
@@ -216,9 +217,11 @@ random_vec = ti.math.vec2(ti.cos(angle), ti.sin(angle))
 
 # Random in range
 value = min_val + ti.random() * (max_val - min_val)
-"""
 
-ARTIFICIAL_LIFE_PATTERNS = """
+---
+ARTIFICIAL_LIFE_PATTERNS
+---
+
 # Artificial Life Patterns in Tölvera
 
 ## Standard Behavior Structure
@@ -236,27 +239,31 @@ class CustomBehavior:
             "PARAM2": (ti.f32, 0.5),
         })
         
-        # Species interaction matrix
-        self.tv.s.behavior_s = {
-            "state": {
-                "attract": (ti.f32, -1.0, 1.0),
-                "repel": (ti.f32, 0.0, 100.0),
-                "radius": (ti.f32, 10.0, 200.0),
-            },
-            "shape": (self.tv.sn, self.tv.sn),
-            "randomise": True,
-        }
+        # Species interaction matrix (use llm_species)
+        if 'llm_species' not in self.tv.s:
+            self.tv.s.set('llm_species', {
+                'state': {
+                    'attract': (ti.f32, -1.0, 1.0),
+                    'repel': (ti.f32, 0.0, 100.0),
+                    'radius': (ti.f32, 10.0, 200.0),
+                },
+                'shape': (self.tv.sn, self.tv.sn),
+                'osc': ('get', 'set'),
+                'randomise': True
+            })
         
-        # Per-particle state
-        self.tv.s.behavior_p = {
-            "state": {
-                "energy": (ti.f32, 0.0, 100.0),
-                "phase": (ti.f32, 0.0, 2*3.14159),
-                "nearby": (ti.i32, 0, 100),
-            },
-            "shape": self.tv.pn,
-            "randomise": False,
-        }
+        # Per-particle state (use llm_particle)
+        if 'llm_particle' not in self.tv.s:
+            self.tv.s.set('llm_particle', {
+                'state': {
+                    'energy': (ti.f32, 0.0, 100.0),
+                    'phase': (ti.f32, 0.0, 2*3.14159),
+                    'nearby': (ti.i32, 0, 100),
+                },
+                'shape': self.tv.pn,
+                'osc': ('get',),
+                'randomise': False
+            })
     
     @ti.kernel
     def step(self, particles: ti.template(), weight: ti.f32):
@@ -444,9 +451,11 @@ def stigmergy_update():
                 tv.px.px.rgba[px, py] += ti.math.vec4(0.1, 0.0, 0.0, 1.0)
             else:  # Passive state
                 tv.px.px.rgba[px, py] += ti.math.vec4(0.0, 0.1, 0.0, 1.0)
-"""
 
-TAICHI_CRASH_FIXES = """
+---
+TAICHI_CRASH_FIXES
+---
+
 # Common Taichi Crash Fixes
 
 ## Return Inside Non-Static If (Most Common Crash)
@@ -543,9 +552,11 @@ if condition:
     result = compute_something()
 return result  # Always defined
 ```
-"""
 
-IML_PATTERNS = """
+---
+IML_PATTERNS
+---
+
 # Interactive Machine Learning Patterns
 
 ## Vector to Vector Mapping
@@ -604,4 +615,3 @@ tv.iml.position_feedback = {
     'config': {'interpolate': 'ripple'},
     'map_kw': {'ripple_depth': 5}
 }
-"""

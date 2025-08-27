@@ -1,11 +1,3 @@
-"""
-Comprehensive Tölvera Core API Documentation
-============================================
-This module provides the complete core API reference for Tölvera,
-including global properties, coordinate system, and state management.
-"""
-
-TOLVERA_CORE_API = """
 # Tölvera Core API Reference
 
 ## Global Tölvera Instance (tv)
@@ -264,7 +256,3 @@ dist = diff.norm()
 if dist > 0.001:  # Avoid div by zero
     direction = diff / dist
 ```
-"""
-
-# Export documentation
-__all__ = ['TOLVERA_CORE_API']

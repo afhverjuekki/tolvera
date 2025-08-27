@@ -680,6 +680,23 @@ class BehaviorOrchestrator:
             base_name = filename.replace('.py', '') if filename else 'generated_sketch'
             file_path = sketch_dir / f"{base_name}_{timestamp}.py"
         
+        # Clean up any trailing quotes that could break the file
+        sketch_lines = sketch.split('\n')
+        if sketch_lines:
+            last_line = sketch_lines[-1].strip()
+            # Check if the last line is just quotes
+            if last_line in ['"""', "'''", '""', "''", '"', "'"]:
+                # Remove the trailing quotes silently
+                sketch_lines = sketch_lines[:-1]
+                sketch = '\n'.join(sketch_lines)
+            # Also check if run(main) has quotes after it
+            elif len(sketch_lines) > 1:
+                second_last = sketch_lines[-2].strip()
+                if 'run(main)' in second_last and last_line in ['"""', "'''", '""', "''", '"', "'"]:
+                    # Remove the trailing quotes silently
+                    sketch_lines = sketch_lines[:-1]
+                    sketch = '\n'.join(sketch_lines)
+        
         # Write file
         with open(file_path, 'w') as f:
             f.write(sketch)

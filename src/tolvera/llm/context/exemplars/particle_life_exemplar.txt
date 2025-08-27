@@ -1,12 +1,3 @@
-"""
-Golden Exemplar: Particle Life (Multi-Species Interactions)
-===========================================================
-This exemplar demonstrates complex multi-species attraction/repulsion
-using an interaction matrix. Key patterns: 2D state arrays, species
-interactions, distance-based forces with smooth falloff.
-"""
-
-PARTICLE_LIFE_EXEMPLAR = """
 # Particle Life - Multi-Species Interaction System
 
 ## Core Interaction Force
@@ -207,7 +198,3 @@ def draw_interaction_lines(i: ti.i32):
 5. **Distance Falloff**: Smooth force reduction with distance
 6. **Friction/Damping**: System stability through velocity damping
 7. **Visual Debugging**: Drawing interaction lines to visualize forces
-"""
-
-# Export exemplar
-__all__ = ['PARTICLE_LIFE_EXEMPLAR']

@@ -1,11 +1,3 @@
-"""
-Comprehensive Tölvera Pixels API Documentation
-===============================================
-This module provides complete documentation for the Tölvera pixel manipulation and drawing API.
-All signatures and types are verified against the actual implementation in pixels.py.
-"""
-
-PIXELS_API = """
 # Tölvera Drawing/Pixels API Reference (tv.px)
 
 ## Core Drawing Functions
@@ -260,9 +252,11 @@ color = base_color * pulse
 3. **Batch Similar Operations**: Group all lines, then all circles, etc.
 4. **Limit Effect Radius**: Don't process entire screen for local effects
 5. **Early Exit**: Skip drawing for inactive/distant particles
-"""
 
-PIXELS_PATTERNS = """
+---
+PIXELS_PATTERNS
+---
+
 # Advanced Drawing Patterns and Visual Effects
 
 ## Trail Systems
@@ -399,7 +393,3 @@ def draw_species_shape(i: ti.i32):
         else:  # Others - square
             tv.px.rect(xi - 3, yi - 3, 6, 6, color)
 ```
-"""
-
-# Export all documentation
-__all__ = ['PIXELS_API', 'PIXELS_PATTERNS']

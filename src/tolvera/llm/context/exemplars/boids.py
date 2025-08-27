@@ -109,8 +109,8 @@ def main(**kwargs):
         })
     
     # Per-particle neighbor tracking
-    if 'llm_particles' not in tv.s:
-        tv.s.set('llm_particles', {
+    if 'llm_particle' not in tv.s:
+        tv.s.set('llm_particle', {
             'state': {
                 'neighbor_count': (ti.i32, 0, 50),
                 'flock_heading': (ti.math.vec2, -1.0, 1.0),

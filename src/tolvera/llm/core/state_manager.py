@@ -328,6 +328,107 @@ class StateManager:
                 
                 setattr(state_obj.field[s], prop_name, value)
     
+    def _prepare_template_context(self) -> Dict[str, Any]:
+        """Prepare context data for the state initialization template.
+        
+        Returns:
+            Dictionary with all necessary data for template rendering
+        """
+        categories = []
+        
+        for cat_name in ['global', 'particle', 'species']:
+            if not self.state_registry[cat_name]:
+                continue
+                
+            cat_data = {
+                'name': cat_name,
+                'container_name': self.container_names[cat_name],
+                'has_states': bool(self.state_registry[cat_name]),
+                'states': {},
+                'init_values': [],
+                'needs_explicit_init': False,
+                'particle_kernel_statements': []
+            }
+            
+            # Determine shape
+            shape_map = {'global': '1', 'particle': 'tv.pn', 'species': 'tv.sn'}
+            cat_data['shape'] = shape_map[cat_name]
+            
+            # Determine OSC settings
+            cat_data['osc'] = ['get'] if cat_name == 'particle' else ['get', 'set']
+            
+            # Process states
+            has_integer = False
+            for name, state_def in self.state_registry[cat_name].items():
+                type_str, min_val, max_val, initial = self._extract_state_params(state_def)
+                
+                # Check for integer types
+                if self._is_integer_type(type_str):
+                    has_integer = True
+                
+                cat_data['states'][name] = {
+                    'type': type_str,
+                    'min': min_val,
+                    'max': max_val,
+                    'initial': initial
+                }
+            
+            # Determine randomization policy
+            cat_data['randomise'] = False if has_integer or cat_name == 'global' else True
+            cat_data['has_integer'] = has_integer
+            
+            # Prepare initialization values
+            if cat_name == 'global':
+                # Global states always need initialization
+                for name, state_def in self.state_registry[cat_name].items():
+                    initial_val = self._get_initial_value_for_codegen(name, state_def, 'global')
+                    if initial_val is not None:
+                        cat_data['init_values'].append(f"tv.s.llm_global.field[0].{name} = {initial_val}")
+            
+            elif cat_name == 'particle':
+                # Check if particle states need explicit init
+                cat_data['needs_explicit_init'] = self._category_needs_explicit_init('particle')
+                if cat_data['needs_explicit_init']:
+                    for name, state_def in self.state_registry['particle'].items():
+                        initial_val = self._get_initial_value_for_codegen(name, state_def, 'particle')
+                        if initial_val is not None:
+                            cat_data['particle_kernel_statements'].append(
+                                f"tv.s.llm_particle.field[i].{name} = {initial_val}"
+                            )
+            
+            elif cat_name == 'species':
+                # Species states initialization
+                if self._category_needs_explicit_init('species'):
+                    for s in range(self.tv.sn):
+                        for name, state_def in self.state_registry['species'].items():
+                            initial_val = self._get_initial_value_for_codegen(
+                                name, state_def, 'species', species_id=s
+                            )
+                            if initial_val is not None:
+                                cat_data['init_values'].append(
+                                    f"tv.s.llm_species.field[{s}].{name} = {initial_val}"
+                                )
+            
+            categories.append(cat_data)
+        
+        return {'categories': categories}
+    
+    def render_state_initialization(self) -> str:
+        """Render state initialization code using Jinja2 template.
+        
+        Returns:
+            Complete state initialization code
+        """
+        if not any(self.state_registry.values()):
+            return "# No custom states defined"
+        
+        # Prepare template context
+        context = self._prepare_template_context()
+        
+        # Load and render template
+        template = self.env.get_template('state/state_initialization.j2')
+        return template.render(**context)
+    
     def _get_default_initial_value(self, prop_name: str, min_val: Any, max_val: Any) -> Any:
         """Get default initial value for a state property.
         
@@ -361,7 +462,7 @@ class StateManager:
         }
     
     def generate_state_initialization_code(self, behavior_context: Optional[Dict[str, Any]] = None) -> str:
-        """Generate state container initialization code.
+        """Generate state container initialization code using template.
         
         Args:
             behavior_context: Optional context for intelligent defaults (unused but kept for compatibility)
@@ -369,51 +470,10 @@ class StateManager:
         Returns:
             Python code string for state initialization
         """
-        if not any(self.state_registry.values()):
-            return "# No custom states defined"
-        
-        code_lines = []
-        
-        # Generate code for each category
-        for category in ['global', 'particle', 'species']:
-            if not self.state_registry[category]:
-                continue
-            
-            container_name = self.container_names[category]
-            shape_map = {'global': 1, 'particle': 'tv.pn', 'species': 'tv.sn'}
-            
-            code_lines.append(f"\n# {category.capitalize()} states")
-            code_lines.append(f"if '{container_name}' not in tv.s:")
-            code_lines.append(f"    tv.s.set('{container_name}', {{")
-            code_lines.append("        'state': {")
-            
-            # Add state definitions
-            for name, state_def in self.state_registry[category].items():
-                type_str, min_val, max_val, _ = self._extract_state_params(state_def)
-                code_lines.append(f"            '{name}': ({type_str}, {min_val}, {max_val}),")
-            
-            code_lines.append("        },")
-            code_lines.append(f"        'shape': {shape_map[category]},")
-            
-            # OSC configuration
-            if category == 'particle':
-                code_lines.append("        'osc': ('get',),")
-            else:
-                code_lines.append("        'osc': ('get', 'set'),")
-            
-            # Randomization policy
-            has_integer = any(
-                self._is_integer_type(self._extract_state_params(sd)[0])
-                for sd in self.state_registry[category].values()
-            )
-            randomise = "False" if has_integer or category == 'global' else "True"
-            code_lines.append(f"        'randomise': {randomise}")
-            code_lines.append("    })")
-        
-        return "\n".join(code_lines)
+        return self.render_state_initialization()
     
     def generate_state_value_initialization_code(self, behavior_context: Optional[Dict[str, Any]] = None) -> str:
-        """Generate state value initialization code.
+        """Generate state value initialization code using template.
         
         Args:
             behavior_context: Optional context for intelligent initialization (unused but kept for compatibility)
@@ -421,43 +481,8 @@ class StateManager:
         Returns:
             Python code string for value initialization
         """
-        if not any(self.state_registry.values()):
-            return "# No state values to initialize"
-        
-        code_lines = []
-        
-        # Global states always need explicit initialization
-        if self.state_registry['global']:
-            code_lines.append("\n# Initialize global state values")
-            for name, state_def in self.state_registry['global'].items():
-                initial_val = self._get_initial_value_for_codegen(name, state_def, 'global')
-                if initial_val is not None:
-                    code_lines.append(f"tv.s.llm_global.field[0].{name} = {initial_val}")
-        
-        # Particle states - only if they need specific initialization
-        if self._category_needs_explicit_init('particle'):
-            code_lines.append("\n# Initialize particle state values")
-            code_lines.append("@ti.kernel")
-            code_lines.append("def init_particle_states():")
-            code_lines.append("    for i in range(tv.pn):")
-            
-            for name, state_def in self.state_registry['particle'].items():
-                initial_val = self._get_initial_value_for_codegen(name, state_def, 'particle')
-                if initial_val is not None:
-                    code_lines.append(f"        tv.s.llm_particle.field[i].{name} = {initial_val}")
-            
-            code_lines.append("\ninit_particle_states()")
-        
-        # Species states - only if they need specific initialization
-        if self._category_needs_explicit_init('species'):
-            code_lines.append("\n# Initialize species state values")
-            for s in range(self.tv.sn):
-                for name, state_def in self.state_registry['species'].items():
-                    initial_val = self._get_initial_value_for_codegen(name, state_def, 'species', species_id=s)
-                    if initial_val is not None:
-                        code_lines.append(f"tv.s.llm_species.field[{s}].{name} = {initial_val}")
-        
-        return "\n".join(code_lines) if code_lines else "# State values use defaults"
+        # This is now handled by the unified render_state_initialization method
+        return ""  # The template handles both container and value initialization
     
     def _category_needs_explicit_init(self, category: str) -> bool:
         """Check if a category needs explicit initialization code.
@@ -544,13 +569,8 @@ class StateManager:
         Returns:
             Dictionary with init_code, state_code, and config_code
         """
-        from jinja2 import Template
-        from pathlib import Path
-        
         # Generate initialization code
-        template_path = Path(__file__).parent.parent / 'templates' / 'init' / 'particle_initialization.j2'
-        with open(template_path, 'r') as f:
-            template = Template(f.read())
+        init_template = self.env.get_template('init/particle_initialization.j2')
         
         init_context = {
             'init_type': 'random',
@@ -565,13 +585,10 @@ class StateManager:
             for color_mapping in species_config.colors:
                 init_context['species_colors'][color_mapping.species_id] = color_mapping.rgba
         
-        init_code = template.render(**init_context)
+        init_code = init_template.render(**init_context)
         
-        # Generate state code
-        state_code = self.generate_state_initialization_code()
-        value_code = self.generate_state_value_initialization_code()
-        if state_code and value_code and value_code != "# No state values to initialize":
-            state_code = f"{state_code}\n{value_code}"
+        # Generate state code using the new template
+        state_code = self.render_state_initialization()
         
         # Generate configuration
         config_code = ""

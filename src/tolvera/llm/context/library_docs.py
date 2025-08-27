@@ -1,13 +1,66 @@
-# Import all documentation from modular files
-from .tolvera_core_api import TOLVERA_CORE_API
-from .particles_api import PARTICLES_API, PARTICLE_PATTERNS
-from .pixels_api import PIXELS_API, PIXELS_PATTERNS
-from .taichi_essentials import TAICHI_ESSENTIALS, TAICHI_CRASH_FIXES
+# Import necessary modules
+from pathlib import Path
 
-# Import exemplars
-from .exemplars.boids_exemplar import BOIDS_EXEMPLAR
-from .exemplars.particle_life_exemplar import PARTICLE_LIFE_EXEMPLAR
-from .exemplars.slime_exemplar import SLIME_EXEMPLAR
+def load_context_file(filename):
+    """Load a context file from the same directory."""
+    path = Path(__file__).parent / filename
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+def load_context_with_sections(filename):
+    """Load a context file that has multiple sections separated by ---."""
+    content = load_context_file(filename)
+    # Split on the section separators
+    sections = content.split('\n---\n')
+    if len(sections) == 1:
+        # No sections, just return the content
+        return {'main': content}
+    
+    result = {}
+    current_key = 'main'
+    current_content = []
+    
+    for i, section in enumerate(sections):
+        if i % 2 == 0:
+            # Content section
+            if current_content:
+                result[current_key] = '\n'.join(current_content)
+            current_content = [section]
+            current_key = 'main' if i == 0 else current_key
+        else:
+            # Key section
+            if current_content:
+                result[current_key] = '\n'.join(current_content)
+            current_key = section.strip()
+            current_content = []
+    
+    # Don't forget the last section
+    if current_content:
+        result[current_key] = '\n'.join(current_content)
+    
+    return result
+
+# Load all documentation from text files
+TOLVERA_CORE_API = load_context_file('tolvera_core_api.txt')
+PARTICLES_API = load_context_file('particles_api.txt')
+PIXELS_API = load_context_file('pixels_api.txt')
+
+# Load files with multiple sections
+taichi_content = load_context_with_sections('taichi_essentials.txt')
+TAICHI_ESSENTIALS = taichi_content.get('main', '') + '\n' + taichi_content.get('TAICHI_ESSENTIALS', '')
+TAICHI_CRASH_FIXES = taichi_content.get('TAICHI_CRASH_FIXES', '')
+
+# Load patterns
+patterns_content = load_context_with_sections('patterns.txt')
+PARTICLE_PATTERNS = patterns_content.get('PARTICLE_PATTERNS', '')
+
+pixels_patterns_content = load_context_with_sections('pixels_api.txt')
+PIXELS_PATTERNS = pixels_patterns_content.get('PIXELS_PATTERNS', '')
+
+# Load exemplars
+BOIDS_EXEMPLAR = load_context_file('exemplars/boids_exemplar.txt')
+PARTICLE_LIFE_EXEMPLAR = load_context_file('exemplars/particle_life_exemplar.txt')
+SLIME_EXEMPLAR = load_context_file('exemplars/slime_exemplar.txt')
 
 # Combine core APIs into base context
 BASE_CONTEXT = f"""
@@ -104,5 +157,5 @@ __all__ = [
     'TAICHI_CRASH_FIXES',
     'BOIDS_EXEMPLAR',
     'PARTICLE_LIFE_EXEMPLAR',
-    'SLIME_EXEMPLAR',
+    'SLIME_EXEMPLAR'
 ]

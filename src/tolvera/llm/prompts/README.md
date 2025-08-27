@@ -7,12 +7,12 @@ This directory contains all LLM prompts used throughout the Tölvera system, ext
 - **synthesis/** - Prompts for behavior synthesis and expert generation
 - **decomposition/** - Prompts for complex behavior decomposition  
 - **refinement/** - Prompts for sketch analysis and refinement (3 types)
-- **drawing/** - Prompts for visual effects and drawing behaviors
+- **context_selector/** - Prompts for intelligent context selection
 - **utilities/** - Small utility prompts (color resolution, etc.)
 
 ## Loading
 
-Prompts are loaded via the `PromptLoader` utility class in `src/tolvera/llm/core/prompt_loader.py`, which handles:
+Prompts are loaded via the `PromptLoader` utility class in `prompt_loader.py`, which handles:
 - File reading from this directory
 - Variable substitution using Python string formatting
 - Multi-part prompt assembly

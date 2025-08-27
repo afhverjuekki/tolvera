@@ -1,4 +1,3 @@
-SPECIES_INTERACTION_PATTERNS = """
 ## CRITICAL: Proper Species Interaction Implementation
 
 ### FUNDAMENTAL PRINCIPLE: Force → Velocity → Position Chain
@@ -125,18 +124,22 @@ if tv.p.field[j].active > 0.0:  # Only interact with active particles
 ```
 
 ### 7. Species Matrix Pattern (from ParticleLife)
-For complex multi-species interactions, use a rule matrix:
+For complex multi-species interactions, ALWAYS use llm_species with 2D shape:
 ```python
-tv.s.interaction_matrix = {
-    "state": {
-        "attract": (ti.f32, -1.0, 1.0),  # -1 = repel, 0 = neutral, 1 = attract
-        "radius": (ti.f32, 50.0, 300.0),
-    },
-    "shape": (tv.sn, tv.sn),  # species x species matrix
-}
+# CRITICAL: Only use llm_species for species pair interactions
+if 'llm_species' not in tv.s:
+    tv.s.set('llm_species', {
+        'state': {
+            'attract': (ti.f32, -1.0, 1.0),  # -1 = repel, 0 = neutral, 1 = attract
+            'radius': (ti.f32, 50.0, 300.0),
+        },
+        'shape': (tv.sn, tv.sn),  # 2D matrix for species pairs
+        'osc': ('get', 'set'),
+        'randomise': True
+    })
 
 # Usage in expert:
-rule = tv.s.interaction_matrix[species1, species2]
+rule = tv.s.llm_species.field[species1, species2]
 if dist < rule.radius:
     force = direction * rule.attract * strength
 ```
@@ -208,9 +211,11 @@ Key Vera-Compatible Principles:
 - Apply distance-based scaling factors
 - Return force vectors that work with speed system
 - Follow vera's radius-based interaction patterns
-"""
 
-VERA_PATTERNS = """
+---
+VERA_PATTERNS
+---
+
 # Patterns from Tölvera Vera Module
 
 ## Slime Mold (Physarum) Pattern
@@ -341,17 +346,19 @@ tv.iml.flock_p2flock_s = {
 ```
 
 ## State Initialization Pattern
-From iil-examples - flexible state initialization:
+CRITICAL: For LLM synthesis, ONLY use llm_global, llm_particle, or llm_species containers!
 
-# Method 1: Direct state creation
-tv.s.my_state = {
-    "state": {
-        "energy": (ti.f32, 0.0, 100.0),
-        "home_pos": (ti.math.vec2, 0.0, 1.0),
-    },
-    "shape": tv.pn,
-    "randomise": True
-}
+# CORRECT: Use standardized containers
+if 'llm_particle' not in tv.s:
+    tv.s.set('llm_particle', {
+        'state': {
+            'energy': (ti.f32, 0.0, 100.0),
+            'home_pos': (ti.math.vec2, 0.0, 1.0),
+        },
+        'shape': tv.pn,
+        'osc': ('get',),
+        'randomise': True
+    })
 
 # Method 2: Using from_vec for OSC control
 states = ['species', 'custom_state']
@@ -378,9 +385,11 @@ def _():
     tv.px.particles(tv.p, tv.s.species())
     
     return tv.px
-"""
 
-INTERACTION_PATTERNS_VERA = """
+---
+INTERACTION_PATTERNS_VERA
+---
+
 # Advanced Interaction Patterns from Vera
 
 ## Multi-Species Slime Mold
@@ -447,4 +456,3 @@ def reaction_step():
         # Update concentrations
         tv.s.reaction.field[i].u = u + du * dt
         tv.s.reaction.field[i].v = v + dv * dt
-"""

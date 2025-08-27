@@ -1,4 +1,3 @@
-EVOLUTION_PATTERNS = """
 # Artificial Life Patterns - Reference Implementations
 
 ## NOTE: Two Approaches to Implementation
@@ -51,9 +50,11 @@ This creates particles that:
 - Flock together (alignment, cohesion, separation)
 - Leave pheromone trails
 - Follow gradients in the pixel buffer
-"""
 
-ECOSYSTEM_PATTERNS = """
+---
+ECOSYSTEM_PATTERNS
+---
+
 # Game of Life + Flocking Ecosystem (from gol_flock.py)
 
 ## Cellular Automaton Interacting with Particles
@@ -113,9 +114,11 @@ This creates a feedback loop where:
 - Living cells in Game of Life attract particles
 - Particles deposit new life where they gather
 - Emergent patterns form from the interaction
-"""
 
-MORPHOGENETIC_PATTERNS = """
+---
+MORPHOGENETIC_PATTERNS
+---
+
 # Pattern Formation with Vera Behaviors
 
 ## Reaction-Diffusion (from reaction_diffusion.py)
@@ -187,9 +190,11 @@ The slime behavior implements:
 - Trail deposition in pixel buffer
 - Gradient following
 - Species-specific parameters
-"""
 
-SWARM_INTELLIGENCE = """
+---
+SWARM_INTELLIGENCE
+---
+
 # Collective Behaviors with Vera
 
 ## Built-in Swarm Behaviors
@@ -289,4 +294,3 @@ def _():
     # 4. Return pixel buffer
     return tv.px
 ```
-"""

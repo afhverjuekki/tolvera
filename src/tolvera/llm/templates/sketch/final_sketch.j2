@@ -1,5 +1,5 @@
 """
-Auto-generated Tölvera sketch: {{ description }}
+Auto-generated Tölvera sketch: {{ description | replace('"""', '\\"""') | replace("'''", "\\'\\'\\'") }}
 Generated: {{ timestamp }}
 """
 
@@ -19,7 +19,6 @@ def main(**kwargs):
     # === Particle Initialization ===
 {{ init_code | indent(4, True) }}
     
-    # === State Initialization ===
 {{ state_code | indent(4, True) }}
     
     # === Environmental Fields ===

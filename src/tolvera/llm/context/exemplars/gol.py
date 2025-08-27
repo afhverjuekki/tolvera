@@ -106,8 +106,8 @@ def main(**kwargs):
         })
     
     # Per-particle state
-    if 'llm_particles' not in tv.s:
-        tv.s.set('llm_particles', {
+    if 'llm_particle' not in tv.s:
+        tv.s.set('llm_particle', {
             'state': {
                 'alive_neighbors': (ti.i32, 0, 20),
                 'next_state': (ti.f32, 0.0, 1.0),
@@ -209,23 +209,23 @@ def main(**kwargs):
         # First pass: count neighbors
         for i in range(tv.pn):
             neighbor_count = count_alive_neighbors(i)
-            tv.s.llm_particles.field[i].alive_neighbors = neighbor_count
-            tv.s.llm_particles.field[i].next_state = calculate_next_state(i, neighbor_count)
+            tv.s.llm_particle.field[i].alive_neighbors = neighbor_count
+            tv.s.llm_particle.field[i].next_state = calculate_next_state(i, neighbor_count)
         
         # Second pass: update states
         for i in range(tv.pn):
-            next_state = tv.s.llm_particles.field[i].next_state
+            next_state = tv.s.llm_particle.field[i].next_state
             tv.p.field[i].active = next_state
             
             # Update visual properties based on state
             if next_state > 0.5:
                 tv.p.field[i].size = 6.0
-                tv.s.llm_particles.field[i].age += 1.0
-                tv.s.llm_particles.field[i].energy = ti.min(100.0, tv.s.llm_particles.field[i].energy + 10.0)
+                tv.s.llm_particle.field[i].age += 1.0
+                tv.s.llm_particle.field[i].energy = ti.min(100.0, tv.s.llm_particle.field[i].energy + 10.0)
             else:
                 tv.p.field[i].size = 2.0
-                tv.s.llm_particles.field[i].age = 0.0
-                tv.s.llm_particles.field[i].energy = ti.max(0.0, tv.s.llm_particles.field[i].energy - 5.0)
+                tv.s.llm_particle.field[i].age = 0.0
+                tv.s.llm_particle.field[i].energy = ti.max(0.0, tv.s.llm_particle.field[i].energy - 5.0)
     
     # === Force Experts ===
     @ti.func
@@ -348,7 +348,7 @@ def main(**kwargs):
     def draw_life_aura(i: ti.i32):
         """Draw an aura around old living cells."""
         if tv.p.field[i].active > 0.5:
-            age = tv.s.llm_particles.field[i].age
+            age = tv.s.llm_particle.field[i].age
             if age > 5.0:
                 pos = tv.p.field[i].pos
                 species = tv.p.field[i].species

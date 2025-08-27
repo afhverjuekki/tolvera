@@ -1,12 +1,3 @@
-"""
-Golden Exemplar: Slime Mold (Physarum) Simulation
-=================================================
-This exemplar demonstrates agent-based slime mold behavior with
-pheromone trail deposition, multi-directional sensing, and gradient
-following. Key patterns: pixel buffer usage, sensor sampling, trail diffusion.
-"""
-
-SLIME_EXEMPLAR = """
 # Slime Mold (Physarum) - Agent-Based Trail System
 
 ## Core Slime Agent Behavior
@@ -300,7 +291,3 @@ def draw_sensor_debug(i: ti.i32):
 6. **Toroidal Boundaries**: Seamless world wrapping
 7. **Species Variation**: Different sensor configurations per species
 8. **Debug Visualization**: Sensor ray visualization
-"""
-
-# Export exemplar
-__all__ = ['SLIME_EXEMPLAR']

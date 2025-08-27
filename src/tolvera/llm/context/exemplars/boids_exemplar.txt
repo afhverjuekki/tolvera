@@ -1,12 +1,3 @@
-"""
-Golden Exemplar: Boids Flocking Behavior
-========================================
-This exemplar demonstrates the classic boids algorithm with separation,
-alignment, and cohesion forces, plus inter-species avoidance.
-Key patterns: multi-component forces, species filtering, proper variable declaration.
-"""
-
-BOIDS_EXEMPLAR = """
 # Boids Flocking - Complete Working Example
 
 ## Core Flocking Components
@@ -199,7 +190,3 @@ tv.s.llm_species[0] = {
 5. **State Access**: Using global and species-specific parameters
 6. **Steering Forces**: desired_velocity - current_velocity pattern
 7. **Distance Weighting**: Inverse distance for separation force
-"""
-
-# Export exemplar
-__all__ = ['BOIDS_EXEMPLAR']
