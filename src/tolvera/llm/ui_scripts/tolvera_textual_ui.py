@@ -14,19 +14,18 @@ from textual.timer import Timer
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, Grid
 from textual.widgets import (
-    Button, Footer, Header, Input, Label,
-    Log, Static, TextArea, RadioSet, RadioButton
+    Button, Header, Input, Label,
+    Static, TextArea, RadioSet, RadioButton
 )
 from textual.widget import Widget
-from textual.screen import Screen, ModalScreen
+from textual.screen import ModalScreen
 from textual.reactive import reactive
 from textual.binding import Binding
-from textual.message import Message
 
 # Imports are now using absolute package paths - no sys.path manipulation needed
 
 from tolvera import Tolvera
-from tolvera.llm import BehaviorAgent
+from tolvera.llm import BehaviorOrchestrator
 from tolvera.llm.core.sketch_refiner import SketchRefiner
 from tolvera.llm.debug.tracing import get_collector
 from tolvera.llm.debug.console_tracer import enable_console_tracing
@@ -35,13 +34,10 @@ from tolvera.llm.core.llm_factory import ModelFactory
 from dotenv import load_dotenv
 
 # Import enhanced components
-from textual_components import (
-    SaveDialog, LoadDialog, ErrorDialog, HelpDialog,
-    EnhancedCodeEditor, EnhancedChatPanel
+from tolvera.llm.ui_scripts.textual_components import (
+    SaveDialog, LoadDialog, HelpDialog,
+    EnhancedCodeEditor
 )
-
-
-from textual.containers import Grid
 
 
 class ModelSelectorScreen(ModalScreen[str]):
@@ -1668,7 +1664,7 @@ class TolveraTextualUI(App):
     
     def __init__(self):
         super().__init__()
-        self.behavior_agent = None
+        self.behavior_orchestrator = None
         self.sketch_refiner = None
         self.collector = None
         self.main_trace = None
@@ -1948,15 +1944,15 @@ class TolveraTextualUI(App):
             
             # Initialize behavior agent - THIS IS THE SLOW PART
             provider, actual_model = ModelFactory.parse_model_string(self.model_name)
-            self.log_message(f"Creating BehaviorAgent with {provider} provider...")
+            self.log_message(f"Creating BehaviorOrchestrator with {provider} provider...")
             self.log_message(f"Model: {actual_model}")
             
             try:
-                self.behavior_agent = BehaviorAgent(self.tv, model_name=self.model_name)
-                self.log_message("BehaviorAgent emerged successfully")
+                self.behavior_orchestrator = BehaviorOrchestrator(self.tv, model_name=self.model_name)
+                self.log_message("BehaviorOrchestrator emerged successfully")
                 
             except Exception as e:
-                self.log_message(f"❌ BehaviorAgent failed: {e}")
+                self.log_message(f"❌ BehaviorOrchestrator failed: {e}")
                 raise
             
             # Small delay to let UI update
@@ -2071,7 +2067,7 @@ class TolveraTextualUI(App):
             self.log_message("⏳ Agents are still initializing. Please wait...")
             return
             
-        if not self.agents_ready or not self.behavior_agent:
+        if not self.agents_ready or not self.behavior_orchestrator:
             self.log_message("⚠️ Agents not initialized. Please wait or try selecting a model again.")
             # Show model selector again
             self.push_screen(ModelSelectorScreen(), self.handle_model_selection)
@@ -2104,11 +2100,11 @@ class TolveraTextualUI(App):
             self.main_trace = self.collector.start_trace("Textual UI Generation", "ui")
             
             # Add behavior (this is the async operation)
-            result = await self.behavior_agent.add_behavior(description, weight=1.0)
+            result = await self.behavior_orchestrator.add_behavior(description, weight=1.0)
             self.log_message(f"🐠 Behaviors evolved: {result['experts_added']} expert organisms")
             
             # Generate sketch using async version to enable architectural refinement
-            _, sketch_path = await self.behavior_agent.generate_sketch_async(
+            _, sketch_path = await self.behavior_orchestrator.generate_sketch_async(
                 description=description,
                 filename="textual_sketch",
                 use_timestamp=True
@@ -2181,12 +2177,28 @@ class TolveraTextualUI(App):
             self.query_one("#stop-btn", Button).disabled = False
             self.is_running = True
             
-            # Create subprocess
-            self.sketch_process = await asyncio.create_subprocess_exec(
-                sys.executable, self.current_sketch_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # Create subprocess using Poetry to ensure proper environment
+            # Get project root (5 levels up from this UI script)
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            
+            # Try to use Poetry first for proper environment management
+            try:
+                self.sketch_process = await asyncio.create_subprocess_exec(
+                    "poetry", "run", "python", self.current_sketch_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(project_root)  # Run from project root for Poetry to work
+                )
+            except (FileNotFoundError, OSError):
+                # Fallback to sys.executable if Poetry is not available
+                # This may cause library conflicts but at least attempts to run
+                self.log_message("⚠️ Poetry not found, using direct Python (may cause library conflicts)")
+                self.sketch_process = await asyncio.create_subprocess_exec(
+                    sys.executable, self.current_sketch_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=os.environ.copy()  # At least preserve current environment
+                )
             
             # Read output asynchronously
             async def read_stream(stream, prefix, is_stderr=False):
@@ -2929,7 +2941,7 @@ Status: {self.main_trace.status}"""
     
     def tutorial_generate_demo_sketch(self):
         """Tutorial helper: Generate the demo sketch automatically."""
-        if not self.agents_ready or not self.behavior_agent:
+        if not self.agents_ready or not self.behavior_orchestrator:
             self.notify("⚠️ Agents not ready - please wait for initialization", severity="warning", timeout=3)
             return
         
