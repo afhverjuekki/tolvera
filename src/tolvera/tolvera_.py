@@ -56,11 +56,6 @@ from .patches import *
 from .pixels import *
 from .utils import *
 from .vera import Vera
-# Legacy LLM import (optional for backward compatibility)
-try:
-    from .llm import LLM
-except ImportError:
-    LLM = None
 
 class Tolvera:
     """Tolvera main class.
@@ -163,7 +158,6 @@ class Tolvera:
         self.p = Particles(self, **kwargs)
         self.speed(self._speed)
         self.v = Vera(self, **kwargs)
-        self.llm = None
         if self.osc is not False:
             self.add_to_osc_map()
         if self.cv is not False:
