@@ -6,6 +6,8 @@ Tölvera Textual UI - Interactive sketch generator with Terminal User Interface
 import asyncio
 import os
 import sys
+import platform
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -1676,6 +1678,7 @@ class TolveraTextualUI(App):
         self.tutorial_completed = False  # Track if tutorial was completed
         self.last_error_logs = ""  # Store last error logs for repair functionality
         self.has_execution_error = False  # Track if there was an execution error
+        self.is_macos = platform.system() == "Darwin"  # Detect macOS for focus restoration
         
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
@@ -1801,8 +1804,8 @@ class TolveraTextualUI(App):
     
     def handle_welcome_screen(self, continued: bool | None) -> None:
         """Handle the welcome screen dismissal."""
-        # Restore focus to the main app after modal dismissal
-        self.set_focus(None)
+        # Don't remove focus - the model selector will be shown next
+        # and it will handle focus management
         
         if continued:
             self.log_message("🌟 Welcome sequence complete")
@@ -1816,8 +1819,17 @@ class TolveraTextualUI(App):
     
     def handle_model_selection(self, model: str | None) -> None:
         """Handle the model selection from the modal."""
-        # Restore focus to the main app after modal dismissal
-        self.set_focus(None)  # This ensures focus returns to the app
+        # Immediately set focus to description input to maintain keyboard control
+        try:
+            desc_input = self.query_one("#description-input", TextArea)
+            desc_input.focus()
+        except Exception:
+            # Fallback: focus generate button if description input not available
+            try:
+                generate_btn = self.query_one("#generate-btn", Button)
+                generate_btn.focus()
+            except Exception:
+                pass
         
         if model:
             self.model_name = model
@@ -1900,7 +1912,7 @@ class TolveraTextualUI(App):
             loading = self.query_one("#loading-overlay", Container)
             loading.remove_class("visible")
             
-            # Try to restore focus to a logical widget
+            # Always restore focus to a logical widget
             try:
                 # If agents are ready, focus generate button
                 if self.agents_ready:
@@ -1913,8 +1925,14 @@ class TolveraTextualUI(App):
                 desc_input = self.query_one("#description-input", TextArea)
                 desc_input.focus()
             except Exception:
-                # Last resort
-                self.set_focus(None)
+                # Last resort - try any focusable widget
+                try:
+                    for widget in self.query(Button):
+                        if not widget.disabled:
+                            widget.focus()
+                            break
+                except Exception:
+                    pass
         except Exception:
             pass
     
@@ -1977,8 +1995,9 @@ class TolveraTextualUI(App):
                 generate_btn.disabled = False
                 # Hide loading indicator
                 self.hide_loading()
-                # Schedule focus restoration on main thread
-                self.call_later(self.restore_focus_after_init)
+                # Schedule focus restoration on main thread after initialization
+                # Single call after a short delay to let everything settle
+                self.set_timer(0.2, self.restore_focus_after_init)
             except Exception as e:
                 self.log_message(f"⚠️ Could not enable generate button: {e}")
             
@@ -1998,19 +2017,72 @@ class TolveraTextualUI(App):
             self.is_initializing = False
             # self.log_message("🧬 Genesis complete")
     
+    
     def restore_focus_after_init(self):
         """Restore focus to the main app after agent initialization completes."""
         # Add a small delay to ensure UI has fully updated
         self.set_timer(0.1, self._do_focus_after_init)
+        self.log_message("🔄 Terminal focus restored")
+    
+    def _restore_terminal_focus_macos(self):
+        """Use osascript to bring Terminal/iTerm2 back to foreground on macOS."""
+        if not self.is_macos:
+            return
+        
+        try:
+            # Detect which terminal app is being used
+            parent_process = os.environ.get('TERM_PROGRAM', '')
+            
+            if 'iTerm' in parent_process:
+                app_name = 'iTerm2'
+            elif 'Apple_Terminal' in parent_process or not parent_process:
+                # Default to Terminal if not detected
+                app_name = 'Terminal'
+            else:
+                app_name = 'Terminal'  # Fallback
+            
+            # Use osascript to bring terminal to foreground
+            applescript = f'''
+            tell application "System Events"
+                tell process "{app_name}"
+                    set frontmost to true
+                    if windows is not {{}} then
+                        perform action "AXRaise" of item 1 of windows
+                    end if
+                end tell
+            end tell
+            '''
+            
+            # Run AppleScript silently
+            subprocess.run(
+                ['osascript', '-e', applescript],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1
+            )
+            
+            # Also try simpler activation as backup
+            subprocess.run(
+                ['osascript', '-e', f'tell application "{app_name}" to activate'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1
+            )
+            
+        except Exception:
+            # Silently fail if osascript doesn't work
+            pass
     
     def _do_focus_after_init(self):
         """Actually perform the focus restoration after delay."""
+        # Use OS-specific focus restoration for macOS - this is the key fix!
+        self._restore_terminal_focus_macos()
+        
         try:
             # Focus the generate button since that's what user will want to use next
             generate_btn = self.query_one("#generate-btn", Button)
             if not generate_btn.disabled:
                 generate_btn.focus()
-                self.log_message("🔄 Terminal focus restored")
                 return
         except Exception:
             pass
@@ -2019,10 +2091,16 @@ class TolveraTextualUI(App):
         try:
             desc_input = self.query_one("#description-input", TextArea) 
             desc_input.focus()
-            self.log_message("🔄 Terminal focus restored")
         except Exception:
-            # Last resort - focus the app itself
-            self.set_focus(None)
+            # Last resort - try to focus any available button
+            try:
+                for widget in self.query(Button):
+                    if not widget.disabled:
+                        widget.focus()
+                        break
+            except Exception:
+                pass
+    
     
     def restore_focus_after_generation(self):
         """Restore focus to the main app after sketch generation completes."""
@@ -2031,7 +2109,12 @@ class TolveraTextualUI(App):
             run_btn = self.query_one("#run-btn", Button)
             run_btn.focus()
         except Exception:
-            self.set_focus(None)
+            # Fallback to code editor
+            try:
+                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor.focus()
+            except Exception:
+                pass
     
     def restore_focus_after_run(self):
         """Restore focus to the main app after sketch run completes."""
@@ -2040,7 +2123,21 @@ class TolveraTextualUI(App):
             refinement_input = self.query_one("#refinement-input", Input)
             refinement_input.focus()
         except Exception:
-            self.set_focus(None)
+            # Fallback to stop button if sketch is still running
+            try:
+                if self.is_running:
+                    stop_btn = self.query_one("#stop-btn", Button)
+                    if not stop_btn.disabled:
+                        stop_btn.focus()
+                        return
+            except Exception:
+                pass
+            # Otherwise try run button
+            try:
+                run_btn = self.query_one("#run-btn", Button)
+                run_btn.focus()
+            except Exception:
+                pass
     
     def restore_focus_after_refinement(self):
         """Restore focus to the main app after refinement completes."""
@@ -2049,7 +2146,12 @@ class TolveraTextualUI(App):
             run_btn = self.query_one("#run-btn", Button)
             run_btn.focus()
         except Exception:
-            self.set_focus(None)
+            # Fallback to refinement input for more refinements
+            try:
+                refinement_input = self.query_one("#refinement-input", Input)
+                refinement_input.focus()
+            except Exception:
+                pass
     
     def restore_focus_after_repair(self):
         """Restore focus to the main app after repair completes."""
@@ -2058,7 +2160,12 @@ class TolveraTextualUI(App):
             run_btn = self.query_one("#run-btn", Button)
             run_btn.focus()
         except Exception:
-            self.set_focus(None)
+            # Fallback to code editor to review the repairs
+            try:
+                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor.focus()
+            except Exception:
+                pass
     
     @on(Button.Pressed, "#generate-btn")
     def generate_sketch(self):
@@ -2436,8 +2543,17 @@ class TolveraTextualUI(App):
     
     def handle_save_dialog(self, save_path: str | None) -> None:
         """Handle the save dialog result."""
-        # Restore focus to the main app after modal dismissal
-        self.set_focus(None)
+        # Restore focus to code editor after save dialog closes
+        try:
+            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            code_editor.focus()
+        except Exception:
+            # Fallback to run button
+            try:
+                run_btn = self.query_one("#run-btn", Button)
+                run_btn.focus()
+            except Exception:
+                pass
         
         if save_path:
             try:
@@ -2456,8 +2572,17 @@ class TolveraTextualUI(App):
     
     def handle_load_dialog(self, load_path: str | None) -> None:
         """Handle the load dialog result."""
-        # Restore focus to the main app after modal dismissal
-        self.set_focus(None)
+        # Restore focus to run button after load dialog closes
+        try:
+            run_btn = self.query_one("#run-btn", Button)
+            run_btn.focus()
+        except Exception:
+            # Fallback to code editor
+            try:
+                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor.focus()
+            except Exception:
+                pass
         
         if load_path:
             try:
