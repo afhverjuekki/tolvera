@@ -1,3 +1,9 @@
+"""State management for particle simulations.
+
+This module provides comprehensive state management functionality for
+custom particle, species, and global states in the synthesis system.
+"""
+
 from typing import Dict, List, Any, Optional, Tuple, Union
 from jinja2 import Environment, FileSystemLoader
 import os
@@ -8,9 +14,15 @@ from .data_models import StateDefinition
 class StateManager:
     """Manages custom states for particle simulations.
     
-    This class provides a single source of truth for all state management,
-    including creation, initialization, and code generation for global,
-    particle, and species states.
+    Provides a single source of truth for all state management, handling
+    creation, initialization, and code generation for global, particle,
+    and species states. Ensures state consistency and prevents duplication.
+    
+    Attributes:
+        tv: Tölvera instance for particle system access.
+        state_registry (Dict): Registry of all created states by category.
+        container_names (Dict): Names of Taichi containers for each category.
+        env: Jinja2 environment for template rendering.
     """
     
     # Built-in particle properties that should not be duplicated
@@ -42,7 +54,7 @@ class StateManager:
         """Initialize the StateManager.
         
         Args:
-            tv: Tölvera instance for accessing particle system
+            tv: Tölvera instance for accessing particle system.
         """
         self.tv = tv
         
@@ -68,8 +80,8 @@ class StateManager:
         """Create states from a specification dictionary.
         
         Args:
-            spec: Dictionary with 'global', 'particle', and/or 'species' keys
-                  containing state definitions
+            spec (Dict[str, Any]): Dictionary with 'global', 'particle', and/or 
+                'species' keys containing state definitions.
         """
         for category in ['global', 'particle', 'species']:
             if category in spec and spec[category]:
@@ -78,11 +90,13 @@ class StateManager:
     def collect_and_create_states(self, all_states_specs: List[Dict[str, Any]]) -> None:
         """Collect and merge state specifications from multiple sources.
         
-        This method consolidates state requirements from multiple specifications
-        and creates them all at once, avoiding duplicate state creation.
+        Consolidates state requirements from multiple specifications and creates
+        them all at once, preventing duplicate state creation.
         
         Args:
-            all_states_specs: List of state specification dictionaries
+            all_states_specs (List[Dict[str, Any]]): List of state specification
+                dictionaries, each containing 'global', 'particle', and/or 'species'
+                state definitions.
         """
         # Merge all state specifications
         merged_spec = {'global': {}, 'particle': {}, 'species': {}}
@@ -102,16 +116,16 @@ class StateManager:
             self.create_states_from_spec(merged_spec)
     
     def _extract_state_params(self, state_def: Any) -> Tuple[str, Any, Any, Optional[Any]]:
-        """Extract parameters from a state definition (Pydantic model or dict).
+        """Extract parameters from a state definition.
         
-        This centralizes the logic for handling both StateDefinition objects
-        and plain dictionaries, eliminating code duplication.
+        Handles both StateDefinition objects and plain dictionaries,
+        providing consistent parameter extraction.
         
         Args:
-            state_def: StateDefinition object or dictionary
+            state_def: StateDefinition object or dictionary.
             
         Returns:
-            Tuple of (type_str, min_val, max_val, initial_val)
+            Tuple[str, Any, Any, Optional[Any]]: (type_str, min_val, max_val, initial_val)
         """
         if isinstance(state_def, StateDefinition):
             # Pydantic model
@@ -146,7 +160,14 @@ class StateManager:
         return type_str, min_val, max_val, initial
     
     def _is_integer_type(self, type_str: str) -> bool:
-        """Check if a type string represents an integer type."""
+        """Check if a type string represents an integer type.
+        
+        Args:
+            type_str (str): Taichi type string.
+            
+        Returns:
+            bool: True if integer type, False otherwise.
+        """
         return any(t in type_str for t in ['i32', 'i64', 'u32', 'u64', 'int'])
     
     def _get_taichi_type(self, type_str: str):

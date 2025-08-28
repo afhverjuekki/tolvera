@@ -1,3 +1,9 @@
+"""Code generation from natural language descriptions.
+
+This module provides the core code generation functionality for transforming
+natural language behavior descriptions into executable Taichi code.
+"""
+
 import time
 from typing import Dict, List, Optional, Any
 
@@ -55,11 +61,22 @@ class StateAnalysisResponse(BaseModel):
 
 
 class CodeGenerator:
-    """
-    Generates Taichi code from natural language behavior descriptions.
+    """Generates Taichi code from natural language behavior descriptions.
     
-    This class coordinates between various specialized components to transform
-    natural language into executable Taichi code for particle behaviors.
+    This class is the primary code synthesis engine, handling the transformation
+    of natural language descriptions into executable Taichi expert functions.
+    It manages state analysis, species detection, and LLM interactions to produce
+    syntactically correct and functionally appropriate code.
+    
+    Attributes:
+        model_name (str): Name of the LLM model being used.
+        tv: Tolvera instance for particle system information.
+        model: LLM model instance from ModelFactory.
+        provider (str): LLM provider (gemini, anthropic, openai).
+        species_manager (SpeciesManager): Manages species detection and analysis.
+        color_resolver (ColorResolver): Resolves color names to RGB values.
+        prompt_loader: Loads and formats prompt templates.
+        template_renderer: Renders Jinja2 templates for code generation.
     """
     
     def __init__(
@@ -68,13 +85,13 @@ class CodeGenerator:
         tolvera_instance=None,
         api_key: Optional[str] = None
     ):
-        """
-        Initialize the synthesizer.
+        """Initialize the code generator.
         
         Args:
-            model_name: Name of the LLM model to use
-            tolvera_instance: Tolvera instance for particle system access
-            api_key: Optional API key for the model provider
+            model_name (str): Name of the LLM model to use. Defaults to "gemini-2.0-flash".
+            tolvera_instance: Tolvera instance for particle system access.
+            api_key (Optional[str]): API key for the model provider. If None,
+                attempts to load from environment variables.
         """
         self._load_env()
         
@@ -115,15 +132,21 @@ class CodeGenerator:
         description: str,
         expert_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Analyze what states are needed for a behavior.
+        """Analyze what custom states are needed for a behavior.
+        
+        Uses the LLM to determine if the behavior requires custom state fields
+        beyond the built-in particle properties (pos, vel, mass, etc.).
         
         Args:
-            description: Natural language behavior description
-            expert_type: Type of expert being analyzed
+            description (str): Natural language behavior description.
+            expert_type (Optional[str]): Type of expert being analyzed
+                (single, interaction, temporal_update, etc.).
             
         Returns:
-            Dictionary of states organized by category
+            Dict[str, Any]: States organized by category:
+                - 'global': Global state fields
+                - 'particle': Per-particle state fields  
+                - 'species': Per-species state fields
         """
         
         collector = get_collector()
@@ -192,14 +215,16 @@ class CodeGenerator:
                 return {'global': {}, 'particle': {}, 'species': {}}
     
     def _process_state_analysis(self, state_analysis: StateAnalysisResponse) -> Dict[str, Any]:
-        """
-        Process state analysis response into structured dictionary.
+        """Process state analysis response into structured dictionary.
+        
+        Converts the LLM's state analysis into StateDefinition objects,
+        filtering out built-in particle properties.
         
         Args:
-            state_analysis: Analysis response from LLM
+            state_analysis (StateAnalysisResponse): Analysis response from LLM.
             
         Returns:
-            Dictionary of states by category
+            Dict[str, Any]: Processed states organized by category.
         """
         states_dict = {'global': {}, 'particle': {}, 'species': {}}
         
@@ -238,18 +263,25 @@ class CodeGenerator:
         expert_name: Optional[str] = None,
         skip_state_analysis: bool = False
     ) -> BehaviorSynthesisResponse:
-        """
-        Synthesize particle behavior from natural language description.
+        """Synthesize particle behavior from natural language description.
+        
+        Main entry point for behavior synthesis. Coordinates state analysis,
+        species detection, prompt building, and LLM interaction to generate
+        Taichi expert functions.
         
         Args:
-            description: Natural language behavior description
-            available_states: Dictionary of available states by category
-            context: Additional context for synthesis
-            expert_name: Optional specific name for the expert function
-            skip_state_analysis: Whether to skip state analysis
+            description (str): Natural language behavior description.
+            available_states (Optional[Dict]): Available states by category.
+            context (Optional[Dict]): Additional synthesis context including:
+                - species_info: Detected species information
+                - component: Decomposed behavior component
+                - existing_experts: Previously synthesized experts
+            expert_name (Optional[str]): Specific name for the expert function.
+            skip_state_analysis (bool): If True, skips state analysis.
             
         Returns:
-            BehaviorSynthesisResponse with synthesized expert code
+            BehaviorSynthesisResponse: Response containing synthesized experts,
+                states, and metadata.
         """
         
         # Prepare synthesis

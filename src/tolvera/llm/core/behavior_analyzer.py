@@ -1,3 +1,9 @@
+"""Behavior analysis and decomposition.
+
+This module provides functionality for analyzing natural language behavior
+descriptions and decomposing them into implementable components.
+"""
+
 import time
 from typing import Dict, List, Optional, Any, Literal
 from pydantic import BaseModel, Field
@@ -111,12 +117,18 @@ class DecomposedBehavior(BaseModel):
 # ==============================================================================
 
 class BehaviorAnalyzer:
-    """
-    Analyzes and decomposes complex behavior descriptions into implementable components.
+    """Analyzes and decomposes complex behavior descriptions.
     
-    This class uses a pydantic-ai agent to analyze natural language descriptions
-    of particle behaviors and break them down into specific, implementable
-    components that can be synthesized into Taichi code.
+    This class uses pydantic-ai to analyze natural language descriptions
+    of particle behaviors and decompose them into specific, implementable
+    components. It identifies species, required states, behavior types,
+    and generates implementation guidance for synthesis.
+    
+    Attributes:
+        model_name (str): Name of the LLM model being used.
+        provider (str): LLM provider (gemini, anthropic, openai).
+        model: LLM model instance from ModelFactory.
+        decomposition_agent: Pydantic-ai agent for structured decomposition.
     """
     
     def __init__(
@@ -125,13 +137,13 @@ class BehaviorAnalyzer:
         provider: str = "gemini", 
         api_key: Optional[str] = None
     ):
-        """
-        Initialize the decomposer with model configuration.
+        """Initialize the behavior analyzer.
         
         Args:
-            model_name: Name of the LLM model to use
-            provider: Provider for the model (default: "gemini")
-            api_key: Optional API key for the provider
+            model_name (str): Name of the LLM model to use.
+            provider (str): Provider for the model. Defaults to "gemini".
+            api_key (Optional[str]): API key for the provider. If None,
+                attempts to load from environment variables.
         """
         self.model_name = model_name
         self.provider = provider
@@ -145,11 +157,13 @@ class BehaviorAnalyzer:
         self.decomposition_agent = self._create_decomposition_agent()
         
     def _create_decomposition_agent(self) -> Agent[None, DecomposedBehavior]:
-        """
-        Create the pydantic-ai agent for decomposition.
+        """Create the pydantic-ai agent for decomposition.
+        
+        Loads and combines prompt templates to create a structured
+        decomposition agent.
         
         Returns:
-            Configured Agent instance for behavior decomposition
+            Agent[None, DecomposedBehavior]: Configured agent instance.
         """
         # Load and combine decomposer prompts
         loader = get_prompt_loader()
@@ -172,14 +186,20 @@ class BehaviorAnalyzer:
         return agent
     
     async def analyze(self, description: str) -> DecomposedBehavior:
-        """
-        Analyze and decompose a behavior description into implementable components.
+        """Analyze and decompose a behavior description.
+        
+        Breaks down complex behaviors into components, identifying species,
+        required states, and implementation strategies.
         
         Args:
-            description: Natural language description of the behavior
+            description (str): Natural language description of the behavior.
             
         Returns:
-            DecomposedBehavior object containing the breakdown
+            DecomposedBehavior: Structured decomposition containing:
+                - Behavior components with implementation guidance
+                - Species configuration
+                - Required custom states
+                - Implementation priorities
         """
         collector = get_collector()
         

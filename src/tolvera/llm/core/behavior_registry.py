@@ -1,10 +1,26 @@
+"""Expert function registry management.
+
+This module provides the registry system for managing synthesized expert
+functions, tracking their metadata, types, and associations.
+"""
+
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 
 @dataclass
 class ExpertInfo:
-    """Information about a registered expert function."""
+    """Information about a registered expert function.
+    
+    Attributes:
+        name (str): Name of the expert function.
+        description (str): Human-readable description.
+        weight (float): Weight in integration kernel.
+        expert_type (str): Type ('single', 'interaction', 'drawing', 'utility').
+        code (str): Generated Taichi code.
+        draw_order (Optional[str]): 'pre' or 'post' for drawing experts.
+        applies_to_species (Optional[List[int]]): Species IDs this expert affects.
+    """
     name: str
     description: str
     weight: float

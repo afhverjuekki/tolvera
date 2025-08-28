@@ -1,3 +1,10 @@
+"""Trace collection and analysis for synthesis debugging.
+
+This module provides comprehensive tracing functionality for tracking
+the synthesis pipeline, including LLM calls, timing information, and
+error tracking.
+"""
+
 import json
 import time
 import uuid
@@ -14,6 +21,25 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TraceNode:
+    """Node in the trace tree representing a single operation.
+    
+    Attributes:
+        id (str): Unique identifier for the node.
+        type (str): Type of operation (synthesis, llm_call, etc.).
+        name (str): Name of the operation.
+        timestamp (datetime): When the operation started.
+        start_time (float): Start time in seconds.
+        end_time (Optional[float]): End time in seconds.
+        duration_ms (Optional[float]): Duration in milliseconds.
+        input_data (Dict): Input parameters.
+        output_data (Dict): Output results.
+        metadata (Dict): Additional metadata.
+        llm_call (Optional[LLMCallData]): LLM call details if applicable.
+        parent_id (Optional[str]): Parent node ID.
+        children (List[TraceNode]): Child nodes.
+        status (str): Current status (running, success, error).
+        error (Optional[str]): Error message if failed.
+    """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     type: str = ""
     name: str = ""
@@ -32,17 +58,36 @@ class TraceNode:
     error: Optional[str] = None
     
     def complete(self, status: str = "success", error: Optional[str] = None):
+        """Mark the node as complete.
+        
+        Args:
+            status (str): Final status. Defaults to "success".
+            error (Optional[str]): Error message if failed.
+        """
         self.end_time = time.time()
         self.duration_ms = (self.end_time - self.start_time) * 1000
         self.status = status
         self.error = error
     
     def add_child(self, child: 'TraceNode') -> 'TraceNode':
+        """Add a child node to this node.
+        
+        Args:
+            child (TraceNode): Child node to add.
+            
+        Returns:
+            TraceNode: The added child node.
+        """
         child.parent_id = self.id
         self.children.append(child)
         return child
     
     def to_dict(self) -> Dict:
+        """Convert node to dictionary for serialization.
+        
+        Returns:
+            Dict: Serializable dictionary representation.
+        """
         data = asdict(self)
         data['timestamp'] = self.timestamp.isoformat()
         return data

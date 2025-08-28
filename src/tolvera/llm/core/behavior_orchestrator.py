@@ -1,3 +1,10 @@
+"""Behavior orchestration and synthesis pipeline.
+
+This module provides the main orchestrator for the LLM synthesis system,
+coordinating between various components to transform natural language
+descriptions into executable Taichi code for particle behaviors.
+"""
+
 import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
@@ -14,11 +21,26 @@ from ..debug.tracing import get_collector
 
 
 class BehaviorOrchestrator:
-    """
-    Main orchestrator for synthesizing particle behaviors from natural language.
+    """Main orchestrator for synthesizing particle behaviors from natural language.
     
-    This class coordinates the synthesis pipeline, delegating specific tasks to
-    specialized components while maintaining the overall workflow.
+    This class coordinates the entire synthesis pipeline, managing the transformation
+    of natural language descriptions into executable Taichi code. It delegates
+    specific tasks to specialized components while maintaining the overall workflow
+    and ensuring consistency across the synthesis process.
+    
+    Attributes:
+        tv: Tolvera instance for particle system access.
+        model_name (str): Name of the LLM model being used.
+        provider (str): LLM provider (gemini, anthropic, openai).
+        code_generator (CodeGenerator): Component for Taichi code generation.
+        state_manager (StateManager): Manages particle and global states.
+        species_manager (SpeciesManager): Handles species detection and configuration.
+        behavior_analyzer (BehaviorAnalyzer): Analyzes and decomposes behaviors.
+        template_renderer (TemplateRenderer): Renders code templates.
+        sketch_refiner (SketchRefiner): Refines sketches for architectural patterns.
+        expert_registry (ExpertRegistry): Registry of synthesized expert functions.
+        current_species_config: Current species configuration if detected.
+        synthesized_helpers (Dict): Helper functions synthesized during the process.
     """
     
     def __init__(
@@ -27,13 +49,13 @@ class BehaviorOrchestrator:
         model_name: str = "gemini-2.0-flash",
         api_key: Optional[str] = None
     ):
-        """
-        Initialize the behavior agent.
+        """Initialize the behavior orchestrator.
         
         Args:
-            tolvera_instance: Tölvera instance for particle system access
-            model_name: Name of the LLM model to use
-            api_key: Optional API key for the model
+            tolvera_instance: Tölvera instance for particle system access.
+            model_name (str): Name of the LLM model to use. Defaults to "gemini-2.0-flash".
+            api_key (Optional[str]): API key for the model provider. If None, attempts 
+                to load from environment variables.
         """
         self.tv = tolvera_instance
         self.model_name = model_name
@@ -63,16 +85,27 @@ class BehaviorOrchestrator:
         weight: float = 1.0,
         skip_decomposition: bool = False
     ) -> Dict[str, Any]:
-        """
-        Add a new behavior from natural language description.
+        """Add a new behavior from natural language description.
+        
+        Analyzes the description, potentially decomposes it into components,
+        synthesizes the required expert functions, and registers them in the
+        expert registry.
         
         Args:
-            description: Natural language behavior description
-            weight: Weight for this behavior in integration
-            skip_decomposition: Skip decomposition check
+            description (str): Natural language behavior description.
+            weight (float): Weight for this behavior in integration. Defaults to 1.0.
+            skip_decomposition (bool): If True, skips decomposition analysis. 
+                Defaults to False.
             
         Returns:
-            Dictionary with synthesis results
+            Dict[str, Any]: Synthesis results containing:
+                - success (bool): Whether synthesis succeeded
+                - experts_added (int): Number of experts synthesized
+                - expert_names (List[str]): Names of synthesized experts
+                - states_created (int): Number of new states created
+                - species_count (int): Number of species detected
+                - pattern_type (str): Detected pattern type
+                - pattern_confidence (float): Confidence in pattern detection
         """
         collector = get_collector()
         
@@ -112,16 +145,19 @@ class BehaviorOrchestrator:
         filename: Optional[str] = None,
         use_timestamp: bool = True
     ) -> Tuple[str, str]:
-        """
-        Generate a complete runnable sketch.
+        """Generate a complete runnable sketch from registered experts.
+        
+        Creates a complete Python file with all necessary imports, expert functions,
+        integration kernels, and render loop. Handles async context appropriately.
         
         Args:
-            description: Behavior description
-            filename: Optional output filename
-            use_timestamp: Whether to add timestamp to filename
+            description (str): Overall description for the sketch.
+            filename (Optional[str]): Output filename. If None, generates default name.
+            use_timestamp (bool): If True, adds timestamp to filename. Defaults to True.
             
         Returns:
-            Tuple of (sketch_code, file_path)
+            Tuple[str, str]: (sketch_code, file_path) where sketch_code is the 
+                complete Python code and file_path is where it was saved.
         """
         try:
             loop = asyncio.get_event_loop()
@@ -184,7 +220,12 @@ class BehaviorOrchestrator:
         return self._save_to_file(sketch, filename, use_timestamp)
     
     def get_expert_info(self) -> List[Dict[str, Any]]:
-        """Get information about registered experts."""
+        """Get information about all registered experts.
+        
+        Returns:
+            List[Dict[str, Any]]: List of expert information dictionaries containing
+                name, description, type, weight, and code for each expert.
+        """
         return self.expert_registry.get_expert_info_list()
     
     # ========== Core Synthesis Pipeline (Private) ==========
@@ -195,16 +236,18 @@ class BehaviorOrchestrator:
         weight: float = 1.0,
         decomposition=None
     ) -> Dict[str, Any]:
-        """
-        Complete synthesis pipeline for a behavior.
+        """Execute the complete synthesis pipeline for a behavior.
+        
+        This is the core synthesis method that coordinates the entire process
+        from description analysis to expert registration.
         
         Args:
-            description: Natural language behavior description
-            weight: Weight for this behavior
-            decomposition: Optional pre-computed decomposition
+            description (str): Natural language behavior description.
+            weight (float): Weight for this behavior in integration.
+            decomposition: Optional pre-computed decomposition from analyzer.
             
         Returns:
-            Dictionary with synthesis results
+            Dict[str, Any]: Synthesis results with success status and metadata.
         """
         collector = get_collector()
         
@@ -582,7 +625,14 @@ class BehaviorOrchestrator:
         }
     
     def _prepare_sketch_metadata(self, description: str) -> Dict[str, Any]:  # noqa: ARG002
-        """Prepare metadata for sketch generation."""
+        """Prepare metadata for sketch generation.
+        
+        Args:
+            description (str): Sketch description (for future use).
+            
+        Returns:
+            Dict[str, Any]: Metadata components for sketch template.
+        """
         # Delegate to state_manager for initialization components
         components = self.state_manager.generate_initialization_components(
             particle_count=getattr(self, 'detected_particle_count', self.tv.pn),
@@ -594,7 +644,7 @@ class BehaviorOrchestrator:
             'state_code': components['state_code'],
             'config_code': components['config_code'],
             'temporal_code': "",
-            'respawn_code': "",
+            'respawn_code': "",  # Particle respawning logic if needed
             'environmental_fields': ""
         }
     

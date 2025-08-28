@@ -77,7 +77,7 @@ class SketchRefiner:
         exemplar_files = {
             'slime': 'slime.py',
             'boids': 'boids.py', 
-            'particle_life': 'particle-life.py'
+            'particle_life': 'particle_life.py'
         }
         
         for name, filename in exemplar_files.items():
