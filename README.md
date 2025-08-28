@@ -4,8 +4,8 @@
 
 ![type:video](https://www.youtube.com/embed/BmoinLR8Otc)
 
-[Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems.
-It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own.
+[Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems. 
+It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
 
 With built-in support for Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper) and interactive machine learning (IML) via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla), Tölvera interfaces with and rapidly maps onto existing creative computing software and hardware, striving to be both an accessible and powerful tool for exploring [diverse intelligence](https://www.frontiersin.org/articles/10.3389/fnsys.2022.768201/full) in artistic contexts.
 
@@ -67,14 +67,12 @@ mkdocs gh-deploy # deploy via github pages
 
 - Tölvera does not support Intel-based Apple devices (due to [`anguilla`](https://github.com/Intelligent-Instruments-Lab/anguilla)'s FAISS dependency, and Mediapipe not supporting Intel Macs).
 - On macOS, [an OpenMP issue](https://github.com/pytorch/pytorch/issues/78490) may prevent Tölvera programs from running, which can be addressed by adding the following environment variable:
-
 ```sh
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
-
 - Sonification via [SignalFlow](https://signalflow.dev) does not work on Windows.
 - Mediapipe versions [may need to be downgraded](https://github.com/google/mediapipe/issues/5168) in order to work on macOS and Windows.
-- `OSError: Could not find any hidapi library`: this is due to the DualSense (PS5 controller) class. On macOS you can `brew install hidapi` and it should work.
+- `OSError: Could not find any hidapi library`: this is due to the DualSense (PS5 controller) class. On macOS you can `brew install hidapi` and it should work. 
 
 ## Contribute
 
@@ -94,7 +92,7 @@ To discuss Tölvera with developers and other users:
 - Use GitHub [Discussions](https://github.com/Intelligent-Instruments-Lab/tolvera/discussions) to share ideas and ask questions.
 - Use [Discord](https://discord.gg/ER7tWds9vM) for further support, sharing your work, and general chat.
 
-Across the project, we follow the [Berlin Code of Conduct](https://berlincodeofconduct.org/).
+Across the project, we follow the [Berlin Code of Conduct](https://berlincodeofconduct.org/). 
 Please get in touch if you experience or witness any conduct issues.
 
 ## Roadmap
@@ -118,7 +116,7 @@ The current canonical citation is our [NIME 2024](https://www.nime2024.org/) pap
 
 ## Inspiration
 
-- [Michael Levin](<https://en.wikipedia.org/wiki/Michael_Levin_(biologist)>)
+- [Michael Levin](https://en.wikipedia.org/wiki/Michael_Levin_(biologist))
 - [SwissGL](https://swiss.gl)
 - [Lenia](https://chakazul.github.io/lenia.html)
 - Particle Life (attributed to various, see for example [Clusters](https://www.ventrella.com/Clusters/))
