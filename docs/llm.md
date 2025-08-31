@@ -126,6 +126,8 @@ Jinja2 templates for code generation:
 
 ### Textual User Interface
 
+![LLM UI Screenshot](assets/images/llm_ui.png)
+
 Launch the interactive terminal UI:
 
 ```bash
