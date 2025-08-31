@@ -128,6 +128,10 @@ Jinja2 templates for code generation:
 
 ![LLM UI Screenshot](assets/images/llm_ui.png)
 
+**Demo Video**: Watch a comprehensive overview of the LLM system capabilities and Google Summer of Code 2025 achievements: [Tölvera LLM Demo](https://www.youtube.com/watch?v=jllyR3wAETc)
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/jllyR3wAETc" title="Tölvera LLM Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
 Launch the interactive terminal UI:
 
 ```bash
