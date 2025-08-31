@@ -90,12 +90,7 @@ async def demo_basic_behaviors():
     orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     # Combine behaviors into a single description to avoid state conflicts
-    # combined_behavior = "two species, one blue and tangerine colored, repel one another."
-    # combined_behavior = "draw circle patterns that fills the screen in a beautiful colorful stained glass appearance.  More overlap every few seconds."
-    # combined_behavior = "one blue species moves faster during the day than at night.  The red species does the opposite"
-    # combined_behavior = "a tangerine species circles around and red rectangle that is drawn in the center of the screen"
-    # combined_behavior = "Every couple of seconds draw a tangerine rectangle near the center of the screen but ranomdize where it goes a bit"
-    combined_behavior = "Complex self organizing behavior between three species."
+    combined_behavior = "Particles fall down with gravity."
     
     print(f"\nAdding behavior: {combined_behavior}")
     try:
@@ -141,7 +136,7 @@ async def demo_complex_behaviors():
     orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
     
     complex_description = """
-    Two species, one blue and one teal, are competing for food (green particles).  The blue one is quicker than the teal and runs away with the food while
+    Two species, one maroon and one teal, are competing for food (green particles).  The blue one is quicker than the teal and runs away with the food while
     the slower blue one always chases the teal one.  The food (green particles) disappears when consumed by either species.  Even if no food is present, the blue species will continue to move with the teal species chasing them.
     The food regenerates over time in random places.
     """
