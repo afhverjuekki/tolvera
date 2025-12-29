@@ -7,6 +7,22 @@
 [Tölvera](https://tolvera.is) is a Python library designed for [composing together](https://arxiv.org/abs/2303.06777) and interacting with [basal](https://royalsocietypublishing.org/doi/full/10.1098/rstb.2019.0750) [agencies](https://link.springer.com/article/10.1007/s00018-023-04790-z), inspired by fields such as artificial life (ALife) and self-organising systems. 
 It provides creative coding-style APIs that allow users to combine and compose various built-in behaviours, such as flocking, slime mold growth, and swarming, and also author their own. 
 
+## Flock Behaviour
+
+In Tölvera, a **flock** refers to a group of particles whose motion is governed
+by local interactions with nearby particles. The relationships between particles
+are defined using the **Boids algorithm**, a classic model for simulating
+collective behaviour.
+
+The flocking behaviour is based on three core rules:
+
+- **Separation**: particles steer away from nearby neighbours to avoid crowding.
+- **Alignment**: particles align their velocity with the average velocity of neighbours.
+- **Cohesion**: particles move towards the average position of nearby neighbours.
+
+These simple local rules give rise to complex and emergent group motion.
+
+
 With built-in support for Open Sound Control (OSC) via [iipyper](https://github.com/Intelligent-Instruments-Lab/iipyper) and interactive machine learning (IML) via [anguilla](https://github.com/Intelligent-Instruments-Lab/anguilla), Tölvera interfaces with and rapidly maps onto existing creative computing software and hardware, striving to be both an accessible and powerful tool for exploring [diverse intelligence](https://www.frontiersin.org/articles/10.3389/fnsys.2022.768201/full) in artistic contexts.
 
 Inspired by our lab's location in Iceland, the word Tölvera is an Icelandic [kenning](https://en.wikipedia.org/wiki/Kenning) based on _tölva_ meaning computer, from _tala_ (number) and _völva_ (prophetess), and _vera_ (being), composed together as _number being_.
