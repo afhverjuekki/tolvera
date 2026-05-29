@@ -1,0 +1,120 @@
+## EXPERT FUNCTION REQUIREMENTS
+Generate a complete Taichi expert function.
+Force experts: (pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2
+Interaction experts: (p1: ti.template(), p2: ti.template()) -> ti.math.vec2
+Drawing/Visual experts: () # NO PARAMETERS, NO RETURN TYPE - pure drawing function
+
+Species IDs range from 0 to {species_count}.
+
+## MOTION TUNING — VISUALLY EXPRESSIVE, NOT PHYSICALLY ACCURATE
+
+Tölvera sketches are real-time audiovisual installations on a 1920×1080 canvas, NOT physics simulations. Particles must visibly traverse the screen for both audience and audio (sonification) to register meaningful motion. Apply these magnitudes — values from textbook physics references will produce a static, "drifting" sketch the user perceives as broken.
+
+PER-SPECIES PARAMETERS (set in the configuration block):
+- `max_speed`: 80–250 pixels-per-step is the right range. NOT 1–10. A particle at max_speed=8 with dt=0.016 moves 0.13 pixels per frame — invisible.
+- `drag_coefficient` (if you introduce one): 0.005–0.05. NOT 0.3–0.8. Heavy drag dissipates motion within a few frames and the flock settles into a frozen blob.
+- `cohesion_strength`, `alignment_strength`, `separation_strength`: ALL three must be in the same scalar order of magnitude — typically 1.0–5.0. The canonical boids ratio is roughly `cohesion : alignment : separation ≈ 1 : 1 : 2`. NEVER set separation_strength to 50 or 120 while cohesion is at 2 — the separation force then dominates by 25–50× and particles violently scatter on every neighbour, producing TV-static visuals with no visible flocking. The "force magnitudes 300-800" guidance elsewhere refers to RETURN VALUES of force experts (gravity, chase), NOT to per-species strength MULTIPLIERS.
+- Inter-species repulsion strength: 200–600 for distinct, separated species. NOT 50–120 (species end up overlapping). This IS a return-value-scale force, so the large magnitudes are correct here.
+- Inter-species attraction strength: usually 0 unless the user explicitly asks for "mingling" or "mutual orbiting" behaviour.
+- Inter-species repulsion radius: 30–80 px so the territorial boundary is wide enough to be visible.
+
+DEFAULT INTER-SPECIES BEHAVIOUR (when the user prompt has multiple species):
+The DEFAULT for any multi-species sketch is **mutual inter-species REPULSION** so each species carves out its own visible territory on the canvas. The phrase "flock together" in a multi-species prompt means "each species flocks tightly *amongst its own members*" — it does NOT mean all species merge into one blended cluster. Do not generate inter-species attraction unless the user EXPLICITLY says one of:
+  - "mingle", "mix", "blend", "merge", "intermingle"
+  - "predator/prey" (where predators attract toward prey)
+  - "swarm together as one", "form a single school"
+  - "follow each other", "chase each other", "orbit"
+For every other multi-species prompt — including bare "flock together", "flock as a group", "swarm", "school" — assume mutual repulsion between species so the visuals show three (or N) distinct, separated flocks. Default per-species `inter_species_attraction = 0`. Default per-species `inter_species_repulsion_strength = 250–500`. If you populate an interaction matrix (`_repulse_matrix[s0, s1]`), fill it SYMMETRICALLY with non-trivial repulsion for every pair (e.g. 1.0–2.0 in all off-diagonal entries) and zero out the attraction matrix unless the user's prompt explicitly opts in.
+
+INTEGRATION STEP (in the @ti.kernel that does `vel += force * dt; pos += vel * dt`):
+- `dt = 0.10–0.20`. NOT 0.016. The variable is NOT real time; it's the per-frame display step multiplier. 0.016 is the textbook 60-FPS physical timestep but it produces snail-pace visual motion.
+
+FORCE MAGNITUDES (steering / chase / flee force returns):
+- 300–800 for gravity-like attractors.
+- 200–600 for chase/flee.
+- Already correct in the synthesis examples below — keep using these.
+
+OSC SONIFICATION (when emitting `/metrics/<sid>/vel` from particle velocities):
+- The velocity normalization divisor (`vel.norm() / N`) should be 1.5–3.0 so the smoothed average lands in [0.2, 1.0] for an audibly-modulating amp signal. NOT 8.0 (saturates the bottom of the range, all species sound dead-quiet).
+- The OSC metric kernel should AVERAGE over all active particles per species, NOT lock onto particle index 0 — a locked single particle often ends up in a tight cluster with low local velocity and the audio falsely reports stillness.
+
+Sanity check before emitting parameters: at the user's prompt's species speeds, would a particle visibly cross at least half the 1920px width in 10 seconds? If not, scale up.
+
+## VISUAL/DRAWING EXPERT SYNTHESIS
+For pure drawing behaviors (e.g., "draw a red rectangle"):
+1. Generate a @ti.func expert that performs the drawing
+2. Use tv.px drawing operations (rect, circle, line, etc.)
+3. DO NOT return anything - void function, no return statement
+4. Drawing operations should use screen coordinates
+5. NO PARAMETERS - drawing functions take no arguments
+
+Example visual expert WITH temporal state:
+@ti.func
+def draw_rectangle():
+    # CRITICAL: Time-based animation states are now in llm_global!
+    # For oscillating/blinking effects, check global states
+    phase = tv.s.llm_global.field[0].phase  # Access animation state from global
+    
+    # Draw a red rectangle with oscillating opacity
+    x = tv.x // 2 - 100
+    y = tv.y // 2 - 50
+    width = 200
+    height = 100
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
+    tv.px.rect(x, y, width, height, color)
+    # No return statement - this is a void function
+
+Example visual expert WITHOUT temporal state (fallback to frame counter):
+@ti.func
+def draw_rectangle():
+    # No temporal states available, use frame counter
+    frame = tv.ctx.i[None]
+    phase = (frame % 150) / 150.0  # 2.5 second cycle at 60fps
+    
+    # Draw with oscillating opacity
+    x = tv.x // 2 - 100
+    y = tv.y // 2 - 50
+    width = 200
+    height = 100
+    opacity = ti.abs(ti.sin(phase * 3.14159 * 2))
+    color = ti.math.vec4(1.0, 0.0, 0.0, opacity)
+    tv.px.rect(x, y, width, height, color)
+
+## HELPER FUNCTION SYNTHESIS
+If your expert needs complex operations, you SHOULD generate helper functions.
+RULES FOR HELPERS:
+1. Generate helpers for operations like finding nearest entities, computing distances, etc.
+2. ANY HELPER YOU GENERATE MUST BE CALLED BY YOUR EXPERT - no unused helpers!
+3. Helpers should be @ti.func functions that can be called from the expert
+4. Include helpers in the 'helper_functions' field of your response
+5. Expert code MUST call the helpers it generates
+
+COMMON HELPERS TO GENERATE:
+- For food/resource behaviors: generate consume_food helper
+- For toroidal worlds: generate wrap_distance helper  
+- For wandering: generate random_wander helper
+- For finding targets: generate find_nearest_target helper
+
+Example helpers for food consumption:
+helper_functions: [
+    {{
+        "name": "consume_food",
+        "code": "@ti.func\ndef consume_food(particle_idx: ti.i32, consumption_radius: ti.f32) -> ti.i32:\n    '''Check for food particles to consume'''\n    consumed = 0\n    my_pos = tv.p.field[particle_idx].pos\n    for j in range(tv.pn):\n        if tv.p.field[j].species == 2 and tv.p.field[j].active > 0:  # Food is species 2\n            dist = (tv.p.field[j].pos - my_pos).norm()\n            if dist < consumption_radius:\n                tv.p.field[j].active = 0.0  # Consume it\n                consumed = 1\n                break\n    return consumed"
+    }},
+    {{
+        "name": "wrap_distance", 
+        "code": "@ti.func\ndef wrap_distance(p1: ti.math.vec2, p2: ti.math.vec2) -> ti.math.vec2:\n    '''Calculate shortest vector in toroidal world'''\n    diff = p2 - p1\n    if ti.abs(diff.x) > tv.x * 0.5:\n        if diff.x > 0:\n            diff.x -= tv.x\n        else:\n            diff.x += tv.x\n    if ti.abs(diff.y) > tv.y * 0.5:\n        if diff.y > 0:\n            diff.y -= tv.y\n        else:\n            diff.y += tv.y\n    return diff"
+    }}
+]
+
+Then in expert code:
+# Check for food consumption
+if species == 0 or species == 1:  # Consumers
+    consumed = consume_food(particle_idx, 5.0)
+    
+# Use wrapped distance for toroidal topology
+diff = wrap_distance(pos, target_pos)
+dist = diff.norm()
+if dist > 0.001:
+    force = (diff / dist) * 250.0

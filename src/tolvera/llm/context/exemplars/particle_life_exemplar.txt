@@ -1,0 +1,200 @@
+# Particle Life - Multi-Species Interaction System
+
+## Core Interaction Force
+
+This exemplar shows how to implement complex species-to-species interactions
+using a 2D state matrix that defines attraction/repulsion between species pairs.
+
+```python
+@ti.func
+def particle_life_interaction(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                             species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Calculate attraction/repulsion based on species interaction matrix.'''
+    force = ti.math.vec2(0.0, 0.0)
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_pos = tv.p.field[j].pos
+            other_species = tv.p.field[j].species
+            
+            # Get interaction parameters from 2D matrix
+            # Each species pair has unique interaction settings
+            attraction = tv.s.llm_species.field[species, other_species].attraction_force
+            interaction_radius = tv.s.llm_species.field[species, other_species].interaction_radius
+            repulsion_radius = tv.s.llm_species.field[species, other_species].repulsion_radius
+            
+            # Calculate distance and direction
+            diff = other_pos - pos
+            dist = diff.norm()
+            
+            # CRITICAL: Declare variables BEFORE conditionals
+            direction = ti.math.vec2(0.0, 0.0)
+            force_magnitude = 0.0
+            
+            if dist > 0.001 and dist < interaction_radius:
+                direction = diff / dist  # Safe normalization
+                
+                # Two-zone force model
+                if dist < repulsion_radius:
+                    # Zone 1: Strong repulsion at close range (avoid overlap)
+                    force_magnitude = -300.0 * (1.0 - dist / repulsion_radius)
+                else:
+                    # Zone 2: Attraction/repulsion based on matrix
+                    # Smooth falloff with distance
+                    normalized_dist = (dist - repulsion_radius) / (interaction_radius - repulsion_radius)
+                    force_magnitude = attraction * (1.0 - normalized_dist)
+                
+                force += direction * force_magnitude
+    
+    # Clamp total force to prevent instability
+    max_force = tv.s.llm_global.field[0].max_force
+    force_norm = force.norm()
+    
+    # Declare clamped force before conditional
+    clamped_force = force
+    
+    if force_norm > max_force and force_norm > 0.001:
+        clamped_force = (force / force_norm) * max_force
+    
+    return clamped_force
+```
+
+## Friction for Stability
+
+```python
+@ti.func
+def friction_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                  species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Apply velocity-dependent friction for system stability.'''
+    friction_coefficient = 0.5
+    # Simple linear friction opposing velocity
+    force = -vel * friction_coefficient
+    return force
+```
+
+## State Setup for Particle Life
+
+```python
+# Global parameters
+tv.s.llm_global = {
+    'max_force': 200.0,    # Force limiter
+    'damping': 0.98,       # Velocity damping per frame
+}
+
+# 2D Species interaction matrix (species x species)
+# This creates unique interactions between every species pair
+tv.s.llm_species = {
+    'shape': (tv.sn, tv.sn),  # 2D matrix
+    'state': {
+        'attraction_force': (-200.0, 200.0),  # Can be repulsive or attractive
+        'interaction_radius': (60.0, 140.0),   # Detection range
+        'repulsion_radius': (15.0, 25.0),      # Personal space
+    }
+}
+
+# Initialize interaction matrix with interesting patterns
+@ti.kernel
+def init_interaction_matrix():
+    for s1 in range(tv.sn):
+        for s2 in range(tv.sn):
+            # Self-interaction (same species)
+            if s1 == s2:
+                # Mild repulsion within same species
+                tv.s.llm_species.field[s1, s2].attraction_force = -50.0
+                tv.s.llm_species.field[s1, s2].interaction_radius = 80.0
+                tv.s.llm_species.field[s1, s2].repulsion_radius = 20.0
+            else:
+                # Cross-species interactions (can be asymmetric)
+                # Random but controlled interactions
+                attraction = (ti.random() - 0.5) * 150.0  # -75 to +75
+                tv.s.llm_species.field[s1, s2].attraction_force = attraction
+                tv.s.llm_species.field[s1, s2].interaction_radius = 60.0 + ti.random() * 80.0
+                tv.s.llm_species.field[s1, s2].repulsion_radius = 15.0 + ti.random() * 10.0
+```
+
+## Integration Pattern
+
+```python
+@ti.kernel
+def integrate_particle_life():
+    '''Main integration kernel combining all forces.'''
+    dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
+    damping = tv.s.llm_global.field[0].damping
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            pos = tv.p.field[i].pos
+            vel = tv.p.field[i].vel
+            mass = tv.p.field[i].mass
+            species = tv.p.field[i].species
+            
+            # Accumulate all forces
+            total_force = ti.math.vec2(0.0, 0.0)
+            
+            # Main particle life interaction
+            total_force += particle_life_interaction(pos, vel, mass, species, i)
+            
+            # Friction for stability
+            total_force += friction_force(pos, vel, mass, species, i)
+            
+            # Update velocity (F = ma)
+            acceleration = ti.math.vec2(0.0, 0.0)
+            if mass > 0:
+                acceleration = total_force / mass
+            else:
+                acceleration = total_force
+            
+            tv.p.field[i].vel += acceleration * dt
+            
+            # Apply damping
+            tv.p.field[i].vel *= damping
+            
+            # Update position
+            tv.p.field[i].pos += tv.p.field[i].vel * dt
+```
+
+## Visual Enhancement
+
+```python
+@ti.func
+def draw_interaction_lines(i: ti.i32):
+    '''Draw lines showing strong interactions between particles.'''
+    if tv.p.field[i].active > 0:
+        pos_i = tv.p.field[i].pos
+        species_i = tv.p.field[i].species
+        
+        for j in range(tv.pn):
+            # Avoid duplicate lines (only draw once per pair)
+            if i < j and tv.p.field[j].active > 0:
+                pos_j = tv.p.field[j].pos
+                species_j = tv.p.field[j].species
+                
+                dist = (pos_j - pos_i).norm()
+                interaction_radius = tv.s.llm_species.field[species_i, species_j].interaction_radius
+                
+                # Only show close interactions
+                if dist < interaction_radius * 0.5:
+                    attraction = tv.s.llm_species.field[species_i, species_j].attraction_force
+                    
+                    # Color based on attraction/repulsion
+                    color = ti.math.vec4(0.0, 0.0, 0.0, 0.0)
+                    
+                    if attraction > 0:
+                        # Green for attraction
+                        color = ti.math.vec4(0.0, 0.3, 0.0, 0.1)
+                    else:
+                        # Red for repulsion
+                        color = ti.math.vec4(0.3, 0.0, 0.0, 0.1)
+                    
+                    tv.px.line(pos_i.x, pos_i.y, pos_j.x, pos_j.y, color)
+```
+
+## Key Patterns Demonstrated
+
+1. **2D State Arrays**: Using [species1, species2] indexing for interaction matrix
+2. **Two-Zone Forces**: Repulsion zone + attraction/repulsion zone
+3. **Force Clamping**: Preventing numerical instability
+4. **Asymmetric Interactions**: Species A→B can differ from B→A
+5. **Distance Falloff**: Smooth force reduction with distance
+6. **Friction/Damping**: System stability through velocity damping
+7. **Visual Debugging**: Drawing interaction lines to visualize forces

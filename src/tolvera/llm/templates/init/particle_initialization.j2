@@ -1,0 +1,157 @@
+{#- Particle Initialization Template -#}
+{#- Supports multiple initialization modes: random, grid, clustered, uniform_speed -#}
+# Initialize particles
+@ti.kernel  
+def init_particles():
+    {% if init_type == "grid" %}
+    # Grid initialization for {{ species_count }} species
+    grid_size = {{ grid_size }}
+    particles_per_species = tv.pn // {{ species_count }}
+    
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        
+        # Calculate grid position
+        species_id = i // particles_per_species
+        particle_in_species = i % particles_per_species
+        
+        # Position on grid
+        grid_x = particle_in_species % grid_size
+        grid_y = particle_in_species // grid_size
+        
+        # Convert to world coordinates with spacing
+        spacing = ti.min(tv.x, tv.y) / (grid_size + 1)
+        x_offset = (tv.x - spacing * (grid_size - 1)) / 2
+        y_offset = (tv.y - spacing * (grid_size - 1)) / 2
+        
+        tv.p.field[i].pos = ti.Vector([
+            x_offset + grid_x * spacing,
+            y_offset + grid_y * spacing
+        ])
+        
+        # Small random velocity
+        tv.p.field[i].vel = ti.Vector([
+            (ti.random() - 0.5) * 10.0,
+            (ti.random() - 0.5) * 10.0
+        ])
+        
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].speed = 20.0
+        tv.p.field[i].species = species_id % {{ species_count }}
+    {% elif init_type == "clustered" %}
+    # Clustered initialization for {{ species_count }} species
+    particles_per_species = tv.pn // {{ species_count }}
+    cluster_radius = ti.min(tv.x, tv.y) * 0.15  # 15% of screen size
+    
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        
+        species_id = i // particles_per_species
+        
+        # Different cluster centers for each species
+        {% if species_count == 2 %}
+        if species_id == 0:
+            center_x = tv.x * 0.3
+            center_y = tv.y * 0.5
+        else:
+            center_x = tv.x * 0.7
+            center_y = tv.y * 0.5
+        {% elif species_count == 3 %}
+        if species_id == 0:
+            center_x = tv.x * 0.3
+            center_y = tv.y * 0.3
+        elif species_id == 1:
+            center_x = tv.x * 0.7
+            center_y = tv.y * 0.3
+        else:
+            center_x = tv.x * 0.5
+            center_y = tv.y * 0.7
+        {% else %}
+        # Arrange clusters in a circle
+        angle = 2 * 3.14159 * species_id / {{ species_count }}
+        center_x = tv.x * 0.5 + tv.x * 0.3 * ti.cos(angle)
+        center_y = tv.y * 0.5 + tv.y * 0.3 * ti.sin(angle)
+        {% endif %}
+        
+        # Random position within cluster
+        r = ti.sqrt(ti.random()) * cluster_radius
+        theta = ti.random() * 2 * 3.14159
+        
+        tv.p.field[i].pos = ti.Vector([
+            center_x + r * ti.cos(theta),
+            center_y + r * ti.sin(theta)
+        ])
+        
+        # Velocity pointing outward from cluster center
+        tv.p.field[i].vel = ti.Vector([
+            (ti.random() - 0.5) * 50.0,
+            (ti.random() - 0.5) * 50.0
+        ])
+        
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].speed = 20.0
+        tv.p.field[i].species = species_id
+    {% elif uniform_speed %}
+    # Initialize particles with uniform speed
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+        
+        # Uniform speed with random directions
+        angle = ti.random() * 2 * 3.14159
+        tv.p.field[i].vel = ti.Vector([
+            ti.cos(angle) * {{ speed_magnitude }},
+            ti.sin(angle) * {{ speed_magnitude }}
+        ])
+        
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].speed = 20.0
+        {% if species_count > 1 %}
+        # Distribute species evenly
+        tv.p.field[i].species = i % {{ species_count }}
+        {% else %}
+        tv.p.field[i].species = 0  # All particles are species 0
+        {% endif %}
+    {% else %}
+    # Default random initialization
+    for i in range(tv.pn):
+        tv.p.field[i].active = 1.0
+        tv.p.field[i].pos = ti.Vector([ti.random() * tv.x, ti.random() * tv.y])
+        tv.p.field[i].vel = ti.Vector([
+            (ti.random() - 0.5) * 100.0,
+            (ti.random() - 0.5) * 100.0
+        ])
+        tv.p.field[i].size = 5.0
+        tv.p.field[i].mass = 1.0
+        tv.p.field[i].speed = 20.0
+        {% if species_count > 1 %}
+        # Distribute species evenly
+        tv.p.field[i].species = i % {{ species_count }}
+        {% else %}
+        tv.p.field[i].species = 0  # All particles are species 0
+        {% endif %}
+    {% endif %}
+
+init_particles()
+
+# Initialize species colors
+{% if species_colors %}
+{%- for species_id, color in species_colors.items() %}
+tv.s.species.field[{{ species_id }}].rgba = {{ color }}
+{% endfor -%}
+{% else %}
+# Default colors
+tv.s.species.field[0].rgba = [1.0, 0.3, 0.3, 1.0]  # Red
+{%- if species_count > 1 %}
+tv.s.species.field[1].rgba = [0.3, 0.3, 1.0, 1.0]  # Blue
+{%- endif %}
+{%- if species_count > 2 %}
+tv.s.species.field[2].rgba = [0.3, 1.0, 0.3, 1.0]  # Green
+{%- endif %}
+{%- if species_count > 3 %}
+tv.s.species.field[3].rgba = [1.0, 1.0, 0.3, 1.0]  # Yellow
+{%- endif %}
+{%- endif %}

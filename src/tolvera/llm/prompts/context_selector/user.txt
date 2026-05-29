@@ -1,0 +1,12 @@
+Analyze this behavior description and select the most relevant contexts:
+
+BEHAVIOR: "{description}"
+EXPERT TYPE: {expert_type}
+
+Consider:
+1. What type of behavior is this? (movement, interaction, visual, temporal, etc.)
+2. What technical patterns will be needed? (forces, state access, drawing, etc.)
+3. Are there specific Tölvera features required? (species, states, pixels, etc.)
+4. What examples would be most helpful for implementation?
+
+Select EXACTLY 3 most relevant contexts that will provide focused, useful patterns for implementing this specific behavior.

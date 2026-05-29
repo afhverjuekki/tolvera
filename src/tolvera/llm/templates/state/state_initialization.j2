@@ -1,0 +1,76 @@
+{#- State Initialization Template -#}
+{#- This template generates both container and value initialization code -#}
+{%- if categories %}
+# === State Initialization ===
+{%- for cat in categories if cat.has_states %}
+
+# {{ cat.name|capitalize }} states
+if '{{ cat.container_name }}' not in tv.s:
+    tv.s.set('{{ cat.container_name }}', {
+        'state': {
+            {%- for name, state in cat.states.items() %}
+            '{{ name }}': ({{ state.type }}, {{ state.min }}, {{ state.max }}),
+            {%- endfor %}
+        },
+        'shape': {{ cat.shape }},
+        'osc': ({% for item in cat.osc %}'{{ item }}'{% if not loop.last %}, {% endif %}{% endfor %}),
+        'randomise': {{ cat.randomise }}
+    })
+{%- endfor %}
+
+{#- Value Initialization Section -#}
+{%- set ns = namespace(has_global_init=false, has_particle_init=false, has_species_init=false) %}
+
+{%- for cat in categories if cat.has_states %}
+    {%- if cat.name == 'global' and cat.init_values %}
+        {%- set ns.has_global_init = true %}
+    {%- elif cat.name == 'particle' and cat.needs_explicit_init %}
+        {%- set ns.has_particle_init = true %}
+    {%- elif cat.name == 'species' and cat.init_values %}
+        {%- set ns.has_species_init = true %}
+    {%- endif %}
+{%- endfor %}
+
+{%- if ns.has_global_init or ns.has_particle_init or ns.has_species_init %}
+
+# === State Value Initialization ===
+{%- endif %}
+
+{%- if ns.has_global_init %}
+{%- for cat in categories if cat.name == 'global' and cat.init_values %}
+
+# Initialize global state values
+{%- for init_stmt in cat.init_values %}
+{{ init_stmt }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+
+{%- if ns.has_particle_init %}
+{%- for cat in categories if cat.name == 'particle' and cat.needs_explicit_init %}
+
+# Initialize particle state values
+@ti.kernel
+def init_particle_states():
+    for i in range(tv.pn):
+        {%- for init_stmt in cat.particle_kernel_statements %}
+        {{ init_stmt }}
+        {%- endfor %}
+
+init_particle_states()
+{%- endfor %}
+{%- endif %}
+
+{%- if ns.has_species_init %}
+{%- for cat in categories if cat.name == 'species' and cat.init_values %}
+
+# Initialize species state values
+{%- for init_stmt in cat.init_values %}
+{{ init_stmt }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+
+{%- else %}
+# No custom states defined
+{%- endif %}

@@ -1,0 +1,191 @@
+## CRITICAL TAICHI RULES - THESE PATTERNS WILL CRASH IF WRONG:
+
+### VECTOR OPERATIONS - USE CORRECT SYNTAX:
+❌ WRONG - These methods DON'T EXIST and will crash:
+```python
+vec.normalized()  # ERROR: 'vec2' has no attribute 'normalized'
+ti.Vector([x,y]).norm()  # ERROR: 'Vector' has no attribute 'norm'
+```
+
+✅ CORRECT - Use these patterns:
+```python
+# For ti.math.vec2 (PREFERRED in Tölvera):
+force = ti.math.vec2(0.0, 0.0)
+diff = p2.pos - p1.pos
+dist = diff.norm()  # Works for ti.math.vec2
+if dist > 0.001:  # ALWAYS check before division
+    direction = diff / dist  # Manual normalization
+
+# Alternative with ti.math functions:
+direction = ti.math.normalize(diff)  # Built-in
+length = ti.math.length(diff)  # Built-in
+```
+
+### MATH FUNCTIONS - USE TAICHI VERSIONS:
+❌ WRONG:
+```python
+import math
+angle = math.sin(t)  # ERROR in Taichi scope
+```
+
+✅ CORRECT:
+```python
+angle = ti.sin(t)
+dist = ti.sqrt(x*x + y*y)
+cos_val = ti.cos(angle)
+random_val = ti.random()  # NOT random.random()
+```
+
+### 1. USE CORRECT VARIABLE NAMES - particle_idx NOT i:
+❌ WRONG - Using undefined 'i' variable:
+```python
+for j in range(tv.pn):
+    if i != j:  # ERROR: NameError: name 'i' is not defined
+```
+
+✅ CORRECT - Use the particle_idx parameter:
+```python
+def expert_function(pos, vel, mass, species, particle_idx):
+    for j in range(tv.pn):
+        if particle_idx != j:  # CORRECT: use the parameter
+```
+
+IMPORTANT: The current particle's index is passed as 'particle_idx' parameter, never as 'i'!
+
+### 2. NEVER RETURN INSIDE CONDITIONALS - THIS IS THE #1 CAUSE OF CRASHES:
+
+❌ WRONG - THESE EXACT PATTERNS CRASH WITH "Return inside non-static if":
+```python
+# Example 1: Early return for species check - CRASHES!
+if species == 0:
+    return ti.math.vec2(0.0, 0.0)  # CRASH!
+
+# Example 2: Predator that doesn't hunt - CRASHES!
+if species != 1:  # If not a predator
+    return ti.math.vec2(0.0, 0.0)  # CRASH!
+    
+# Example 3: Multiple returns in branches - CRASHES!
+if species == 0:
+    return chase_force  # CRASH!
+else:
+    return flee_force  # CRASH!
+```
+
+✅ CORRECT - ALWAYS USE THESE PATTERNS:
+```python
+# Example 1: Predator hunt behavior - CORRECT PATTERN
+@ti.func
+def predator_hunt(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # ALWAYS declare result variable FIRST
+    force = ti.math.vec2(0.0, 0.0)  # Default: no force
+    
+    # Check species and MODIFY force, don't return!
+    if species == 0:  # Only predators hunt
+        hunt_radius = 150.0
+        nearest_prey = -1
+        min_dist = hunt_radius
+        
+        for j in range(tv.pn):
+            if tv.p.field[j].species == 1:  # Look for prey
+                dist = (tv.p.field[j].pos - pos).norm()
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_prey = j
+        
+        if nearest_prey != -1:
+            direction = (tv.p.field[nearest_prey].pos - pos).normalized()
+            force = direction * 300.0  # Set force, don't return!
+    
+    # SINGLE RETURN at the END
+    return force
+
+# Example 2: Prey flee behavior - CORRECT PATTERN  
+@ti.func
+def prey_flee(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # Declare result FIRST
+    flee_force = ti.math.vec2(0.0, 0.0)
+    
+    # Only prey flee (species 1)
+    if species == 1:
+        for j in range(tv.pn):
+            if tv.p.field[j].species == 0:  # Check for predators
+                diff = pos - tv.p.field[j].pos
+                dist = diff.norm()
+                if dist < 100.0 and dist > 0.01:
+                    flee_force = diff.normalized() * 400.0
+                    break  # Found a predator, flee from it
+    
+    # SINGLE RETURN at END
+    return flee_force
+
+# Example 3: Multi-species behavior - CORRECT PATTERN
+@ti.func  
+def species_behavior(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    # ALWAYS start with default result
+    result = ti.math.vec2(0.0, 0.0)
+    
+    # Use if/elif to set result, NEVER return inside!
+    if species == 0:
+        # Predator behavior
+        result = calculate_hunt_force(pos, vel)  # Set result
+    elif species == 1:
+        # Prey behavior  
+        result = calculate_flee_force(pos, vel)  # Set result
+    elif species == 2:
+        # Neutral behavior
+        result = calculate_wander_force(pos, vel)  # Set result
+    
+    # ONLY ONE RETURN at the very END
+    return result
+```
+
+REMEMBER: Every single return statement MUST be at the END of the function, NEVER inside if/for/while blocks!
+
+### 3. CRITICAL VARIABLE DECLARATION RULE - ALWAYS DECLARE BEFORE CONDITIONALS:
+❌ WRONG - Variable defined inside conditional (COMPILATION ERROR!):
+```python
+if species == 0:
+    alpha = 1.0      # ERROR: alpha not defined before if!
+    strength = 150.0 # ERROR: strength not defined before if!
+else:
+    alpha = 0.0      # ERROR: these will cause compilation failure!
+    strength = 50.0  # ERROR: variables must exist before conditionals!
+# Using variables here will CRASH
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # CRASH: alpha not defined
+force = direction * strength  # CRASH: strength not defined
+```
+
+✅ CORRECT - ALWAYS declare variables with defaults FIRST:
+```python
+# ALWAYS declare ALL variables with default values BEFORE any conditionals
+alpha = 0.0      # Default value declared FIRST
+strength = 50.0  # Default value declared FIRST
+visibility = 1.0 # Default value declared FIRST
+
+# Now you can modify them in conditionals
+if species == 0:
+    alpha = 1.0       # Now we can modify existing variable
+    strength = 150.0  # Now we can modify existing variable
+    visibility = 0.0  # Now we can modify existing variable
+
+# Safe to use - variables are always defined
+color = ti.math.vec4(1.0, 0.0, 0.0, alpha)  # OK: alpha always defined
+force = direction * strength  # OK: strength always defined
+```
+
+### 4. DEFINE ALL VARIABLES BEFORE USE:
+❌ NEVER use undefined variables like:
+```python
+if distance < undefined_radius:  # ERROR: undefined_radius not defined
+```
+
+✅ ALWAYS define constants at the start:
+```python
+detection_radius = 100.0  # Define first
+if distance < detection_radius:  # Now safe to use
+```
+
+### 5. USE ONLY AVAILABLE RESOURCES:
+- Only use helper functions that are listed in AVAILABLE HELPER FUNCTIONS
+- Only use states that are listed in available_states
+- Define all constants and parameters locally in your function

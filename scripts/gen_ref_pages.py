@@ -18,6 +18,9 @@ for path in sorted(src.rglob("*.py")):
     elif parts[-1] == "__main__":
         continue
 
+    elif "exemplars" in parts:
+        continue
+
     with mkdocs_gen_files.open(full_doc_path, "w") as fd:
         identifier = ".".join(parts)
         print("::: " + identifier, file=fd)

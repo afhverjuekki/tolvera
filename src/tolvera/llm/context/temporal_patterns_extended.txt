@@ -1,0 +1,340 @@
+# Temporal State Update Patterns
+
+## Context-Aware Energy Dynamics
+```python
+@ti.kernel
+def update_energy_dynamics():
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            energy = tv.s.llm_particle.field[i].energy
+            species = tv.p.field[i].species
+            vel = ti.Vector([tv.p.field[i, 2], tv.p.field[i, 3]])
+            speed = vel.norm()
+            
+            # Energy consumption based on activity
+            if species == 0:  # Predator
+                # Higher metabolism, burns energy faster when hunting
+                energy_loss = 0.5 + speed * 0.01  # Base + movement cost
+                energy -= energy_loss
+                
+                # Regenerate slowly when resting
+                if speed < 10.0:
+                    energy += 0.3
+            
+            elif species == 1:  # Prey
+                # Lower metabolism, efficient movement
+                energy_loss = 0.2 + speed * 0.005
+                energy -= energy_loss
+                
+                # Regenerate faster when grazing (stationary)
+                if speed < 5.0:
+                    energy += 0.8
+            
+            # Clamp energy and handle exhaustion
+            energy = max(0.0, min(100.0, energy))
+            tv.s.llm_particle.field[i].energy = energy
+            
+            # Particles become inactive only if energy reaches 0
+            if energy <= 0.0:
+                tv.p.field[i].active = 0.0
+```
+
+## Cellular Automaton State Updates
+```python
+@ti.kernel
+def update_cellular_automaton():
+    # Conway's Game of Life or similar rules
+    generation = tv.s.llm_global.field[0].generation
+    
+    # First pass: count neighbors
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            grid_x = tv.s.llm_particle.field[i].grid_x
+            grid_y = tv.s.llm_particle.field[i].grid_y
+            neighbor_count = 0
+            
+            # Check 8 neighbors
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    if dx == 0 and dy == 0:
+                        continue
+                    
+                    # Find neighbor at grid position
+                    for j in range(tv.pn):
+                        if i != j and tv.p.field[j].active > 0:
+                            nx = tv.s.llm_particle.field[j].grid_x
+                            ny = tv.s.llm_particle.field[j].grid_y
+                            if nx == grid_x + dx and ny == grid_y + dy:
+                                if tv.s.llm_particle.field[j].is_alive > 0.5:
+                                    neighbor_count += 1
+            
+            tv.s.llm_particle.field[i].neighbor_count = neighbor_count
+    
+    # Second pass: apply rules
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            alive = tv.s.llm_particle.field[i].is_alive > 0.5
+            neighbors = tv.s.llm_particle.field[i].neighbor_count
+            
+            # Conway's rules
+            if alive:
+                if neighbors < 2 or neighbors > 3:
+                    tv.s.llm_particle.field[i].is_alive = 0.0
+            else:
+                if neighbors == 3:
+                    tv.s.llm_particle.field[i].is_alive = 1.0
+            
+            # Update visual representation
+            if tv.s.llm_particle.field[i].is_alive > 0.5:
+                tv.p.field[i].size = 8.0
+            else:
+                tv.p.field[i].size = 2.0
+    
+    # Increment generation counter
+    tv.s.llm_global.field[0].generation = generation + 1
+```
+
+## Oscillator Phase Updates
+```python
+@ti.kernel
+def update_oscillators():
+    frame = tv.ctx.i[None]
+    dt = 1.0 / 60.0  # Assuming 60 FPS
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Update phase based on frequency
+            phase = tv.s.llm_particle.field[i].phase
+            frequency = tv.s.llm_particle.field[i].frequency
+            
+            # Advance phase
+            phase += frequency * dt
+            
+            # Wrap phase to [0, 1]
+            if phase > 1.0:
+                phase -= 1.0
+            
+            tv.s.llm_particle.field[i].phase = phase
+            
+            # Apply oscillation to position or color
+            oscillation = ti.sin(phase * 2 * 3.14159)
+            
+            # Example: oscillate size
+            base_size = 5.0
+            tv.p.field[i].size = base_size + oscillation * 2.0
+```
+
+## Growth and Morphogenesis Updates
+```python
+@ti.kernel
+def update_growth():
+    dt = 1.0 / 60.0
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            age = tv.s.llm_particle.field[i].age
+            cell_type = tv.s.llm_particle.field[i].cell_type
+            
+            # Age progression
+            age += dt
+            tv.s.llm_particle.field[i].age = age
+            
+            # Growth based on cell type
+            if cell_type == 0:  # Stem cell
+                if age > 2.0:
+                    # Differentiate
+                    tv.s.llm_particle.field[i].cell_type = 1 + ti.cast(ti.random() * 2, ti.i32)
+                    tv.p.field[i].size = 6.0
+            
+            elif cell_type == 1:  # Growing cell
+                # Grow over time
+                growth_rate = 2.0 * (1.0 - age / 10.0)  # Slow down with age
+                tv.p.field[i].size = min(10.0, tv.p.field[i].size + growth_rate * dt)
+            
+            elif cell_type == 2:  # Mature cell
+                # Stable, maybe produce signals
+                if age > 5.0:
+                    # Could trigger nearby cells to grow
+                    pass
+            
+            # Death at old age
+            if age > 20.0:
+                tv.p.field[i].active = 0.0
+```
+
+## Day/Night Cycle Updates
+```python
+@ti.kernel
+def update_day_night_cycle():
+    frame = tv.ctx.i[None]
+    day_length = 600  # Frames per day
+    
+    # Calculate day phase (0-1, where 0.5 is noon)
+    day_phase = ti.cast(frame % day_length, ti.f32) / ti.cast(day_length, ti.f32)
+    tv.s.llm_global.field[0].day_phase = day_phase
+    
+    # Calculate light level
+    light_level = 0.5 + 0.5 * ti.sin(day_phase * 2 * 3.14159)
+    tv.s.llm_global.field[0].light_level = light_level
+    
+    # Update particle behavior based on time
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            species = tv.p.field[i].species
+            
+            # Diurnal species (active during day)
+            if species == 0:
+                activity = light_level
+            # Nocturnal species (active at night)
+            elif species == 1:
+                activity = 1.0 - light_level
+            else:
+                activity = 1.0  # Always active
+            
+            # Store activity level for behavior modulation
+            if hasattr(tv.s.llm_particle.field[i], 'activity'):
+                tv.s.llm_particle.field[i].activity = activity
+```
+
+## Seasonal Cycles
+```python
+@ti.kernel
+def update_seasons():
+    frame = tv.ctx.i[None]
+    year_length = 7200  # Frames per year (2 minutes at 60fps)
+    
+    # Calculate season (0-1, where 0=spring, 0.25=summer, 0.5=fall, 0.75=winter)
+    season_phase = ti.cast(frame % year_length, ti.f32) / ti.cast(year_length, ti.f32)
+    tv.s.llm_global.field[0].season_phase = season_phase
+    
+    # Temperature varies with season
+    base_temp = 20.0
+    temp_variation = 15.0 * ti.cos(season_phase * 2 * 3.14159)
+    temperature = base_temp + temp_variation
+    tv.s.llm_global.field[0].temperature = temperature
+    
+    # Update growth rates based on season
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            if tv.p.field[i].species == 1:  # Plants
+                # Grow faster in spring/summer
+                if season_phase < 0.5:
+                    growth_multiplier = 1.5
+                else:
+                    growth_multiplier = 0.5
+                
+                if hasattr(tv.s.llm_particle.field[i], 'growth_rate'):
+                    tv.s.llm_particle.field[i].growth_rate = growth_multiplier
+```
+
+## Pheromone/Trail Decay
+```python
+@ti.kernel
+def update_pheromones():
+    decay_rate = 0.99  # Slower decay than rigid template
+    diffusion_rate = 0.01
+    
+    # Update pheromone field
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Deposit pheromone at current position
+            x = ti.cast(tv.p.field[i, 0], ti.i32)
+            y = ti.cast(tv.p.field[i, 1], ti.i32)
+            
+            if x >= 0 and x < tv.x and y >= 0 and y < tv.y:
+                # Add pheromone based on species/state
+                deposit = 1.0
+                if tv.p.field[i].species == 0:  # Leader ants
+                    deposit = 2.0
+                
+                # This would update a pixel field
+                # tv.px[x, y] += deposit
+    
+    # Decay and diffuse (if using pixel field)
+    # for x, y in tv.px:
+    #     tv.px[x, y] *= decay_rate
+```
+
+## Learning/Adaptation Updates
+```python
+@ti.kernel
+def update_learning():
+    learning_rate = 0.01
+    
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            # Track success/failure
+            success = tv.s.llm_particle.field[i].success_count
+            failure = tv.s.llm_particle.field[i].failure_count
+            
+            # Adapt behavior weights based on experience
+            if success + failure > 10:
+                success_rate = success / (success + failure)
+                
+                # Adjust behavior parameters
+                if hasattr(tv.s.llm_particle.field[i], 'aggression'):
+                    if success_rate > 0.7:
+                        # Successful strategy, increase
+                        tv.s.llm_particle.field[i].aggression += learning_rate
+                    else:
+                        # Poor results, decrease
+                        tv.s.llm_particle.field[i].aggression -= learning_rate
+                    
+                    # Clamp values
+                    tv.s.llm_particle.field[i].aggression = max(0.0, min(1.0, 
+                        tv.s.llm_particle.field[i].aggression))
+```
+
+## IMPORTANT TEMPORAL UPDATE GUIDELINES:
+1. Use context from behavior description to determine update rates
+2. Avoid uniform decay (like energy *= 0.995) - make it behavior-dependent
+3. Consider species differences in temporal dynamics
+4. Use frame counters for periodic behaviors
+5. Clamp values to reasonable ranges
+6. Only deactivate particles when truly necessary (energy = 0, age limit)
+7. Use dt = 1.0/60.0 for frame-independent updates
+8. Store temporal state in llm_global for shared time (day_phase, season)
+9. Store per-particle temporal state in llm_particle (age, phase, energy)
+
+---
+TEMPORAL_CONFIGURATION_PATTERNS
+---
+
+# System Configuration Patterns
+
+## Species Count Configuration
+```python
+# Configuration based on detected species
+def get_tolvera_config(species_count: int, behavior_type: str) -> dict:
+    config = {
+        'sn': species_count,  # Detected species count
+        'pn': 1000,  # Default particle count
+        'width': 1920,
+        'height': 1080
+    }
+    
+    # Adjust particle count based on behavior type
+    if behavior_type == 'ecosystem':
+        config['pn'] = max(500, species_count * 200)  # More particles for ecosystems
+    elif behavior_type == 'cellular_automaton':
+        grid_size = 32
+        config['pn'] = grid_size * grid_size  # Exact grid count
+    elif behavior_type == 'swarm':
+        config['pn'] = 1000  # Good swarm size
+    
+    return config
+```
+
+## Particle Size Configuration
+```python
+# Size based on behavior and species
+particle_sizes = {
+    'default': 5.0,
+    'predator': 8.0,
+    'prey': 5.0,
+    'plant': 4.0,
+    'cell': 10.0,  # Cellular automaton cells
+    'particle': 3.0,  # Small particles for effects
+    'leader': 10.0,  # Prominent particles
+}
+```

@@ -1,0 +1,47 @@
+## SUCCESS VS. FAILURE CRITERIA
+
+### SUCCESS CRITERIA:
+✅ **Consistency Check**: needs_states=true only when states are actually created
+✅ **No Duplication**: Never creates states for built-in properties (pos, vel, mass, size, species, active)
+✅ **Minimal State Set**: Only creates states that are absolutely necessary
+✅ **Proper Types**: Uses correct Taichi types (ti.f32, ti.i32, ti.math.vec2)
+✅ **Realistic Ranges**: Min/max values make physical/logical sense
+✅ **Descriptive Names**: State names clearly indicate their purpose (snake_case)
+✅ **Correct Categories**: Global for system-wide, particle for per-particle, species for per-species
+✅ **Sensible Defaults**: Initial values are reasonable starting points
+
+### FAILURE CRITERIA:
+❌ **Inconsistent Flags**: needs_states=true but all state dictionaries are empty
+❌ **Duplicate Built-ins**: Creating states for pos, vel, mass, size, species, active
+❌ **Over-Engineering**: Creating unnecessary states for simple behaviors
+❌ **Wrong Types**: Using inappropriate Taichi types or Python types
+❌ **Invalid Ranges**: Min > max, or ranges that don't make sense
+❌ **Vague Names**: Generic names like 'state1' or 'data'
+❌ **Wrong Categories**: Putting system-wide data in particle_states
+❌ **Missing Descriptions**: Not explaining what each state represents
+
+CRITICAL BUILT-IN PROPERTIES (NEVER RECREATE):
+- pos, vel (position, velocity) - ti.math.vec2
+- mass - ti.f32  
+- size - ti.f32
+- speed - ti.f32 (calculated from vel.norm())
+- species - ti.i32
+- active - ti.f32
+- ppos, pvel (previous position/velocity) - ti.math.vec2
+
+{expert_type_guidance}
+
+STATE CATEGORIES:
+- **global_states**: System-wide parameters (gravity_strength, day_phase, temperature)
+- **particle_states**: Per-particle data (energy, home_pos, memory, flags) 
+- **species_states**: Per-species configuration (aggression, speed_modifier, behavior_weights)
+
+COMMON STATE PATTERNS:
+- **Energy/Resource**: ti.f32, 0.0-100.0, initial=80.0
+- **Memory Positions**: ti.math.vec2, 0.0-1.0 (normalized coordinates)
+- **Time/Phase Cycles**: ti.f32, 0.0-1.0 (0=start, 1=end of cycle)
+- **Counters**: ti.i32, 0-1000 
+- **Boolean Flags**: ti.i32, 0-1 (Taichi doesn't have ti.bool)
+- **System Forces**: ti.f32, 0.0-1000.0 (force magnitudes)
+
+Your analysis must be CONSERVATIVE - only add states that are truly necessary for the behavior.

@@ -1,0 +1,16 @@
+Implement this refactoring plan to create a complete, working Tölvera sketch.
+
+USER'S GOAL: {description}
+
+IMPLEMENTATION PLAN:
+{plan}
+
+ORIGINAL SKETCH TO REFACTOR:
+```python
+{sketch_code}
+```
+
+LIBRARY DOCUMENTATION:
+{base_context}
+
+Following the plan exactly, provide the COMPLETE refactored sketch with all errors fixed and architectural enhancements added.

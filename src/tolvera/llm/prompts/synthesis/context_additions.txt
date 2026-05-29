@@ -1,0 +1,13 @@
+## CONTEXT-BASED PROMPT ADDITIONS
+
+{helper_functions_section}
+
+{pattern_type_section}
+
+{constraints_section}
+
+{previous_experts_section}
+
+{shared_parameters_section}
+
+{state_usage_section}

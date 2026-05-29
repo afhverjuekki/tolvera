@@ -1,0 +1,192 @@
+# Boids Flocking - Complete Working Example
+
+## Core Flocking Components
+
+### 1. Separation Force (Avoid Crowding)
+```python
+@ti.func
+def separation_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                     species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Steer to avoid crowding local flockmates.'''
+    force = ti.math.vec2(0.0, 0.0)
+    separation_radius = tv.s.llm_global.field[0].separation_radius  # e.g., 30.0
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_pos = tv.p.field[j].pos
+            diff = pos - other_pos  # Vector from other to self
+            dist = diff.norm()
+            
+            # CRITICAL: Declare before conditional to avoid crash
+            normalized_diff = ti.math.vec2(0.0, 0.0)
+            
+            if dist > 0.001 and dist < separation_radius:
+                # Repel from nearby boids
+                normalized_diff = diff / dist
+                # Inverse distance weighting (closer = stronger)
+                force += normalized_diff / dist
+                count += 1
+    
+    # Normalize and scale the accumulated force
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        force = force / ti.cast(count, ti.f32)
+        force_norm = force.norm()
+        if force_norm > 0.001:
+            # Scale to max speed and convert to steering force
+            force = (force / force_norm) * tv.s.llm_global.field[0].max_speed
+            result_force = force - vel  # Steering = desired - current
+            # Apply species-specific weight
+            result_force *= tv.s.llm_species.field[species].separation_weight
+    
+    return result_force
+```
+
+### 2. Alignment Force (Match Heading)
+```python
+@ti.func
+def alignment_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                   species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Steer towards average heading of local flockmates.'''
+    avg_vel = ti.math.vec2(0.0, 0.0)
+    perception_radius = tv.s.llm_global.field[0].perception_radius  # e.g., 80.0
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_species = tv.p.field[j].species
+            
+            # Only align with same species
+            if other_species == species:
+                other_pos = tv.p.field[j].pos
+                dist = (other_pos - pos).norm()
+                
+                if dist > 0.001 and dist < perception_radius:
+                    avg_vel += tv.p.field[j].vel
+                    count += 1
+    
+    # Calculate steering force toward average velocity
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        avg_vel = avg_vel / ti.cast(count, ti.f32)
+        avg_vel_norm = avg_vel.norm()
+        if avg_vel_norm > 0.001:
+            # Scale to max speed
+            avg_vel = (avg_vel / avg_vel_norm) * tv.s.llm_global.field[0].max_speed
+            # Steering force
+            result_force = avg_vel - vel
+            # Apply species weight
+            result_force *= tv.s.llm_species.field[species].alignment_weight
+    
+    return result_force
+```
+
+### 3. Cohesion Force (Stay Together)
+```python
+@ti.func
+def cohesion_force(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                  species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Steer toward average position of local flockmates.'''
+    center = ti.math.vec2(0.0, 0.0)
+    perception_radius = tv.s.llm_global.field[0].perception_radius
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_species = tv.p.field[j].species
+            
+            # Only cohere with same species
+            if other_species == species:
+                other_pos = tv.p.field[j].pos
+                dist = (other_pos - pos).norm()
+                
+                if dist > 0.001 and dist < perception_radius:
+                    center += other_pos
+                    count += 1
+    
+    # Steer toward center of mass
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        center = center / ti.cast(count, ti.f32)
+        # Desired velocity toward center
+        desired = center - pos
+        desired_norm = desired.norm()
+        if desired_norm > 0.001:
+            # Scale to max speed
+            desired = (desired / desired_norm) * tv.s.llm_global.field[0].max_speed
+            # Steering force
+            result_force = desired - vel
+            # Apply species weight
+            result_force *= tv.s.llm_species.field[species].cohesion_weight
+    
+    return result_force
+```
+
+### 4. Inter-Species Avoidance
+```python
+@ti.func
+def inter_species_avoidance(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, 
+                           species: ti.i32, particle_idx: ti.i32) -> ti.math.vec2:
+    '''Avoid boids from other species.'''
+    force = ti.math.vec2(0.0, 0.0)
+    avoidance_radius = tv.s.llm_global.field[0].perception_radius * 0.7
+    count = 0
+    
+    for j in range(tv.pn):
+        if particle_idx != j and tv.p.field[j].active > 0:
+            other_species = tv.p.field[j].species
+            
+            # Only avoid different species
+            if other_species != species:
+                other_pos = tv.p.field[j].pos
+                diff = pos - other_pos
+                dist = diff.norm()
+                
+                # Declare before conditional
+                normalized_diff = ti.math.vec2(0.0, 0.0)
+                
+                if dist > 0.001 and dist < avoidance_radius:
+                    normalized_diff = diff / dist
+                    # Stronger avoidance for different species
+                    force += normalized_diff / dist
+                    count += 1
+    
+    # Apply inter-species avoidance weight
+    result_force = ti.math.vec2(0.0, 0.0)
+    if count > 0:
+        force = force / ti.cast(count, ti.f32)
+        result_force = force * tv.s.llm_species.field[species].inter_species_avoidance * 100.0
+    
+    return result_force
+```
+
+## State Setup for Boids
+
+```python
+# Global parameters (shared by all boids)
+tv.s.llm_global = {
+    'perception_radius': 80.0,    # How far boids can see
+    'separation_radius': 30.0,    # Personal space bubble
+    'max_speed': 200.0,           # Speed limit
+    'max_force': 300.0,           # Force limit
+}
+
+# Species-specific weights (tune per flock)
+tv.s.llm_species[0] = {
+    'separation_weight': 1.5,     # How much to avoid crowding
+    'alignment_weight': 1.0,      # How much to match heading
+    'cohesion_weight': 1.0,       # How much to stay together
+    'inter_species_avoidance': 2.0,  # Avoid other species
+}
+```
+
+## Key Patterns Demonstrated
+
+1. **Variable Declaration**: All variables declared before conditionals
+2. **Safe Normalization**: Check magnitude before normalizing
+3. **Species Filtering**: Same-species vs different-species behaviors
+4. **Force Accumulation**: Proper averaging and scaling
+5. **State Access**: Using global and species-specific parameters
+6. **Steering Forces**: desired_velocity - current_velocity pattern
+7. **Distance Weighting**: Inverse distance for separation force

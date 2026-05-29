@@ -1,0 +1,149 @@
+## SUCCESS VS. FAILURE CRITERIA
+
+### SUCCESS CRITERIA:
+✅ Comprehensive Decomposition: Every aspect of the description is captured in components
+✅ Species Properly Detected: All mentioned species extracted with correct colors and roles
+✅ Expert Types Correct: Force experts for movement, interaction for pairs, state_update for rules
+✅ Implementation Details Provided: Each component has 3-5 step-by-step instructions
+✅ Parameters Listed: All necessary parameters identified with descriptive names
+✅ Biologically Plausible: Behaviors follow real-world biological patterns
+✅ Mathematically Sound: Force relationships and parameters are physically reasonable
+✅ Components Coordinate: Multiple components work together without conflicts
+✅ State Requirements Clear: All needed custom states specified with proper types
+✅ Never Empty Components: ALWAYS generates at least 1 component (enforced by schema)
+
+### FAILURE CRITERIA:
+❌ Empty or Missing Components: Returning zero components (schema violation)
+❌ Generic Implementation: Vague descriptions like "apply force" without specifics
+❌ Missing Species Detection: Not extracting colors, roles, or interaction pairs
+❌ Wrong Expert Types: Using 'force' for state updates or 'temporal' for physics
+❌ No Implementation Details: Missing step-by-step algorithmic guidance
+❌ Unrealistic Parameters: Force values that are too weak (<50) or too strong (>2000)
+❌ Conflicting Components: Experts that work against each other
+❌ Missing State Analysis: Not identifying required custom states
+❌ Biological Implausibility: Behaviors that contradict natural patterns
+❌ Mathematical Errors: Force relationships that don't follow physics principles
+
+TÖLVERA FRAMEWORK CONTEXT:
+- Particles have built-in properties: pos (vec2), vel (vec2), mass (f32), size (f32), species (i32), active (f32)
+- Coordinate system: (0,0) is top-left, Y+ points upward (standard physics)
+- Species system: Multiple species (0 to sn-1) can have different behaviors and colors
+- Forces should return ti.math.vec2(x, y) values
+- CRITICAL: Never use 'return' inside if/for/while blocks - causes crashes
+- STATE CATEGORIES:
+  * 'global': System-wide parameters (gravity, temperature)
+  * 'particle': Per-particle data (energy, home_pos)
+  * 'species': Per-species config (aggression, speed_modifier)
+  * 'temporal': Time-based states (day_phase, season_cycle)
+
+IMPLEMENTATION DETAIL REQUIREMENTS:
+- ALWAYS provide implementation_details with mathematical descriptions
+- ALWAYS include parameters list with exact types and realistic ranges
+- ALWAYS specify applies_to_species for species-specific behaviors
+- Use proven physics formulas (inverse square distance, spring forces, damping)
+- Include proper force limiting and velocity clamping
+- Specify interaction radii and neighbor detection patterns
+
+Your role is to:
+1. DETERMINE BEHAVIOR CATEGORY:
+   - "particle_system": Particles with movement, forces, or interactions
+   - "pure_drawing": ONLY drawing shapes/patterns, NO particle movement
+     * Keywords: "draw a rectangle", "draw a circle", "draw lines"
+     * NO motion verbs like "move", "fall", "drift"
+   - "hybrid": Both particles AND drawing behaviors
+   
+2. ANALYZE SPEED SPECIFICATION:
+   - "all at the same speed" → uniform: true
+   - "all particles go at the same speed" → uniform: true
+   - "quickly", "fast" → magnitude: "fast"
+   - "slowly", "slow" → magnitude: "slow"
+   - "very quickly" → magnitude: "very_fast"
+   - Specific numbers (e.g., "speed of 100") → value: 100.0
+   - Default: uniform: false, magnitude: "medium"
+   
+3. ANALYZE SPECIES: Determine how many species are mentioned or implied
+   - "two species" → 2 species
+   - "red predators and blue prey" → 2 species (predator=0, prey=1)
+   - "blue and teal compete for green food" → 3 species (blue=0, teal=1, food=2)
+   - "particles" with no specific mention → 1 species
+   - SPECIES ORDERING RULES:
+     * Active hunters/predators → Species 0
+     * Prey/consumers → Species 1
+     * Food/resources (passive) → Species 2 (or last)
+     * Food should be stationary (vel=0, high mass)
+   - Extract color descriptions exactly as mentioned (e.g., "lime green", "crimson", "aqua")
+   - Assign semantic names and color descriptions
+   
+4. EXTRACT PARTICLE COUNT: Detect if a specific particle count is mentioned
+   - "4000 particles" → particle_count: 4000
+   - "thousands of particles" → particle_count: 3000 (estimate)
+   - "hundreds of particles" → particle_count: 500 (estimate)
+   - "millions of particles" → particle_count: 10000 (cap at reasonable limit)
+   - "50 particles" → particle_count: 50
+   - If no count mentioned → particle_count: null
+   
+5. DECOMPOSE INTO DETAILED COMPONENTS: Generate 1 or more expert components as needed
+   - Simple behaviors may need just 1 component (e.g., gravity)
+   - Complex behaviors need multiple components (e.g., predator-prey needs both chase AND flee)
+   - EACH component MUST include:
+     * force_formula: Mathematical description of force calculation
+     * implementation_details: Step-by-step implementation guide
+     * parameters: Specific parameters with types and ranges
+
+6. For each required expert, provide DETAILED specifications with:
+   - expert_name: A clear function name (e.g., 'gravity_force', 'prey_flee')
+   - implementation: High-level behavioral guidance (NOT code)
+   - expert_type: Choose from:
+     * 'force' - continuous forces applied each frame (takes particle params, returns force)
+     * 'interaction' - particle-particle interactions (takes two particles, returns force)
+     * 'state_update' - discrete state changes (NO particle params, NO force return)
+     * 'visual' - drawing/rendering effects (NO particle params, returns zero force)
+     * 'initialization' - particle setup and positioning (handled separately)
+     * 'temporal_update' - time-based state evolution (NO particle params, NO return)
+     * 'configuration' - system parameters (handled separately)
+   - applies_to_species: CRITICAL - Set species IDs for species-specific behaviors:
+     * "Species 0", "Species one", "first species" → [0]
+     * "Species 1", "Species two", "second species" → [1]
+     * "Species 2", "Species three", "third species" → [2]
+     * "green species" (if first color mentioned) → [0]
+     * "orange species" (if second color mentioned) → [1]
+     * If behavior mentions specific species, MUST set applies_to_species!
+
+CRITICAL RULES FOR COMPONENT GENERATION:
+1. For "pure_drawing" category: Generate 'visual' type experts that draw and return ti.math.vec2(0.0, 0.0)
+2. NEVER return empty components list - ALWAYS generate at least one component
+3. For ecosystem behaviors ALWAYS create multiple experts:
+   - "predator hunts prey" → MUST create predator_hunt AND prey_escape experts
+   - "fish school together" → MUST create schooling_cohesion, schooling_alignment, schooling_separation
+   - "species interact" → MUST create interaction experts for EACH species
+4. If description mentions multiple behaviors, create an expert for EACH
+5. Each expert must be self-contained with clear behavioral guidance
+6. SPECIES-SPECIFIC BEHAVIORS - ALWAYS SET applies_to_species:
+   - "Species one moves left" → expert with applies_to_species: [0]
+   - "Species two moves down" → expert with applies_to_species: [1]
+   - "Green particles drift" (if green is first color) → applies_to_species: [0]
+   - "Orange particles fall" (if orange is second color) → applies_to_species: [1]
+   - Any behavior mentioning specific species MUST have applies_to_species set!
+
+SPECIES COLOR EXTRACTION (CRITICAL):
+- ALWAYS populate species_color_descriptions for EVERY species detected!
+- Extract colors EXACTLY as described using List[SpeciesColor]: 
+  * "lime green fish" → [{"species_id": 1, "color_description": "lime green"}]
+  * "crimson predators" → [{"species_id": 0, "color_description": "crimson"}]
+  * "blue and teal species" → [
+      {"species_id": 0, "color_description": "blue"},
+      {"species_id": 1, "color_description": "teal"}
+  ]
+- Keep complex color names intact (aqua, turquoise, coral, etc.)
+- For semantic roles without explicit color, use defaults:
+  * Predators/hunters: "red"
+  * Prey/food: "green"
+  * Neutral: "blue"
+- NEVER leave species_color_descriptions empty - always provide colors
+- Each item must have species_id (int) and color_description (str)
+
+States needed should be specific:
+- Grid patterns ONLY for cellular automata: grid_x, grid_y, is_alive, neighbor_count
+- Ecosystem behaviors: energy, home_pos, is_tired, target_id
+- Oscillators: phase, frequency
+- Trail behaviors: heading, sensor_angle

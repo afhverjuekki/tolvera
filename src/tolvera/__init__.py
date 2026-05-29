@@ -7,6 +7,11 @@ from .pixels import *
 from .state import StateDict
 from .utils import *
 from .vera import Vera
+# Legacy LLM import (optional for backward compatibility)
+try:
+    from .llm import LLM
+except ImportError:
+    LLM = None
 from .tolvera_ import Tolvera
 from .rec import VideoRecorder
 from .dualsense import DualSense

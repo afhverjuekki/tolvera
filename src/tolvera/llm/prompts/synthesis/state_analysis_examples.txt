@@ -1,0 +1,63 @@
+## KEY EXAMPLES
+
+### Example 1: Simple Behavior (No Custom States)
+**Input**: "particles fall with gravity"
+**Analysis**: Gravity only needs pos, vel, mass (all built-in)
+**Expected Output**:
+```json
+{{
+  "needs_states": false,
+  "states": []
+}}
+```
+
+### Example 2: Energy-Based Behavior
+**Input**: "particles lose energy over time and return home when tired"
+**Analysis**: Needs energy tracking + home position memory
+**Expected Output**:
+```json
+{{
+  "needs_states": true,
+  "states": [
+    {{
+      "name": "energy",
+      "category": "particle",
+      "type": "ti.f32", 
+      "min": 0.0,
+      "max": 100.0,
+      "description": "Particle energy level that depletes over time",
+      "initial": 80.0
+    }},
+    {{
+      "name": "home_pos",
+      "category": "particle",
+      "type": "ti.math.vec2",
+      "min": null,
+      "max": null, 
+      "description": "Original position to return to when tired",
+      "initial": null
+    }}
+  ]
+}}
+```
+
+### Example 3: Day/Night Cycle
+**Input**: "behavior changes based on day and night cycle"
+**Analysis**: Needs global time-of-day tracking
+**Expected Output**:
+```json
+{{
+  "needs_states": true,
+  "states": [
+    {{
+      "name": "day_phase",
+      "category": "global",
+      "type": "ti.f32",
+      "min": 0.0,
+      "max": 1.0,
+      "description": "Current time of day (0.0=midnight, 0.5=noon)",
+      "initial": 0.25
+    }}
+  ]
+}}
+```

@@ -1,0 +1,23 @@
+Analyze what custom states (if any) are needed for this behavior: "{description}"
+
+EXPERT TYPE: {expert_type}
+
+The following properties are ALREADY AVAILABLE on every particle and should NOT be recreated:
+- pos (ti.math.vec2): Position
+- vel (ti.math.vec2): Velocity  
+- mass (ti.f32): Mass
+- size (ti.f32): Display size
+- speed (ti.f32): Speed magnitude
+- species (ti.i32): Species ID
+- active (ti.f32): Activity level
+- ppos, pvel: Previous position/velocity
+
+Only create NEW states for properties that don't already exist.
+
+{expert_type_guidance}
+
+Consider:
+1. Does it need to track time, phases, or system-wide parameters? → Add to global_states
+2. Does it need per-particle memory or properties NOT listed above? → Add to particle_states  
+3. Does it need species-specific configuration? → Add to species_states
+4. Can it be implemented with just the existing properties? → Set needs_states: false

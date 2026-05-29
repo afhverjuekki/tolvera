@@ -1,0 +1,296 @@
+# Artificial Life Patterns - Reference Implementations
+
+## NOTE: Two Approaches to Implementation
+
+### 1. Using Vera Behaviors (High-Level API)
+These examples show how existing Tölvera projects use the vera behavior library.
+When synthesizing custom experts, you would implement these behaviors FROM SCRATCH
+using Taichi functions and Tölvera state, not just call the vera API.
+
+### 2. Custom Expert Implementation (What You Should Generate)
+When asked to create behaviors, implement them as @ti.func experts that:
+- Calculate forces between particles
+- Access particle states via tv.p.field[i] and tv.s.*
+- Return ti.math.vec2 force vectors
+- Follow all Taichi syntax rules (no return in conditionals, etc.)
+
+## Particle Life (from particle_life.py - VERA API EXAMPLE)
+Simple emergence from attraction/repulsion rules:
+
+```python
+from tolvera import Tolvera, run
+
+def main(kwargs):
+    tv = Tolvera(kwargs)
+    
+    @tv.render
+    def _():
+        tv.px.diffuse(0.99)  # Slight blur for trails
+        tv.v.plife(tv.p)     # Particle life behavior
+        tv.px.particles(tv.p, tv.s.species())
+        return tv.px
+```
+
+The `tv.v.plife` behavior automatically handles:
+- Species-species attraction/repulsion matrix
+- Distance-based force calculations
+- Emergent clustering and movement patterns
+
+## Slime Mold + Flocking (from slime_flock.py)
+Combining multiple behaviors for complex emergence:
+
+```python
+@tv.render
+def _():
+    tv.v.flock(tv.p)  # Apply flocking first
+    return tv.v.slime(tv.p, tv.s.species())  # Then slime (returns pixels)
+```
+
+This creates particles that:
+- Flock together (alignment, cohesion, separation)
+- Leave pheromone trails
+- Follow gradients in the pixel buffer
+
+---
+ECOSYSTEM_PATTERNS
+---
+
+# Game of Life + Flocking Ecosystem (from gol_flock.py)
+
+## Cellular Automaton Interacting with Particles
+
+```python
+import taichi as ti
+from tolvera import Tolvera, run
+
+def main(kwargs):
+    tv = Tolvera(kwargs)
+    
+    # Get GOL grid parameters
+    gx = tv.x/2 - tv.v.gol.px.px.shape[0]/2
+    gy = tv.y/2 - tv.v.gol.px.px.shape[1]/2
+    gw, gh = tv.v.gol.w, tv.v.gol.h
+    gn, gc = tv.v.gol.n, tv.v.gol.cell_size
+    
+    @ti.kernel
+    def draw(s: ti.template()):
+        '''Draw GOL state to pixels'''
+        tv.px.stamp_f(gx, gy, s)
+    
+    @ti.kernel
+    def cells_to_flock():
+        '''Living cells attract particles'''
+        for i, j in tv.s.gol_cells.field:
+            cell = tv.s.gol_cells.field[i,j]
+            if cell.alive:
+                # Attract particles to living cells
+                tv.v._attract(tv.p, ti.Vector([i*gc + gx, j*gc + gy]), 1, 100)
+    
+    @ti.kernel
+    def flock_to_cells():
+        '''Particles create new life in GOL'''
+        for p in tv.p.field:
+            p1 = tv.p.field[p]
+            x, y = p1.pos.x, p1.pos.y
+            # Check if particle is within GOL grid
+            if gx <= x < gx + gw and gy <= y < gy + gh:
+                i, j = int((x - gx) / gc), int((y - gy) / gc)
+                # Fill area with life where particles are
+                tv.v.gol.fill_area(i, j, 2, 2, 1)
+    
+    @tv.render
+    def _():
+        cells_to_flock()  # GOL influences particles
+        flock_to_cells()  # Particles influence GOL
+        tv.px.diffuse(0.99)
+        tv.v.flock(tv.p)  # Apply flocking
+        s = tv.v.gol()    # Update GOL
+        draw(s)           # Draw GOL state
+        tv.px.particles(tv.p, tv.s.species())
+        return tv.px
+```
+
+This creates a feedback loop where:
+- Living cells in Game of Life attract particles
+- Particles deposit new life where they gather
+- Emergent patterns form from the interaction
+
+---
+MORPHOGENETIC_PATTERNS
+---
+
+# Pattern Formation with Vera Behaviors
+
+## Reaction-Diffusion (from reaction_diffusion.py)
+Gray-Scott reaction-diffusion patterns:
+
+```python
+from tolvera import Tolvera, run
+
+def main(kwargs):
+    tv = Tolvera(kwargs)
+    
+    @tv.render
+    def _():
+        tv.px.diffuse(0.99)  # Diffusion step
+        tv.px.set(tv.v.rd())  # Reaction-diffusion update
+        return tv.px
+```
+
+The `tv.v.rd()` behavior implements:
+- Gray-Scott reaction-diffusion model
+- Chemical concentration fields U and V
+- Pattern formation (spots, stripes, waves)
+
+## Game of Life (from gol.py)
+Cellular automaton patterns:
+
+```python
+import taichi as ti
+from tolvera import Tolvera, run
+
+def main(kwargs):
+    tv = Tolvera(kwargs)
+    
+    # Set GOL update speed
+    tv.v.gol.set_speed(10)
+    
+    @ti.kernel
+    def draw(s: ti.template()):
+        '''Draw GOL state at origin'''
+        tv.px.stamp_f(0, 0, s)
+    
+    @tv.render
+    def _():
+        tv.px.clear()
+        s = tv.v.gol()  # Update Game of Life
+        draw(s)         # Draw to pixel buffer
+        return tv.px
+```
+
+Alternatively, use GOL as the entire display:
+```python
+@tv.render
+def _():
+    return tv.v.gol()  # Return GOL pixels directly
+```
+
+## Slime Mold Behavior
+Physarum-inspired trail following:
+
+```python
+@tv.render
+def _():
+    # Slime behavior returns pixels with trails
+    return tv.v.slime(tv.p, tv.s.species())
+```
+
+The slime behavior implements:
+- Multi-directional sensing
+- Trail deposition in pixel buffer
+- Gradient following
+- Species-specific parameters
+
+---
+SWARM_INTELLIGENCE
+---
+
+# Collective Behaviors with Vera
+
+## Built-in Swarm Behaviors
+
+### Flocking (Boids)
+```python
+@tv.render
+def _():
+    tv.px.diffuse(0.99)
+    tv.v.flock(tv.p, weight=0.5)  # Weight controls influence
+    tv.px.particles(tv.p, tv.s.species())
+    return tv.px
+```
+
+Flocking implements:
+- Alignment: Match neighbor velocities  
+- Cohesion: Move toward group center
+- Separation: Avoid crowding
+- Species-specific parameters via `tv.s.flock_s`
+
+### Combining Behaviors
+Layer multiple behaviors for complex emergence:
+
+```python
+@tv.render
+def _():
+    # Environmental forces
+    tv.v.gravitate(tv.p, G=10.0, radius=100.0)
+    
+    # Social behaviors
+    tv.v.flock(tv.p, weight=0.5)
+    
+    # Trail systems
+    pixels = tv.v.slime(tv.p, tv.s.species())
+    
+    return pixels
+```
+
+## Accessing Behavior States
+Many vera behaviors store per-particle state:
+
+```python
+# Flocking states per particle
+fp = tv.s.flock_p[i]
+# Contains: separate, align, cohere vectors and nearby count
+
+# Slime states per particle  
+sp = tv.s.slime_p[i]
+# Contains: sense_angle, sense_left/centre/right
+
+# Swarm states
+swp = tv.s.swarm_p[i]
+# Contains: phase, color, etc.
+```
+
+## Force-Based Behaviors
+Use vera's force functions:
+
+```python
+@tv.render
+def _():
+    # Attract to center
+    tv.v.attract(tv.p, [tv.x/2, tv.y/2], mass=10.0, radius=tv.y)
+    
+    # Species-specific attraction
+    tv.v.attract_species(tv.p, [100, 100], mass=5.0, radius=200, species=0)
+    
+    # Repulsion from point
+    tv.v.repel(tv.p, [tv.x/2, tv.y/2], mass=10.0, radius=100)
+    
+    # Add noise for natural movement
+    tv.v.noise(tv.p, weight=0.1)
+    
+    # Update positions from velocities
+    tv.v.move(tv.p)
+    
+    tv.px.particles(tv.p, tv.s.species())
+    return tv.px
+```
+
+## Common Render Loop Pattern
+```python
+@tv.render
+def _():
+    # 1. Pixel effects (optional)
+    tv.px.diffuse(0.99)  # Blur
+    tv.px.decay(0.995)   # Fade
+    
+    # 2. Apply behaviors
+    tv.v.flock(tv.p)
+    # tv.v.plife(tv.p)
+    # tv.v.swarm(tv.p, param)
+    
+    # 3. Draw particles
+    tv.px.particles(tv.p, tv.s.species())
+    
+    # 4. Return pixel buffer
+    return tv.px
+```

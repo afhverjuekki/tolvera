@@ -1,0 +1,45 @@
+## FUNCTION SIGNATURE MISMATCH REPAIR GUIDE
+
+### Common Signature Mismatch Patterns
+
+1. Passing Structs Instead of Fields
+   WRONG: particle_interactions(tv.p.field[i], tv.p.field[j])
+   RIGHT: particle_interactions(tv.p.field[i].pos, tv.p.field[i].vel, tv.p.field[i].mass, tv.p.field[i].species, i)
+
+2. Wrong Parameter Order
+   WRONG: calculate_force(mass, vel, pos, species)
+   RIGHT: calculate_force(pos, vel, mass, species)  # Match the definition order
+
+3. Missing Parameters
+   WRONG: apply_behavior(pos, vel)
+   RIGHT: apply_behavior(pos, vel, mass, species, particle_idx)
+
+4. Extra Parameters
+   WRONG: simple_gravity(pos, vel, mass, species, extra_param)
+   RIGHT: simple_gravity(pos, vel, mass)  # Only pass what's expected
+
+### Verification Checklist
+- [ ] Count parameters in function definition
+- [ ] Check parameter types in definition
+- [ ] Find all function calls
+- [ ] Verify each call matches exactly
+- [ ] Extract struct fields if needed
+- [ ] Pass scalars/vectors, not structs
+
+### Example Fix Pattern
+```python
+# If you see this pattern:
+force = expert_func(tv.p.field[i])  # Passing whole particle
+
+# Check the function definition:
+@ti.func
+def expert_func(pos: ti.math.vec2, vel: ti.math.vec2, mass: ti.f32, species: ti.i32, idx: ti.i32):
+    # Expects 5 specific parameters
+
+# Fix the call:
+pos_i = tv.p.field[i].pos
+vel_i = tv.p.field[i].vel  
+mass_i = tv.p.field[i].mass
+species_i = tv.p.field[i].species
+force = expert_func(pos_i, vel_i, mass_i, species_i, i)
+```

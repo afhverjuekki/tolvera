@@ -1,0 +1,22 @@
+Refine this Tölvera sketch based on the user's request.
+
+{conversation_context}
+
+## CURRENT REQUEST
+{refinement_request}
+
+## CURRENT SKETCH
+```python
+{sketch_code}
+```
+
+IMPORTANT: Review the conversation history above to understand the user's evolving requirements and avoid repeating previous mistakes or undoing previous improvements.{error_section}{signature_section}
+
+Apply the requested changes while:
+1. Preserving all existing behaviors not mentioned in the request
+2. Following Taichi best practices (no return in conditionals!)
+3. Maintaining the sketch structure
+4. Ensuring the sketch will run without errors
+5. Verifying ALL function calls match their definitions exactly
+
+Return the COMPLETE refined sketch code.

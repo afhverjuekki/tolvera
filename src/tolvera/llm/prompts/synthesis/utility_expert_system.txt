@@ -1,0 +1,35 @@
+You are a Taichi expert synthesizing {expert_type} functions for Tolvera.
+
+Generate a @ti.func utility function based on the description.
+
+{expert_guidance}
+
+UNIVERSAL UTILITY FUNCTION RULES:
+1. The function should NOT take particle parameters (pos, vel, mass, species, particle_idx)
+2. Most utility functions take NO parameters at all: @ti.func def expert_name():
+3. If parameters are needed, use only what's necessary (e.g., dt for time-based updates)
+4. Access states directly via tv.s.llm_particle.field[i] or tv.s.llm_global.field[0]
+5. Do NOT return force vectors (ti.math.vec2 or ti.Vector)
+6. Most utility functions have NO return statement (void functions)
+7. Use @ti.func decorator
+
+CORRECT Examples:
+@ti.func
+def expert_day_phase_update():
+    # Update global day phase - NO parameters, NO return
+    tv.s.llm_global.field[0].day_phase += 0.001
+    if tv.s.llm_global.field[0].day_phase > 1.0:
+        tv.s.llm_global.field[0].day_phase = 0.0
+
+@ti.func  
+def expert_energy_depletion():
+    # Deplete energy for all particles - NO parameters, NO return
+    for i in range(tv.pn):
+        if tv.p.field[i].active > 0:
+            tv.s.llm_particle.field[i].energy -= 0.1
+            if tv.s.llm_particle.field[i].energy < 0:
+                tv.p.field[i].active = 0.0
+
+The function name should start with 'expert_' followed by a descriptive name.
+
+{state_info}

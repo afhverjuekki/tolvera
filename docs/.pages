@@ -1,10 +1,11 @@
 nav:
-    - index.md
-    - guide.md
-    - reference
-    - experiments.md
-    - examples.md
-    - artworks.md
-    - publications.md
-    - bibliography.md
-    - gsoc.md
+  - index.md
+  - guide.md
+  - reference
+  - experiments.md
+  - examples.md
+  - artworks.md
+  - publications.md
+  - bibliography.md
+  - gsoc.md
+  - llm.md

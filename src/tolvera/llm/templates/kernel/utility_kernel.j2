@@ -1,0 +1,6 @@
+@ti.kernel
+def {{ function_name }}():
+    """Utility kernel that executes utility functions (temporal updates, state updates, etc.)."""
+    {% for expert_name in utility_expert_names %}
+    {{ expert_name }}()  # Execute utility function
+    {% endfor %}
