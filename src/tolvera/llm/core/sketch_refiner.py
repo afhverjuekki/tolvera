@@ -1,3 +1,4 @@
+import os
 import re
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -17,6 +18,16 @@ class AnalysisResponse(BaseModel):
     architectural_needs: str = Field(description="Architectural patterns that need to be added")
     
     
+# Refinement/repair returns a COMPLETE sketch (~25-40 KB ≈ 8-12k output tokens)
+# in a single response. The provider default max output is far lower, so the
+# response gets truncated mid-sketch: in structured-output mode the model spends
+# its budget on reasoning text and then emits an empty tool call ({}), failing
+# validation with "Exceeded maximum retries for output validation". Opus 4.8 hits
+# this where smaller-output models (per-expert generation) do not. Give the
+# whole-sketch refinement calls enough room to emit the full file.
+REFINEMENT_MAX_TOKENS = 20000
+
+
 class RefinementResponse(BaseModel):
     """Response from Stage 2: Complete refactored sketch."""
     refined_code: str = Field(description="The complete refactored sketch code")
@@ -38,14 +49,16 @@ class SketchRefiner:
     Stage 2: Execute plan to generate refactored sketch
     """
     
-    def __init__(self, model_name: str = "gemini-2.0-flash", api_key: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize the sketch refiner.
-        
+
         Args:
             model_name: Name of the LLM model to use
             api_key: Optional API key
         """
+        if model_name is None:
+            model_name = os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
         self.model_name = model_name
         
         # Use model factory to create the appropriate model
@@ -145,6 +158,7 @@ class SketchRefiner:
         agent = Agent(
             self.model,
             output_type=AnalysisResponse,
+            output_retries=2,
             system_prompt=system_prompt
         )
         
@@ -165,11 +179,13 @@ class SketchRefiner:
         agent = Agent(
             self.model,
             output_type=RefinementResponse,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            model_settings={"max_tokens": REFINEMENT_MAX_TOKENS},
         )
-        
+
         return agent
-    
+
     async def _create_single_stage_refinement_agent(self) -> Agent:
         """Create the single-stage refinement agent for quick fixes and repairs."""
         
@@ -185,9 +201,11 @@ class SketchRefiner:
         agent = Agent(
             self.model,
             output_type=SingleStageRefinementResponse,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            model_settings={"max_tokens": REFINEMENT_MAX_TOKENS},
         )
-        
+
         return agent
     
     async def analyze_sketch(
@@ -526,7 +544,16 @@ DETECTED: Function signature mismatch error!
                     
                     # Sanitize the code
                     refined_code = self._sanitize_refined_code(refined_code)
-                    
+
+                    # Re-ensure OSC render-loop wiring. A full-sketch rewrite
+                    # (especially error-repair) often keeps the OSC sender-block
+                    # definitions but drops the per-frame calls, notably
+                    # `_draw_tracked_rings()`, which renders the tracked-particle
+                    # highlight. ensure_osc_senders is idempotent and re-adds any
+                    # missing calls when the sender block is present.
+                    from ..sc.emitter import ensure_osc_senders
+                    refined_code = ensure_osc_senders(refined_code, "")
+
                     # Validate the code
                     validation_issues = self._validate_refined_code(refined_code)
                     if validation_issues:

@@ -3,6 +3,7 @@ Intelligent LLM-powered context selector for dynamic prompt building.
 Replaces static keyword-based context selection with AI-driven analysis.
 """
 
+import os
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -23,8 +24,10 @@ class ContextSelectionResponse(BaseModel):
 class ContextSelector:
     """LLM-powered intelligent context selector for expert synthesis."""
     
-    def __init__(self, model_name: str = "gemini-2.0-flash", api_key: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, api_key: Optional[str] = None):
         """Initialize the context selector with a fast, lightweight model."""
+        if model_name is None:
+            model_name = os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
         self.model_name = model_name
         self.model = ModelFactory.create_model(model_name, api_key)
         self.provider = ModelFactory.get_provider_for_model(model_name)
@@ -86,6 +89,7 @@ class ContextSelector:
         self.selection_agent = Agent(
             self.model,
             output_type=ContextSelectionResponse,
+            output_retries=2,
             system_prompt=self.system_prompt
         )
     

@@ -86,8 +86,11 @@ def main(**kwargs):
             'state': {
                 'perception_radius': (ti.f32, 20.0, 200.0),
                 'separation_radius': (ti.f32, 10.0, 50.0),
+                # Canonical Shiffman ratio: max_force ≈ max_speed * 0.05. Past
+                # exemplar had max_force=300 with max_speed=200 (ratio 1.5),
+                # which makes boids snap aggressively instead of swooping.
                 'max_speed': (ti.f32, 50.0, 300.0),
-                'max_force': (ti.f32, 100.0, 500.0),
+                'max_force': (ti.f32, 1.0, 30.0),
             },
             'shape': 1,
             'osc': ('get', 'set'),
@@ -124,7 +127,7 @@ def main(**kwargs):
     tv.s.llm_global.field[0].perception_radius = 80.0
     tv.s.llm_global.field[0].separation_radius = 30.0
     tv.s.llm_global.field[0].max_speed = 200.0
-    tv.s.llm_global.field[0].max_force = 300.0
+    tv.s.llm_global.field[0].max_force = 10.0  # ≈ max_speed * 0.05 (Shiffman canon)
     
     # Initialize species parameters with variation
     @ti.kernel
@@ -277,12 +280,16 @@ def main(**kwargs):
                         force += normalized_diff / dist
                         count += 1
         
-        # Apply inter-species avoidance weight
+        # Apply inter-species avoidance weight. The previous version had a
+        # ``* 100.0`` magic constant that turned weight=2 into effective
+        # force=200, dwarfing all other forces. With weight ∈ [0, 5] alone
+        # (Particle-Life convention) inter-species repulsion sits at parity
+        # with same-species separation/cohesion.
         result_force = ti.math.vec2(0.0, 0.0)
         if count > 0:
             force = force / ti.cast(count, ti.f32)
-            result_force = force * tv.s.llm_species.field[species].inter_species_avoidance * 100.0
-        
+            result_force = force * tv.s.llm_species.field[species].inter_species_avoidance
+
         return result_force
     
     @ti.func
@@ -297,7 +304,7 @@ def main(**kwargs):
     @ti.kernel
     def apply_all_experts():
         """Apply flocking behaviors to all boids."""
-        dt = 0.032  # Adjusted for faster simulation
+        dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 gives visible motion, 0.016 is invisible
         max_force = tv.s.llm_global.field[0].max_force
         max_speed = tv.s.llm_global.field[0].max_speed
         

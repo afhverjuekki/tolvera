@@ -192,8 +192,10 @@ cohesion = 150.0         # Gentle attraction
 ## Integration Parameters
 
 ```python
-# Standard time step for 60 FPS
-dt = 0.016
+# Per-frame DISPLAY-step multiplier (NOT real seconds).
+# 0.10-0.20 gives visibly cruising particles; 0.016 (textbook 60-FPS
+# physical timestep) makes them move 0.13 px/frame — invisible.
+dt = 0.15
 
 # Semi-implicit Euler integration
 acceleration = force / mass

@@ -22,6 +22,7 @@ class ModelFactory:
         'mistral': ('MISTRAL_API_KEY', 'pydantic_ai.models.mistral', 'MistralModel', False),
         'huggingface': ('HF_TOKEN', 'pydantic_ai.models.huggingface', 'HuggingFaceModel', False),
         'ollama': (None, 'pydantic_ai.models.openai', 'OpenAIModel', True),  # Uses OpenAI compatibility
+        'bedrock': (None, 'pydantic_ai.models.bedrock', 'BedrockConverseModel', True),
     }
     
     # Default models for each provider
@@ -33,6 +34,7 @@ class ModelFactory:
         'mistral': 'mistral-medium-2508',
         'huggingface': 'Qwen/QwQ-32B-Preview',
         'ollama': 'llama3.2',
+        'bedrock': 'us.anthropic.claude-opus-4-8',
     }
     
     # Model name aliases for convenience
@@ -55,6 +57,14 @@ class ModelFactory:
         'llama': 'llama3.2',
         'llama3': 'llama3.2',
         'codellama': 'codellama',
+        # Bedrock aliases (cross-region inference profiles)
+        'bedrock-opus-4-8': 'us.anthropic.claude-opus-4-8',
+        'bedrock-opus-4-7': 'us.anthropic.claude-opus-4-7',
+        'bedrock-opus-4-6': 'us.anthropic.claude-opus-4-6-v1',
+        'bedrock-opus-4-5': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
+        'bedrock-sonnet-4-6': 'us.anthropic.claude-sonnet-4-6',
+        'bedrock-sonnet-4-5': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+        'bedrock-haiku-4-5': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
     }
     
     @classmethod
@@ -87,23 +97,31 @@ class ModelFactory:
         Returns:
             Tuple of (provider, model_name)
         """
+        # Bedrock model IDs (us./global./eu.) embed ':' in version suffixes
+        # like '-v1:0', so they must be detected before any provider:model split.
+        if model_string.startswith(('us.', 'global.', 'eu.')):
+            return 'bedrock', model_string
+
         # Check if it's in provider:model format
         if ':' in model_string:
             parts = model_string.split(':', 1)
             provider = parts[0].lower()
             model_name = parts[1]
-            
-            # Resolve model alias if needed
-            model_name = cls.MODEL_ALIASES.get(model_name, model_name)
-            
-            return provider, model_name
+
+            if provider in cls.PROVIDERS:
+                # Resolve model alias if needed
+                model_name = cls.MODEL_ALIASES.get(model_name, model_name)
+                return provider, model_name
+            # Not a real provider prefix — fall through (e.g. embedded ':' in a model id)
         
         # Check if it's a known alias
         model_lower = model_string.lower()
         if model_lower in cls.MODEL_ALIASES:
             resolved = cls.MODEL_ALIASES[model_lower]
             # Determine provider from resolved model name
-            if 'gemini' in resolved:
+            if model_lower.startswith('bedrock-') or resolved.startswith(('us.', 'global.', 'eu.')):
+                return 'bedrock', resolved
+            elif 'gemini' in resolved:
                 return 'gemini', resolved
             elif 'gpt' in resolved:
                 return 'openai', resolved
@@ -115,9 +133,11 @@ class ModelFactory:
                 return 'ollama', resolved
             else:
                 return 'gemini', resolved  # Default to gemini
-        
+
         # Check for known model patterns
-        if 'gemini' in model_string:
+        if model_string.startswith(('us.', 'global.', 'eu.')):
+            return 'bedrock', model_string
+        elif 'gemini' in model_string:
             return 'gemini', model_string
         elif 'gpt' in model_string:
             return 'openai', model_string
@@ -209,8 +229,8 @@ class ModelFactory:
         
         env_var, module_path, class_name, needs_provider = cls.PROVIDERS[provider]
         
-        # Handle API key
-        if provider != 'ollama':  # Ollama doesn't need an API key
+        # Handle API key (ollama and bedrock use other auth)
+        if provider not in ('ollama', 'bedrock'):
             api_key = cls.get_api_key(provider, api_key)
             if not api_key and env_var:
                 raise ValueError(
@@ -261,6 +281,19 @@ class ModelFactory:
                 # Create OpenAI model with Ollama provider
                 model = OpenAIModel(actual_model, provider=provider_instance)
                 
+            elif provider == 'bedrock':
+                from pydantic_ai.providers.bedrock import BedrockProvider
+
+                profile_name = kwargs.pop('profile_name', os.getenv('AWS_PROFILE'))
+                region_name = kwargs.pop('region_name', os.getenv('AWS_REGION') or os.getenv('AWS_DEFAULT_REGION') or 'us-east-1')
+
+                provider_instance = BedrockProvider(
+                    profile_name=profile_name,
+                    region_name=region_name,
+                    **kwargs,
+                )
+                model = model_class(actual_model, provider=provider_instance)
+
             elif provider == 'google':
                 # Google provider needs special handling
                 from pydantic_ai.providers.google import GoogleProvider
@@ -310,11 +343,21 @@ class ModelFactory:
         
         for provider, config in cls.PROVIDERS.items():
             env_var, module_path, class_name, needs_provider = config
-            
+
             # Check if API key is configured
             has_key = False
             if provider == 'ollama':
                 has_key = True  # Ollama doesn't need an API key
+            elif provider == 'bedrock':
+                # Bedrock uses AWS credentials (env vars, ~/.aws/credentials,
+                # SSO, instance profile, etc.). Ask boto3's default credential
+                # chain — that's the same path BedrockProvider takes at runtime.
+                try:
+                    import boto3  # type: ignore
+                    session = boto3.Session(profile_name=os.getenv('AWS_PROFILE'))
+                    has_key = session.get_credentials() is not None
+                except Exception:
+                    has_key = False
             elif env_var:
                 has_key = bool(os.getenv(env_var))
             

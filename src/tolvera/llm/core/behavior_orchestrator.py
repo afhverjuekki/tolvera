@@ -6,6 +6,8 @@ descriptions into executable Taichi code for particle behaviors.
 """
 
 import asyncio
+import logging
+import re
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 from datetime import datetime
@@ -18,6 +20,8 @@ from ..templates.template_renderer import TemplateRenderer
 from .sketch_refiner import SketchRefiner
 from .behavior_registry import ExpertInfo, ExpertRegistry
 from ..debug.tracing import get_collector
+
+logger = logging.getLogger(__name__)
 
 
 class BehaviorOrchestrator:
@@ -216,8 +220,8 @@ class BehaviorOrchestrator:
         # Apply refinements if configured
         sketch = await self._apply_refinements(sketch, description)
         
-        # Save to file
-        return self._save_to_file(sketch, filename, use_timestamp)
+        # Save to file (async because the behavioural-profile pass calls Bedrock)
+        return await self._save_to_file(sketch, filename, use_timestamp, description)
     
     def get_expert_info(self) -> List[Dict[str, Any]]:
         """Get information about all registered experts.
@@ -309,10 +313,19 @@ class BehaviorOrchestrator:
                 spec = {state_spec.category: {state_spec.name: state_def}}
                 all_state_specs.append(spec)
         
-        # Analyze states for components
-        if hasattr(decomposed, 'components'):
-            for component in decomposed.components:
-                states = await self._analyze_component_states(component)
+        # Analyze states for components — fired in parallel since each
+        # component's state analysis is a read-only LLM call that doesn't
+        # touch shared state. On Bedrock Sonnet 4.6 this drops the state
+        # analysis stage from ~N * 11s serial to ~max(11s) end-to-end.
+        if hasattr(decomposed, 'components') and decomposed.components:
+            import asyncio
+            state_results = await asyncio.gather(
+                *(
+                    self._analyze_component_states(component)
+                    for component in decomposed.components
+                )
+            )
+            for states in state_results:
                 all_state_specs.extend(states)
         
         # Create all states
@@ -459,6 +472,26 @@ class BehaviorOrchestrator:
                 expert_type = 'interaction'
             else:
                 expert_type = 'single'
+
+            # Force/visual experts have their function name enforced in the
+            # synthesis prompt, but utility experts let the LLM name the
+            # function freely (UtilityExpertResponse.name/.code). The utility
+            # kernel, however, calls experts by their registered name
+            # (component.expert_name), so a mismatch produces a TaichiNameError
+            # at runtime ("Name '<planned>' is not defined"). Canonical safety
+            # net: rewrite the function's def to the registered name so the
+            # generated call always resolves, regardless of backend.
+            if expert_type == 'utility' and code and component.expert_name:
+                target = component.expert_name
+                actual = getattr(expert, 'name', None)
+                if actual and re.search(rf'\bdef\s+{re.escape(actual)}\s*\(', code):
+                    code = re.sub(
+                        rf'(\bdef\s+){re.escape(actual)}(\s*\()',
+                        rf'\g<1>{target}\g<2>', code, count=1)
+                elif not re.search(rf'\bdef\s+{re.escape(target)}\s*\(', code):
+                    # LLM's .name didn't match its own code; rename the first def.
+                    code = re.sub(r'(\bdef\s+)\w+(\s*\()',
+                                  rf'\g<1>{target}\g<2>', code, count=1)
             
             # Create and register expert info
             expert_info = ExpertInfo(
@@ -706,11 +739,12 @@ class BehaviorOrchestrator:
         
         return sketch
     
-    def _save_to_file(
+    async def _save_to_file(
         self,
         sketch: str,
         filename: Optional[str],
-        use_timestamp: bool
+        use_timestamp: bool,
+        description: str = ""
     ) -> Tuple[str, str]:
         """Save sketch to file."""
         if not filename and not use_timestamp:
@@ -747,10 +781,57 @@ class BehaviorOrchestrator:
                     sketch_lines = sketch_lines[:-1]
                     sketch = '\n'.join(sketch_lines)
         
+        from ..sc.emitter import emit_companion, ensure_osc_senders, has_musical_intent
+        from .behavioral_profile import (
+            BehavioralProfileSelector,
+            apply_profile_overrides,
+        )
+
+        # Guarantee OSC senders survive refinement when musical intent is present.
+        # Refinement returns a complete refactored sketch and may strip
+        # template-injected blocks; this is the canonical safety net.
+        sketch = ensure_osc_senders(sketch, description)
+
+        # Phase 2 — Intent-enum override pass. The LLM picks behavioural
+        # INTENT per species from small Literal enums; a deterministic
+        # Python table translates those intents to canonical numbers and
+        # rewrites the matching per-species assignments in the sketch.
+        # This is the robust fix for the LLM picking, e.g., separation=25
+        # with cohesion=2 (which dwarfs cohesion 12×, producing TV-static
+        # visuals) — Pydantic-AI enforces the enum perfectly across every
+        # backend, so the value can no longer drift out of range.
+        if self.current_species_config is not None:
+            species_ids = list(self.current_species_config.species_ids)
+            if species_ids:
+                try:
+                    selector = BehavioralProfileSelector(model_name=self.model_name)
+                    profiles = await selector.select(description, species_ids)
+                    sketch, edits = apply_profile_overrides(sketch, profiles)
+                    if edits:
+                        logger.info("Behavioural profile applied %d override(s):", len(edits))
+                        for e in edits:
+                            logger.info("  %s", e)
+                except Exception as exc:
+                    # Profile override is a polish layer — never let it fail
+                    # the whole generation. Log and continue with the LLM's
+                    # original numbers.
+                    logger.warning(
+                        "Behavioural profile override failed (continuing without): %s", exc
+                    )
+
         # Write file
         with open(file_path, 'w') as f:
             f.write(sketch)
-        
+
+        species_cfg = self.current_species_config
+        if has_musical_intent(description) and species_cfg is not None:
+            sc_path = file_path.with_suffix(".scd")
+            try:
+                emit_companion(species_cfg, description, sc_path)
+                logger.info("Wrote SuperCollider companion: %s", sc_path)
+            except OSError as e:
+                logger.warning("SuperCollider companion emission failed: %s", e)
+
         return sketch, str(file_path)
     
     

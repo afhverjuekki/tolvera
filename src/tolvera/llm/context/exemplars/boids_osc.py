@@ -68,8 +68,9 @@ def main(**kwargs):
         'state': {
             'perception_radius': (ti.f32, 20.0, 200.0),
             'separation_radius': (ti.f32, 10.0, 50.0),
+            # Shiffman canon: max_force ≈ max_speed * 0.05 for fluid swooping.
             'max_speed': (ti.f32, 50.0, 300.0),
-            'max_force': (ti.f32, 100.0, 500.0),
+            'max_force': (ti.f32, 1.0, 30.0),
         }, 'shape': 1, 'osc': ('get', 'set')
     })
     tv.s.set('llm_species', {
@@ -94,7 +95,7 @@ def main(**kwargs):
     tv.s.llm_global.field[0].perception_radius = 80.0
     tv.s.llm_global.field[0].separation_radius = 30.0
     tv.s.llm_global.field[0].max_speed = 200.0
-    tv.s.llm_global.field[0].max_force = 300.0
+    tv.s.llm_global.field[0].max_force = 10.0  # ≈ max_speed * 0.05 (Shiffman canon)
     
     @ti.kernel
     def init_species_params():
@@ -147,7 +148,7 @@ def main(**kwargs):
             if i!=j and tv.p.field[j].active>0 and tv.p.field[j].species!=p.species:
                 diff=p.pos-tv.p.field[j].pos;dist=diff.norm()
                 if dist>0 and dist<avoidance_radius: force+=diff/dist/dist;count+=1
-        if count>0: force/=count;result=force*tv.s.llm_species.field[p.species].inter_species_avoidance*100.0
+        if count>0: force/=count;result=force*tv.s.llm_species.field[p.species].inter_species_avoidance  # weight ∈ [0,5] alone — no magic *100 amplifier
         return result
     @ti.func
     def wander_force(p,i):
@@ -155,7 +156,8 @@ def main(**kwargs):
         return ti.math.vec2(ti.cos(angle),ti.sin(angle))*20.0
     @ti.kernel
     def apply_all_experts():
-        dt=0.032;max_force=tv.s.llm_global.field[0].max_force;max_speed=tv.s.llm_global.field[0].max_speed
+        dt=0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 gives visible motion
+        max_force=tv.s.llm_global.field[0].max_force;max_speed=tv.s.llm_global.field[0].max_speed
         for i in range(tv.pn):
             if tv.p.field[i].active>0:
                 p=tv.p.field[i];total_force=ti.math.vec2(0.0)

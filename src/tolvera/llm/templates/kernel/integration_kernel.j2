@@ -91,11 +91,23 @@ def apply_all_experts():
                     {% endfor %}
             {% endif %}
 
-            # Apply force (F = ma, so a = F/m)
-            dt = 0.016  # 60 FPS timestep
+            # Apply force (F = ma, so a = F/m). dt below is the per-frame
+            # position-step multiplier, NOT real seconds. 0.016 (textbook
+            # 60-FPS physics value) makes particles inch across the screen
+            # at 0.13 px/frame for max_speed=8 — invisible. 0.15 makes them
+            # visibly cruise. Override here, not in the LLM-generated experts.
+            dt = 0.15
             acceleration = total_force / mass if mass > 0 else total_force
             tv.p.field[i].vel += acceleration * dt
-            tv.p.field[i].vel *= 0.98  # Small damping for stability
+            tv.p.field[i].vel *= 0.995  # Very light damping for stability
 
-            # Update position from velocity (CRITICAL for movement)
-            tv.p.field[i].pos += tv.p.field[i].vel * tv.p.field[i].speed * dt
+            # Update position from velocity. Note: we deliberately do NOT
+            # multiply by tv.p.field[i].speed here. In Tölvera's native code
+            # (particles.py), `speed` is a per-particle scaling multiplier in
+            # roughly [0.2, 2.2]. Past LLM generations interpreted the field
+            # name as a target velocity and set it to 20.0, producing a
+            # hidden 20× position-step amplifier on top of dt + max_speed +
+            # forces. Velocity alone already carries motion magnitude; the
+            # speed field, if used at all, belongs in force expressions, not
+            # in the position update.
+            tv.p.field[i].pos += tv.p.field[i].vel * dt

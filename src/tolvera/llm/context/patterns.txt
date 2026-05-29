@@ -60,6 +60,18 @@ FLOCKING_PATTERNS
 
 # Flocking Behaviors (Boids)
 
+## ⚠ PARAMETER SCALE — READ BEFORE PICKING NUMBERS ⚠
+The `*_strength` variables below are per-species STRENGTH MULTIPLIERS
+(typed `ti.f32, 0.0, 10.0` on the species state container). They stay in
+the **1.0–5.0** range with the canonical boids ratio
+`cohesion : alignment : separation ≈ 1 : 1 : 2`.
+Example values: cohesion_strength=2.5, alignment_strength=2.0, separation_strength=5.0.
+
+DO NOT set separation_strength to 50, 80, or 120 — those magnitudes belong
+to RETURN-VALUE forces (gravity, chase) and dwarf the cohesion/alignment
+multipliers by 20-60×, producing TV-static visuals where particles can
+never cluster.
+
 ## Alignment - Match neighbor velocities
 ```python
 # Declare ALL variables before conditionals

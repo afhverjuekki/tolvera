@@ -180,7 +180,16 @@ class BehaviorAnalyzer:
         agent = Agent(
             self.model,
             output_type=DecomposedBehavior,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            # Complex prompts (e.g. 5 species + many components) make
+            # DecomposedBehavior a large structured output. Reasoning-heavy
+            # models like Opus 4.8 emit explanatory text first and then run out
+            # of the default output budget mid tool-call, yielding an empty
+            # `{}` that fails validation ("Exceeded maximum retries for output
+            # validation"), which add_behavior swallows into a 0-expert result.
+            # Give the decomposition room to emit the whole structure.
+            model_settings={"max_tokens": 12000},
         )
         
         return agent

@@ -242,7 +242,7 @@ class ColorResolver:
         # Load prompt and create agent
         loader = get_prompt_loader()
         system_prompt = loader.load_prompt("utilities/color_resolution.txt")
-        agent = Agent(model, output_type=ColorRGBA, system_prompt=system_prompt)
+        agent = Agent(model, output_type=ColorRGBA, output_retries=2, system_prompt=system_prompt)
         
         # Execute resolution with tracing
         collector = get_collector()

@@ -17,7 +17,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, Grid
 from textual.widgets import (
     Button, Header, Input, Label,
-    Static, TextArea, RadioSet, RadioButton
+    Static, TabbedContent, TabPane, TextArea, RadioSet, RadioButton
 )
 from textual.widget import Widget
 from textual.screen import ModalScreen
@@ -29,10 +29,12 @@ from textual.binding import Binding
 from tolvera import Tolvera
 from tolvera.llm import BehaviorOrchestrator
 from tolvera.llm.core.sketch_refiner import SketchRefiner
+from tolvera.llm.core.sc_refiner import SCRefiner
 from tolvera.llm.debug.tracing import get_collector
 from tolvera.llm.debug.console_tracer import enable_console_tracing
 from tolvera.llm.debug.trace_html_report import generate_html_report
 from tolvera.llm.core.llm_factory import ModelFactory
+from tolvera.llm.runtime import SclangRunner, SclangStatus
 from dotenv import load_dotenv
 
 # Import enhanced components
@@ -429,23 +431,24 @@ Let's start your journey into alife creation!"""
             "content": """Now we'll generate your first alife form!
 
 The description is already set to:
-"Two species, red and green, repel each other strongly."
+"Three species of particles that flock together and sonify their movements with different timbres."
 
-This describes a simple but interesting behavior where particles of different colors push away from each other, creating dynamic boundaries and patterns.
+This is the canonical sonification prompt — three flocking species, each broadcasting its motion to a different SuperCollider synth (saw, FM, pulse), so you can hear the flock dynamics as well as see them.
 
 Your task:
 • Click the "Gen" button below for automatic generation
 • OR close this tutorial and click "Generate Sketch" manually
 • Watch the status log for synthesis progress
 • See the generated Python code appear in the code editor
+• The SuperCollider tab will unlock automatically when the .scd companion is written
 
 ⚡ The synthesis process:
-1. LLM analyzes your description
-2. Generates expert behavior functions  
-3. Creates complete runnable sketch
+1. LLM decomposes the description into species + behaviors
+2. Generates expert flocking functions
+3. Renders the Python sketch and emits a matching .scd patch
 4. Applies syntax highlighting
 
-This may take 10-20 seconds depending on your model."""
+This may take several minutes on Bedrock."""
         },
         {
             "title": "Step 2: Run the Sketch",
@@ -1317,16 +1320,73 @@ class TolveraTextualUI(App):
         height: 100%;
         background: #000B1A;
     }
-    
-    #code-editor {
-        height: 100%;
+
+    /* Header row (panel title + diff indicator). When the code editor was a
+       direct child of the container it pinned this Horizontal to auto-height;
+       now that TabbedContent sits between them we need to constrain it
+       explicitly or it expands and pushes the tabs/editor halfway down. */
+    #code-editor-container > Horizontal {
+        height: auto;
+        max-height: 1;
+    }
+
+    /* Both Python and SuperCollider editors share these rules */
+    EnhancedCodeEditor {
+        height: 1fr;
         /* Dracula theme colors will be applied automatically */
     }
-    
+
+    /* TabbedContent hosts both editor panes. Without explicit heights on
+       every layer Textual lets the tab strip dock to the top and leaves
+       the editor floating in a tiny sliver — so we walk down the tree and
+       expand each container to its parent. */
+    #editor-tabs {
+        height: 1fr;
+    }
+
+    #editor-tabs > ContentSwitcher {
+        height: 1fr;
+    }
+
+    #editor-tabs TabPane {
+        height: 1fr;
+        padding: 0;
+    }
+
+    #editor-tabs Tabs {
+        background: #000814;
+        dock: top;
+    }
+
     /* Enhanced styles for diff mode */
     EnhancedCodeEditor.diff-mode {
         border: thick #39FF14 !important;  /* Thick bright green border in diff mode */
         box-sizing: border-box;
+    }
+
+    /* SuperCollider status pill */
+    #controls-horizontal #sc-status {
+        width: 22;
+        min-width: 22;
+        height: 3;
+        margin: 0 1 0 0;
+        padding: 0 1;
+        background: #001629;
+        border: solid #7209B7 60%;
+        color: #D4ADFC;
+        text-align: center;
+        content-align: center middle;
+        text-style: bold;
+    }
+
+    #sc-status.running {
+        border: solid #39FF14 70%;
+        color: #39FF14;
+    }
+
+    #sc-status.error {
+        border: solid #F72585 70%;
+        color: #F72585;
     }
     
     .diff-indicator {
@@ -1437,28 +1497,32 @@ class TolveraTextualUI(App):
     }
     
     /* Global loading overlay - full screen modal */
+    /* Loading indicator — a small floating card docked to the top-right so the
+       Status & Logs panel stays visible underneath. The user can watch
+       progress (e.g. "Behaviors evolved") while generation is in flight. */
     #loading-overlay {
         display: none;
-        dock: top;
         layer: overlay;
+        dock: top;
         width: 100%;
-        height: 100%;
-        background: #000814 90%;
-        align: center middle;
+        height: 7;
+        align: right top;
+        background: transparent;
     }
-    
+
     #loading-overlay.visible {
         display: block;
     }
-    
+
     #loading-content {
         width: 60;
-        height: 15;
+        height: 7;
         background: #000B1A 95%;
-        border: double #00D9FF 80%;
-        padding: 3;
+        border: solid #00D9FF 80%;
+        padding: 0 2;
         align: center middle;
         layout: vertical;
+        margin: 0 2 0 0;
     }
     
     #loading-content CreativeLoadingWidget {
@@ -1650,11 +1714,13 @@ class TolveraTextualUI(App):
         Binding("ctrl+r", "run_sketch", "Run Sketch", priority=True, show=True),
         Binding("ctrl+s", "save_sketch", "Save Sketch", priority=True, show=True),
         Binding("ctrl+t", "toggle_chat", "Toggle Chat", priority=True, show=True),
+        Binding("ctrl+b", "boot_sc", "Boot/Stop SC", priority=True, show=True),
+        Binding("ctrl+e", "eval_sc", "Eval SC", priority=True, show=True),
         Binding("f2", "show_tutorial", "Tutorial", priority=True, show=True),
         Binding("ctrl+q", "quit", "Quit", priority=True, show=True),
         Binding("f1", "show_help", "Help", show=True),
     ]
-    
+
     # Reactive properties
     current_sketch_path = reactive(None)
     is_generating = reactive(False)
@@ -1663,16 +1729,23 @@ class TolveraTextualUI(App):
     agents_ready = reactive(False)
     model_name = reactive("gemini-2.0-flash")
     chat_visible = reactive(True)
-    
+    sc_running = reactive(False)
+    sc_available = reactive(False)
+
     def __init__(self):
         super().__init__()
         self.behavior_orchestrator = None
         self.sketch_refiner = None
+        self.sc_refiner: Optional[SCRefiner] = None
+        self.sc_runner: Optional[SclangRunner] = None
         self.collector = None
         self.main_trace = None
         self.sketch_process = None
         self.chat_history = []
         self.current_sketch_code = ""
+        self.current_sketch_scd_path: Optional[Path] = None
+        self.current_species_ids: list[int] = []
+        self.active_editor_id: str = "python-tab"
         self.tv = None
         self.tutorial_current_step = 0  # Persist tutorial state
         self.tutorial_completed = False  # Track if tutorial was completed
@@ -1689,7 +1762,7 @@ class TolveraTextualUI(App):
             yield Label("Sketch Description", classes="panel-title")
             with Horizontal():
                 yield TextArea(
-                    "Two species, red and green, repel each other strongly.",
+                    "Three species of particles that flock together and sonify their movements with different timbres.",
                     id="description-input",
                     language=None
                 )
@@ -1704,26 +1777,43 @@ class TolveraTextualUI(App):
                 yield Button("Load", variant="default", id="load-btn")
                 yield Button("Reset", variant="warning", id="reset-btn")
                 yield Button("Toggle Diff", variant="default", id="diff-btn", disabled=True)
+                yield Button("Boot SC", variant="default", id="boot-sc-btn")
+                yield Button("Eval SC", variant="default", id="eval-sc-btn", disabled=True)
+                yield Static("SC: stopped", id="sc-status")
                 yield Button("Hide Chat", variant="default", id="chat-toggle-btn")
                 yield Button("Change Model", variant="default", id="model-btn")
-        
+
         # Main grid layout
         with Container(id="main-grid"):
-            # Left - Code Editor (now larger)
+            # Left - Tabbed code editor (Python + SuperCollider)
             with Vertical(id="code-editor-container"):
                 with Horizontal():
                     yield Label("Generated Code", classes="panel-title")
                     yield Static("", id="diff-indicator", classes="diff-indicator")
-                # Create enhanced code editor with diff highlighting support
-                yield EnhancedCodeEditor(
-                    "# Generated code will appear here\n# Python syntax highlighting is enabled",
-                    id="code-editor",
-                    language="python",
-                    theme="dracula",
-                    show_line_numbers=True,
-                    tab_behavior="indent",
-                    read_only=False
-                )
+                with TabbedContent(initial="python-tab", id="editor-tabs"):
+                    with TabPane("Python", id="python-tab"):
+                        yield EnhancedCodeEditor(
+                            "# Generated code will appear here\n# Python syntax highlighting is enabled",
+                            id="py-editor",
+                            language="python",
+                            theme="dracula",
+                            show_line_numbers=True,
+                            tab_behavior="indent",
+                            read_only=False
+                        )
+                    with TabPane("SuperCollider", id="sc-tab", disabled=True):
+                        yield EnhancedCodeEditor(
+                            "// No SuperCollider companion yet.\n"
+                            "// Add musical/sonification language to your description\n"
+                            "// (sonify, sound, music, rhythm, sonic, audio, timbre)\n"
+                            "// then regenerate to unlock this tab.",
+                            id="sc-editor",
+                            language=None,
+                            theme="dracula",
+                            show_line_numbers=True,
+                            tab_behavior="indent",
+                            read_only=True
+                        )
             
             with Vertical(id="chat-panel"):
                 yield Label("Refinement Chat", classes="panel-title")
@@ -1756,7 +1846,7 @@ class TolveraTextualUI(App):
         
         # Manual keybind display at bottom
         with Container(id="manual-keybinds", classes="manual-keybinds"):
-            yield Static("Ctrl+N: New | Ctrl+R: Run | Ctrl+S: Save | Ctrl+T: Toggle Chat | F2: Tutorial | F1: Help | Ctrl+Q: Quit", 
+            yield Static("Ctrl+N New | Ctrl+R Run | Ctrl+S Save | Ctrl+T Chat | Ctrl+B Boot/Stop SC | Ctrl+E Eval SC | F2 Tutorial | F1 Help | Ctrl+Q Quit",
                         id="keybind-display")
         
         # Global loading overlay - appears on top of everything when visible
@@ -1788,6 +1878,13 @@ class TolveraTextualUI(App):
         self.collector = get_collector()
         self.collector.enabled = True
         self.collector.capture_llm_content = True
+
+        # Wire trace observers so the user sees per-step progress in the
+        # Status & Logs panel during long Bedrock runs (otherwise add_behavior
+        # silently spends 5+ minutes inside multiple LLM calls).
+        self._trace_step_counter: dict[str, int] = {}
+        self.collector.on_node_start = self._on_trace_node_start
+        self.collector.on_node_complete = self._on_trace_node_complete
         
         # Initialize directories
         # Get project root (5 levels up from this file)
@@ -1859,22 +1956,39 @@ class TolveraTextualUI(App):
             
             self.initialize_agents()
     
+    # Maximum log lines kept in the TextArea. Reassigning `log.text` is O(N)
+    # per call, so we cap the buffer; older lines fall off the top. 500 is
+    # plenty for tracing a generation + a few runs without making scroll feel
+    # janky.
+    _LOG_MAX_LINES = 500
+
     def log_message(self, message: str):
-        """Add a message to the log."""
+        """Append a timestamped line to the Status & Logs panel.
+
+        Keeps the buffer bounded so growth doesn't slow the TextArea
+        re-render to a crawl, and disables the scroll animation so clicks
+        on Run/Eval SC/Copy don't visibly "loop through" the log every time.
+        """
         try:
             log = self.query_one("#log-output", TextArea)
             timestamp = datetime.now().strftime('%H:%M:%S')
             new_line = f"[{timestamp}] {message}"
-            
-            # Append to existing text with newline
+
             current_text = log.text
             if current_text:
-                log.text = current_text + "\n" + new_line
+                combined = current_text + "\n" + new_line
             else:
-                log.text = new_line
-            
-            # Auto-scroll to bottom
-            log.scroll_end()
+                combined = new_line
+
+            # Trim to the last N lines.
+            lines = combined.split("\n")
+            if len(lines) > self._LOG_MAX_LINES:
+                combined = "\n".join(lines[-self._LOG_MAX_LINES:])
+
+            log.text = combined
+            # animate=False avoids a multi-hundred-ms scroll animation that
+            # makes every log update look like the log is replaying itself.
+            log.scroll_end(animate=False)
         except Exception:
             # Log not available yet (during initialization)
             pass
@@ -1940,10 +2054,24 @@ class TolveraTextualUI(App):
     async def initialize_agents(self):
         """Initialize the behavior agent and refiner asynchronously."""
         import asyncio
-        
+
         try:
             self.is_initializing = True
             self.agents_ready = False
+
+            # Propagate the user's model choice to sub-components that
+            # construct their own LLM clients via os.getenv("DEFAULT_MODEL").
+            # Without this, ContextSelector (lazily created by the global
+            # PromptLoader singleton) falls back to gemini-2.0-flash and the
+            # generation pipeline crashes mid-run when GEMINI_API_KEY is unset.
+            os.environ["DEFAULT_MODEL"] = self.model_name
+            # If the user switched models, drop the cached PromptLoader so its
+            # ContextSelector is rebuilt against the new DEFAULT_MODEL.
+            try:
+                from tolvera.llm.prompts import prompt_loader as _pl
+                _pl._default_loader = None
+            except Exception:
+                pass
             
             # Small delay to let UI update
             await asyncio.sleep(0.1)
@@ -1984,7 +2112,20 @@ class TolveraTextualUI(App):
             except Exception as e:
                 self.log_message(f"❌ SketchRefiner failed: {e}")
                 raise
-            
+
+            # Small delay to let UI update
+            await asyncio.sleep(0.1)
+
+            # Initialize SC refiner (for editing the .scd companion patch).
+            self.log_message(f"Initializing SCRefiner with {provider}...")
+            try:
+                self.sc_refiner = SCRefiner(model_name=self.model_name)
+                self.log_message(f"SCRefiner ready with {provider}")
+            except Exception as e:
+                # SC refinement is optional — log and continue if it fails.
+                self.log_message(f"⚠️  SCRefiner unavailable: {e}")
+                self.sc_refiner = None
+
             # Mark as ready
             self.agents_ready = True
             self.log_message("We're ready! Begin creating alife...")
@@ -2111,7 +2252,7 @@ class TolveraTextualUI(App):
         except Exception:
             # Fallback to code editor
             try:
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 code_editor.focus()
             except Exception:
                 pass
@@ -2162,7 +2303,7 @@ class TolveraTextualUI(App):
         except Exception:
             # Fallback to code editor to review the repairs
             try:
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 code_editor.focus()
             except Exception:
                 pass
@@ -2200,7 +2341,11 @@ class TolveraTextualUI(App):
             # Show loading indicator
             self.show_loading("Generating artificial life sketch...")
             self.is_generating = True
-            
+
+            # Reset per-pipeline counters so trace-callback step numbers
+            # ("Synthesizing expert function (#1)") restart from 1 each run.
+            self._trace_step_counter = {}
+
             self.log_message(f"🧫 Cultivating behaviors: {description}")
             
             # Start trace
@@ -2226,14 +2371,18 @@ class TolveraTextualUI(App):
             
             self.current_sketch_code = code
             
-            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
             # Ensure language is set before loading to guarantee highlighting.
             code_editor.language = "python"
             # Use load_text to ensure highlighting is applied
             code_editor.load_text(code)
             # Clear any previous diff state since this is a new generation
             code_editor.clear_diff_highlighting()
-            
+
+            # Discover any .scd companion that the orchestrator wrote alongside
+            # the .py and surface it in the SuperCollider tab.
+            self._load_sc_companion_from_disk()
+
             # Complete trace
             self.main_trace.complete("success")
             self.update_trace_info()
@@ -2263,7 +2412,7 @@ class TolveraTextualUI(App):
         
         try:
             # Save current code first (use clean code without diff markers)
-            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
             with open(self.current_sketch_path, 'w') as f:
                 f.write(code_editor.get_clean_code())
             
@@ -2284,28 +2433,23 @@ class TolveraTextualUI(App):
             self.query_one("#stop-btn", Button).disabled = False
             self.is_running = True
             
-            # Create subprocess using Poetry to ensure proper environment
             # Get project root (5 levels up from this UI script)
             project_root = Path(__file__).parent.parent.parent.parent.parent
-            
-            # Try to use Poetry first for proper environment management
-            try:
-                self.sketch_process = await asyncio.create_subprocess_exec(
-                    "poetry", "run", "python", self.current_sketch_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=str(project_root)  # Run from project root for Poetry to work
-                )
-            except (FileNotFoundError, OSError):
-                # Fallback to sys.executable if Poetry is not available
-                # This may cause library conflicts but at least attempts to run
-                self.log_message("⚠️ Poetry not found, using direct Python (may cause library conflicts)")
-                self.sketch_process = await asyncio.create_subprocess_exec(
-                    sys.executable, self.current_sketch_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=os.environ.copy()  # At least preserve current environment
-                )
+
+            # Run the sketch with the same Python that's running the TUI.
+            # We were previously calling `poetry run python ...` here, but on
+            # machines where poetry is installed system-wide it can pick the
+            # system Python (e.g. 3.8) instead of the venv interpreter and
+            # the project rejects it. Using sys.executable is reliable: if
+            # the user launched the TUI with .venv/bin/python, that's exactly
+            # the interpreter we want for the sketch too.
+            self.sketch_process = await asyncio.create_subprocess_exec(
+                sys.executable, self.current_sketch_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(project_root),
+                env=os.environ.copy(),
+            )
             
             # Read output asynchronously
             async def read_stream(stream, prefix, is_stderr=False):
@@ -2366,9 +2510,19 @@ class TolveraTextualUI(App):
             # Wait for process to complete
             await asyncio.gather(stdout_task, stderr_task)
             await self.sketch_process.wait()
-            
+
+            # A non-zero exit code means the sketch failed even if we didn't
+            # see a Python traceback (e.g. poetry/uv complaining about the
+            # interpreter, missing module, sklang spawn failure). Treat that
+            # as an execution error so the user isn't misled.
+            exit_code = self.sketch_process.returncode
+            if exit_code != 0 and not self.has_execution_error:
+                self.has_execution_error = True
+                if not self.last_error_logs:
+                    self.last_error_logs = f"Sketch process exited with code {exit_code}"
+
             if self.has_execution_error:
-                self.log_message("🦋 Life cycle completed with errors")
+                self.log_message(f"🦋 Life cycle completed with errors (exit {exit_code})")
             else:
                 self.log_message("🦋 Life cycle completed successfully")
             
@@ -2403,11 +2557,15 @@ class TolveraTextualUI(App):
     @on(Button.Pressed, "#stop-btn")
     async def stop_sketch(self):
         """Stop the running sketch."""
-        if self.sketch_process:
-            self.sketch_process.terminate()
-            await asyncio.sleep(0.5)
-            if self.sketch_process.returncode is None:
-                self.sketch_process.kill()
+        if self.sketch_process is not None and self.sketch_process.returncode is None:
+            try:
+                self.sketch_process.terminate()
+                await asyncio.sleep(0.5)
+                if self.sketch_process.returncode is None:
+                    self.sketch_process.kill()
+            except (ProcessLookupError, OSError):
+                # Process exited between our check and the signal call.
+                pass
             self.log_message("💤 Life form hibernated")
             self.is_running = False
             self.query_one("#run-btn", Button).disabled = False
@@ -2438,97 +2596,144 @@ class TolveraTextualUI(App):
     
     @work(exclusive=True)
     async def apply_refinement_worker(self, request: str):
-        """Apply refinement to the current sketch asynchronously."""
+        """Apply refinement to the active editor's content asynchronously.
+
+        Routes to ``SketchRefiner`` when the Python tab is active, or
+        ``SCRefiner`` when the SuperCollider tab is active. The SC path
+        never re-runs the orchestrator pipeline — it only rewrites the
+        ``.scd`` companion.
+        """
         try:
-            # Show loading indicator with purple theme for refinement
-            self.show_loading("Refining sketch...", color_mode="refinement")
-            
-            self.log_message(f"🧬 Evolving behaviors: {request}")
-            
-            # Get current code editor
-            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
-            
-            # Get CLEAN code without diff markers for LLM processing
-            current_code = code_editor.get_clean_code()
-            
-            # Store the pre-refinement code for diff highlighting
-            code_editor.store_pre_refinement_code()
-            
-            # Apply refinement (async operation) with clean code
-            result = await self.sketch_refiner.refine_sketch(
-                current_code,
-                request
-            )
-            
-            if result['success']:
-                self.current_sketch_code = result['refined_code']
-                
-                # Update code editor with refined code
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
-                # Ensure language is set before loading to guarantee highlighting.
-                code_editor.language = "python"
-                # Use load_text to ensure highlighting is applied
-                code_editor.load_text(result['refined_code'])
-                
-                # Apply diff highlighting to show changes
-                code_editor.apply_diff_highlighting(result['refined_code'])
-                
-                # Enable the diff toggle button
-                diff_btn = self.query_one("#diff-btn", Button)
-                diff_btn.disabled = False
-                
-                # Update the diff indicator with enhanced status
-                diff_indicator = self.query_one("#diff-indicator", Static)
-                if code_editor.diff_data:
-                    summary = code_editor.get_diff_summary()
-                    # Convert 0-based to 1-based line numbers for display
-                    line_nums = sorted([n + 1 for n in code_editor.diff_lines])
-                    
-                    # Format line numbers nicely
-                    if len(line_nums) <= 5:
-                        lines_str = ", ".join(str(n) for n in line_nums)
-                    else:
-                        # Show first few and last with ellipsis
-                        lines_str = f"{line_nums[0]}-{line_nums[-1]}"
-                    
-                    diff_indicator.update(f"🔄 Lines {lines_str}: {summary}")
-                
-                # Add response to chat with diff summary
-                chat_container = self.query_one("#chat-history", ScrollableContainer)
-                diff_summary = code_editor.get_diff_summary()
-                agent_message = Static(f"✓ Agent: {result['changes_made']} ({diff_summary})", classes="chat-message agent-message")
-                chat_container.mount(agent_message)
-                chat_container.scroll_end(animate=False)
-                
-                self.log_message(f"🦠 Evolution successful: {result['changes_made']} - {diff_summary}")
-                
-                # Save updated code
-                if self.current_sketch_path:
-                    with open(self.current_sketch_path, 'w') as f:
-                        f.write(result['refined_code'])
-                
-                # Accept the refinement to set it as the new baseline for stateful diffing
-                code_editor.accept_refinement()
-                
-                # Reset error state and disable repair button after successful refinement
-                self.has_execution_error = False
-                self.last_error_logs = ""
-                try:
-                    repair_btn = self.query_one("#repair-btn", Button)
-                    repair_btn.disabled = True
-                except Exception:
-                    pass
+            target, code_editor = self.get_active_editor()
+
+            if target == "sc":
+                await self._apply_sc_refinement(request, code_editor)
             else:
-                error_msg = f"❌ Refinement failed: {result.get('error', 'Unknown error')}"
-                self.log_message(error_msg)
-                
+                await self._apply_python_refinement(request, code_editor)
         except Exception as e:
             self.log_message(f"❌ Refinement error: {e}")
         finally:
-            # Hide loading indicator
             self.hide_loading()
-            # Schedule focus restoration on main thread
             self.call_later(self.restore_focus_after_refinement)
+
+    async def _apply_python_refinement(self, request: str, code_editor: EnhancedCodeEditor) -> None:
+        self.show_loading("Refining sketch...", color_mode="refinement")
+        self.log_message(f"🧬 Evolving behaviors: {request}")
+
+        current_code = code_editor.get_clean_code()
+        code_editor.store_pre_refinement_code()
+
+        result = await self.sketch_refiner.refine_sketch(current_code, request)
+
+        if not result["success"]:
+            self.log_message(f"❌ Refinement failed: {result.get('error', 'Unknown error')}")
+            return
+
+        self.current_sketch_code = result["refined_code"]
+        code_editor.language = "python"
+        code_editor.load_text(result["refined_code"])
+        code_editor.apply_diff_highlighting(result["refined_code"])
+
+        self.query_one("#diff-btn", Button).disabled = False
+        self._update_diff_indicator(code_editor, prefix="🔄")
+
+        chat_container = self.query_one("#chat-history", ScrollableContainer)
+        diff_summary = code_editor.get_diff_summary()
+        agent_message = Static(
+            f"✓ Agent: {result['changes_made']} ({diff_summary})",
+            classes="chat-message agent-message",
+        )
+        chat_container.mount(agent_message)
+        chat_container.scroll_end(animate=False)
+
+        self.log_message(f"🦠 Evolution successful: {result['changes_made']} - {diff_summary}")
+
+        if self.current_sketch_path:
+            with open(self.current_sketch_path, "w") as f:
+                f.write(result["refined_code"])
+
+        code_editor.accept_refinement()
+
+        self.has_execution_error = False
+        self.last_error_logs = ""
+        try:
+            self.query_one("#repair-btn", Button).disabled = True
+        except Exception:
+            pass
+
+    async def _apply_sc_refinement(self, request: str, code_editor: EnhancedCodeEditor) -> None:
+        if self.sc_refiner is None:
+            self.log_message("⚠️  SC refiner not initialized.")
+            return
+        if not self.current_sketch_scd_path:
+            self.log_message("⚠️  No .scd file loaded. Generate a sketch with musical intent first.")
+            return
+
+        self.show_loading("Refining SuperCollider patch...", color_mode="refinement")
+        self.log_message(f"🎛️  Refining SC patch: {request}")
+
+        current_code = code_editor.get_clean_code()
+        code_editor.store_pre_refinement_code()
+
+        result = await self.sc_refiner.refine_sc_patch(
+            scd_code=current_code,
+            request=request,
+            species_ids=self.current_species_ids,
+        )
+
+        if not result["success"]:
+            self.log_message(f"❌ SC refinement failed: {result.get('error', 'Unknown error')}")
+            return
+
+        refined = result["refined_code"]
+        code_editor.load_text(refined)
+        code_editor.apply_diff_highlighting(refined)
+
+        self.query_one("#diff-btn", Button).disabled = False
+        self._update_diff_indicator(code_editor, prefix="🎛️")
+
+        chat_container = self.query_one("#chat-history", ScrollableContainer)
+        diff_summary = code_editor.get_diff_summary()
+        agent_message = Static(
+            f"✓ SC Agent: {result['changes_made']} ({diff_summary})",
+            classes="chat-message agent-message",
+        )
+        chat_container.mount(agent_message)
+
+        warnings = result.get("warnings")
+        if warnings:
+            warn_msg = Static(
+                f"⚠ Warning: {warnings}",
+                classes="chat-message agent-message",
+            )
+            chat_container.mount(warn_msg)
+            self.log_message(f"⚠ SC refinement warning: {warnings}")
+
+        chat_container.scroll_end(animate=False)
+
+        # Save to disk so the next Eval SC picks up the change.
+        try:
+            self.current_sketch_scd_path.write_text(refined)
+        except Exception as exc:
+            self.log_message(f"⚠ Could not save refined .scd: {exc}")
+
+        code_editor.accept_refinement()
+
+        if self.sc_runner is not None and self.sc_runner.is_running:
+            self.log_message("💡 Hit Eval SC (Ctrl+E) to apply the refined patch live.")
+
+    def _update_diff_indicator(self, code_editor: EnhancedCodeEditor, prefix: str = "🔄") -> None:
+        diff_indicator = self.query_one("#diff-indicator", Static)
+        if code_editor.diff_data:
+            summary = code_editor.get_diff_summary()
+            line_nums = sorted([n + 1 for n in code_editor.diff_lines])
+            if len(line_nums) <= 5:
+                lines_str = ", ".join(str(n) for n in line_nums)
+            else:
+                lines_str = f"{line_nums[0]}-{line_nums[-1]}"
+            diff_indicator.update(f"{prefix} Lines {lines_str}: {summary}")
+        else:
+            diff_indicator.update("")
     
     @on(Button.Pressed, "#save-btn")
     def save_sketch(self):
@@ -2545,7 +2750,7 @@ class TolveraTextualUI(App):
         """Handle the save dialog result."""
         # Restore focus to code editor after save dialog closes
         try:
-            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
             code_editor.focus()
         except Exception:
             # Fallback to run button
@@ -2557,7 +2762,7 @@ class TolveraTextualUI(App):
         
         if save_path:
             try:
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 with open(save_path, 'w') as f:
                     f.write(code_editor.get_clean_code())
                 self.current_sketch_path = save_path
@@ -2579,7 +2784,7 @@ class TolveraTextualUI(App):
         except Exception:
             # Fallback to code editor
             try:
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 code_editor.focus()
             except Exception:
                 pass
@@ -2589,7 +2794,7 @@ class TolveraTextualUI(App):
                 with open(load_path, 'r') as f:
                     code = f.read()
                 
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 # Ensure language is set before loading to guarantee highlighting.
                 code_editor.language = "python"
                 # Use load_text to ensure highlighting is applied
@@ -2605,7 +2810,10 @@ class TolveraTextualUI(App):
 
                 self.current_sketch_code = code
                 self.current_sketch_path = load_path
-                
+
+                # If a sibling .scd exists, surface it in the SC tab.
+                self._load_sc_companion_from_disk()
+
                 self.log_message(f"🌱 Life form revived from: {load_path}")
             except Exception as e:
                 self.log_message(f"❌ Failed to load sketch: {e}")
@@ -2615,38 +2823,63 @@ class TolveraTextualUI(App):
         """Reset the UI to initial state."""
         # Clear inputs
         self.query_one("#description-input", TextArea).text = ""
-        code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
-        code_editor.load_text("# Generated code will appear here\n# Python syntax highlighting is enabled")
-        code_editor.clear_diff_highlighting()
-        
+        py_editor = self.query_one("#py-editor", EnhancedCodeEditor)
+        py_editor.load_text("# Generated code will appear here\n# Python syntax highlighting is enabled")
+        py_editor.clear_diff_highlighting()
+
+        # Reset the SC tab back to its placeholder state.
+        try:
+            sc_editor = self.query_one("#sc-editor", EnhancedCodeEditor)
+            sc_tab = self.query_one("#sc-tab", TabPane)
+            sc_editor.clear_diff_highlighting()
+            sc_editor.load_text(
+                "// No SuperCollider companion yet.\n"
+                "// Add musical/sonification language to your description\n"
+                "// (sonify, sound, music, rhythm, sonic, audio, timbre)\n"
+                "// then regenerate to unlock this tab."
+            )
+            sc_editor.read_only = True
+            sc_tab.disabled = True
+        except Exception:
+            pass
+
         # Disable diff button and clear indicator
         diff_btn = self.query_one("#diff-btn", Button)
         diff_btn.disabled = True
         diff_indicator = self.query_one("#diff-indicator", Static)
         diff_indicator.update("")
-        
+
         # Clear chat
         chat_container = self.query_one("#chat-history", ScrollableContainer)
         chat_container.remove_children()
-        
+
         # Clear logs
         self.query_one("#log-output", TextArea).text = ""
-        
+
         # Reset state
         self.current_sketch_path = None
         self.current_sketch_code = ""
+        self.current_sketch_scd_path = None
+        self.current_species_ids = []
+        self.sc_available = False
         self.chat_history = []
-        
-        # Clear SketchRefiner conversation history
+
+        # Clear conversation histories
         if self.sketch_refiner:
             self.sketch_refiner.clear_conversation_history()
-        
+        if self.sc_refiner:
+            self.sc_refiner.clear_conversation_history()
+
+        # Stop sclang if still running so the user gets a clean slate.
+        if self.sc_runner is not None and self.sc_runner.is_running:
+            await self.sc_runner.stop()
+
         self.log_message("🌊 Digital ocean cleared")
     
     @on(Button.Pressed, "#diff-btn")
     def toggle_diff_view(self):
-        """Toggle the diff highlighting view."""
-        code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+        """Toggle diff highlighting on whichever editor tab is active."""
+        _, code_editor = self.get_active_editor()
         new_state = code_editor.toggle_diff_highlighting()
         
         # Update the diff indicator
@@ -2758,7 +2991,7 @@ class TolveraTextualUI(App):
         """Perform the actual sketch repair logic."""
         try:
             # Get current code editor
-            code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+            code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
             
             # Get CLEAN code without diff markers for LLM processing
             current_code = code_editor.get_clean_code()
@@ -2777,7 +3010,7 @@ class TolveraTextualUI(App):
                 self.current_sketch_code = result['refined_code']
                 
                 # Update code editor with repaired code
-                code_editor = self.query_one("#code-editor", EnhancedCodeEditor)
+                code_editor = self.query_one("#py-editor", EnhancedCodeEditor)
                 code_editor.language = "python"
                 code_editor.load_text(result['refined_code'])
                 
@@ -3052,7 +3285,7 @@ Status: {self.main_trace.status}"""
         """Generate sketch from main UI after modal closes."""
         try:
             description_input = self.query_one("#description-input", TextArea)
-            description_input.text = "Two species, red and green, repel each other strongly."
+            description_input.text = "Three species of particles that flock together and sonify their movements with different timbres."
             self.generate_sketch_worker()
         except Exception as e:
             self.log_message(f"⚠️ Could not trigger generation: {e}")
@@ -3072,7 +3305,7 @@ Status: {self.main_trace.status}"""
         
         # Set the demo description
         description_input = self.query_one("#description-input", TextArea)
-        description_input.text = "Two species, red and green, repel each other strongly."
+        description_input.text = "Three species of particles that flock together and sonify their movements with different timbres."
         
         # Trigger generation
         self.log_message("🎓 Tutorial: Auto-generating demo sketch...")
@@ -3110,9 +3343,249 @@ Status: {self.main_trace.status}"""
     
     def action_quit(self):
         """Quit the application."""
-        if self.sketch_process:
-            self.sketch_process.terminate()
+        # Only terminate the sketch process if it's still alive. asyncio's
+        # subprocess raises ProcessLookupError if you call terminate() after
+        # the process has already exited and its transport closed.
+        if self.sketch_process is not None and self.sketch_process.returncode is None:
+            try:
+                self.sketch_process.terminate()
+            except (ProcessLookupError, OSError):
+                pass
+        if self.sc_runner is not None and self.sc_runner.is_running:
+            # Best-effort: schedule shutdown then exit. We can't await here
+            # because action_quit isn't async, so run_worker fires-and-forgets.
+            self.run_worker(self.sc_runner.stop(), exclusive=False)
         self.exit()
+
+    # ------------------------------------------------------------------
+    # SuperCollider integration (tab, sclang subprocess, SC refinement)
+    # ------------------------------------------------------------------
+
+    # Map technical trace node names → user-facing labels. Anything not in
+    # this map is filtered out of the log to avoid noise. Keys are
+    # (name, type) so we can disambiguate (e.g. "llm_call" appears under
+    # many parent names).
+    _TRACE_START_LABELS = {
+        "add_behavior": "🧬 Decomposing prompt into species + behaviors...",
+        "synthesize_complete_behavior": "🧪 Synthesizing expert functions...",
+        "llm_state_analysis": "🔍 Analyzing required state fields...",
+        "llm_synthesis": "🧠 Synthesizing expert function...",
+        "llm_context_selection": "🎯 Selecting relevant context...",
+        "two_stage_refinement": "🔧 Refining sketch architecture...",
+        "analyze_sketch": "📐 Stage 1: analyzing sketch...",
+        "implement_refinement": "🛠  Stage 2: applying refinements...",
+        "analysis_llm_call": "  └─ Bedrock analysis call...",
+        "implementation_llm_call": "  └─ Bedrock implementation call...",
+        "refinement_llm_call": "  └─ Bedrock refinement call...",
+        "sc_refinement_llm_call": "  └─ Bedrock SC refinement call...",
+    }
+
+    # Whether to log node completion (with elapsed time) or just the start.
+    # LLM calls show completion so the user sees actual Bedrock latency.
+    _TRACE_COMPLETE_NODES = {
+        "llm_state_analysis",
+        "llm_synthesis",
+        "llm_context_selection",
+        "analysis_llm_call",
+        "implementation_llm_call",
+        "refinement_llm_call",
+        "sc_refinement_llm_call",
+        "add_behavior",
+        "two_stage_refinement",
+    }
+
+    def _on_trace_node_start(self, node) -> None:
+        """Surface interesting pipeline steps to the Status & Logs panel."""
+        label = self._TRACE_START_LABELS.get(node.name)
+        if label is None:
+            return
+        # For repeating nodes (e.g. llm_synthesis fires per expert), show a counter.
+        if node.name in {"llm_synthesis", "llm_state_analysis"}:
+            count = self._trace_step_counter.get(node.name, 0) + 1
+            self._trace_step_counter[node.name] = count
+            label = f"{label} (#{count})"
+        try:
+            self.log_message(label)
+        except Exception:
+            pass
+
+    def _on_trace_node_complete(self, node) -> None:
+        if node.name not in self._TRACE_COMPLETE_NODES:
+            return
+        if node.duration_ms is None:
+            return
+        secs = node.duration_ms / 1000.0
+        icon = "✓" if node.status == "success" else "✗"
+        try:
+            self.log_message(f"  {icon} {node.name} done in {secs:.1f}s")
+        except Exception:
+            pass
+
+    def get_active_editor(self) -> tuple[str, EnhancedCodeEditor]:
+        """Return ("py" | "sc", editor) for the currently active tab."""
+        try:
+            tabs = self.query_one("#editor-tabs", TabbedContent)
+            if tabs.active == "sc-tab":
+                return ("sc", self.query_one("#sc-editor", EnhancedCodeEditor))
+        except Exception:
+            pass
+        return ("py", self.query_one("#py-editor", EnhancedCodeEditor))
+
+    @on(TabbedContent.TabActivated, "#editor-tabs")
+    def on_editor_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """Track which editor tab is currently focused for tab-aware refinement."""
+        pane_id = event.pane.id or "python-tab"
+        self.active_editor_id = pane_id
+
+    def _log_sc(self, message: str) -> None:
+        """SclangRunner log callback — forwards to the main log."""
+        self.log_message(message)
+
+    def _set_sc_status_label(self, status: SclangStatus) -> None:
+        """Update the SC status pill from SclangStatus changes."""
+        try:
+            label = self.query_one("#sc-status", Static)
+        except Exception:
+            return
+
+        label.remove_class("running")
+        label.remove_class("error")
+
+        if status == SclangStatus.RUNNING:
+            label.update("SC: running")
+            label.add_class("running")
+            self.sc_running = True
+            try:
+                eval_btn = self.query_one("#eval-sc-btn", Button)
+                eval_btn.disabled = not self.sc_available
+                boot_btn = self.query_one("#boot-sc-btn", Button)
+                boot_btn.label = "Stop SC"
+            except Exception:
+                pass
+        elif status == SclangStatus.BOOTING:
+            label.update("SC: booting…")
+            self.sc_running = False
+        elif status == SclangStatus.NOT_INSTALLED:
+            label.update("SC: not installed")
+            label.add_class("error")
+            self.sc_running = False
+        elif status == SclangStatus.ERROR:
+            label.update("SC: error")
+            label.add_class("error")
+            self.sc_running = False
+        else:  # STOPPED
+            label.update("SC: stopped")
+            self.sc_running = False
+            try:
+                eval_btn = self.query_one("#eval-sc-btn", Button)
+                eval_btn.disabled = True
+                boot_btn = self.query_one("#boot-sc-btn", Button)
+                boot_btn.label = "Boot SC"
+            except Exception:
+                pass
+
+    def _load_sc_companion_from_disk(self) -> None:
+        """Look for a sibling .scd next to the current Python sketch and load it.
+
+        Called after every generation and after loading an existing .py from
+        disk. The orchestrator already writes the .scd via emit_companion()
+        when musical intent fires (see behavior_orchestrator._save_to_file);
+        the UI just needs to discover and surface it.
+        """
+        if not self.current_sketch_path:
+            return
+
+        sc_path = Path(self.current_sketch_path).with_suffix(".scd")
+        try:
+            sc_tab = self.query_one("#sc-tab", TabPane)
+            sc_editor = self.query_one("#sc-editor", EnhancedCodeEditor)
+        except Exception:
+            return
+
+        if sc_path.exists():
+            try:
+                sc_editor.read_only = False
+                sc_editor.load_text(sc_path.read_text())
+                sc_editor.clear_diff_highlighting()
+                sc_tab.disabled = False
+                self.current_sketch_scd_path = sc_path
+                # Capture species ids from the orchestrator if available
+                if (
+                    self.behavior_orchestrator is not None
+                    and getattr(self.behavior_orchestrator, "current_species_config", None) is not None
+                ):
+                    self.current_species_ids = list(
+                        self.behavior_orchestrator.current_species_config.species_ids
+                    )
+                self.sc_available = True
+                # Enable eval if sclang is already up
+                if self.sc_runner is not None and self.sc_runner.is_running:
+                    try:
+                        self.query_one("#eval-sc-btn", Button).disabled = False
+                    except Exception:
+                        pass
+                self.log_message(f"🎛️  SuperCollider companion loaded: {sc_path}")
+            except Exception as exc:
+                self.log_message(f"⚠️  Failed to load .scd: {exc}")
+        else:
+            # No companion — keep the SC tab disabled with placeholder
+            self.current_sketch_scd_path = None
+            self.current_species_ids = []
+            self.sc_available = False
+            sc_tab.disabled = True
+            try:
+                self.query_one("#eval-sc-btn", Button).disabled = True
+            except Exception:
+                pass
+
+    @on(Button.Pressed, "#boot-sc-btn")
+    def on_boot_sc_button(self) -> None:
+        if self.sc_runner is not None and self.sc_runner.is_running:
+            self.stop_sc_worker()
+        else:
+            self.boot_sc_worker()
+
+    @on(Button.Pressed, "#eval-sc-btn")
+    def on_eval_sc_button(self) -> None:
+        self.eval_sc_worker()
+
+    @work(exclusive=False)
+    async def boot_sc_worker(self) -> None:
+        if self.sc_runner is None:
+            self.sc_runner = SclangRunner(log_callback=self._log_sc)
+            self.sc_runner.set_status_callback(self._set_sc_status_label)
+        await self.sc_runner.boot()
+
+    @work(exclusive=False)
+    async def stop_sc_worker(self) -> None:
+        if self.sc_runner is not None:
+            await self.sc_runner.stop()
+
+    @work(exclusive=False)
+    async def eval_sc_worker(self) -> None:
+        if self.sc_runner is None or not self.sc_runner.is_running:
+            self.log_message("⚠️  SC is not running — Boot SC first.")
+            return
+        if not self.current_sketch_scd_path:
+            self.log_message("⚠️  No .scd file loaded. Generate a sketch with musical intent first.")
+            return
+
+        # Persist the current SC editor buffer to disk so sclang loads the
+        # user's edits, not the stale on-disk copy.
+        try:
+            sc_editor = self.query_one("#sc-editor", EnhancedCodeEditor)
+            self.current_sketch_scd_path.write_text(sc_editor.get_clean_code())
+        except Exception as exc:
+            self.log_message(f"⚠️  Could not save .scd before eval: {exc}")
+            return
+
+        await self.sc_runner.eval_file(self.current_sketch_scd_path)
+
+    def action_boot_sc(self) -> None:
+        self.on_boot_sc_button()
+
+    def action_eval_sc(self) -> None:
+        self.eval_sc_worker()
 
 
 def main():

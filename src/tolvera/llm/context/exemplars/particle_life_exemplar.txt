@@ -118,7 +118,7 @@ def init_interaction_matrix():
 @ti.kernel
 def integrate_particle_life():
     '''Main integration kernel combining all forces.'''
-    dt = 0.016  # 60 FPS timestep
+    dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
     damping = tv.s.llm_global.field[0].damping
     
     for i in range(tv.pn):

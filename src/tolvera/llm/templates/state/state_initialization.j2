@@ -14,7 +14,7 @@ if '{{ cat.container_name }}' not in tv.s:
         },
         'shape': {{ cat.shape }},
         'osc': ({% for item in cat.osc %}'{{ item }}'{% if not loop.last %}, {% endif %}{% endfor %}),
-        'randomise': {{ cat.randomise | lower }}
+        'randomise': {{ cat.randomise }}
     })
 {%- endfor %}
 

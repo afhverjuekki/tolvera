@@ -177,7 +177,7 @@ def main(**kwargs):
     @ti.kernel
     def apply_all_experts():
         """Main physics kernel that applies all forces and updates particles."""
-        dt = 0.016  # 60 FPS timestep
+        dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 gives visible motion, 0.016 is invisible
         damping = tv.s.llm_global.field[0].damping
         
         for i in range(tv.pn):

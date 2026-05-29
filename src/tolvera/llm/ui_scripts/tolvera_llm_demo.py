@@ -87,7 +87,7 @@ async def demo_basic_behaviors():
     main_trace = collector.start_trace("Basic Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=500, sn=2)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     # Combine behaviors into a single description to avoid state conflicts
     combined_behavior = "Particles fall down with gravity."
@@ -133,7 +133,7 @@ async def demo_complex_behaviors():
     main_trace = collector.start_trace("Complex Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=5)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     complex_description = """
     Two species, one maroon and one teal, are competing for food (green particles).  The blue one is quicker than the teal and runs away with the food while
@@ -193,7 +193,7 @@ async def demo_drawing_behaviors():
     main_trace = collector.start_trace("Drawing Behaviors Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=200, sn=3)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     # Combine movement behaviors to avoid state conflicts
     movement_behavior = "particles move in circular orbits and species 0 and species 1 attract each other"
@@ -258,7 +258,7 @@ async def demo_species_interactions():
     main_trace = collector.start_trace("Species Interactions Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=800, sn=6)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     interactions = [
         "red predators hunt green prey that try to escape",
@@ -313,7 +313,7 @@ async def demo_species_detection():
     main_trace = collector.start_trace("Species Detection Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=600, sn=8)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     test_behaviors = [
         ("particles move randomly", "Single species behavior"),
@@ -327,7 +327,7 @@ async def demo_species_detection():
         print(f"\n📝 Description: '{description}'")
         print(f"   Expected: {expected}")
         
-        test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+        test_agent = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
         
         try:
             result = await test_agent.add_behavior(description, 1.0)
@@ -384,7 +384,7 @@ async def demo_state_generation():
     main_trace = collector.start_trace("State Generation Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=4)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     state_behaviors = [
         {
@@ -410,7 +410,7 @@ async def demo_state_generation():
         print(f"🎯 Expected states: {', '.join(test['expected_states'])}")
         
         try:
-            test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+            test_agent = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
             
             result = await test_agent.add_behavior(test['description'], weight=1.0)
             
@@ -457,7 +457,7 @@ async def demo_state_generation():
     print("Comparison: Simple behavior without state requirements")
     print("-" * 50)
     
-    simple_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    simple_agent = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     simple_behavior = "particles drift randomly"
     print(f"📝 Behavior: {simple_behavior}")
@@ -477,7 +477,7 @@ async def demo_state_generation():
     print("\n\n" + "="*50)
     print("Generating example sketch with Game of Life states...")
     
-    gol_orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    gol_orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     await gol_orchestrator.add_behavior(
         "particles form a cellular automaton where each cell lives or dies based on neighbor count",
@@ -510,7 +510,7 @@ async def demo_artificial_life_patterns():
     main_trace = collector.start_trace("Artificial Life Patterns Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=1000, sn=4)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     alife_patterns = [
         {
@@ -530,7 +530,7 @@ async def demo_artificial_life_patterns():
         print(f"   Expected pattern: {pattern['expected_pattern']}")
         
         try:
-            test_agent = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+            test_agent = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
             
             print("   🔍 Using add_behavior to detect and synthesize pattern...")
             result = await test_agent.add_behavior(
@@ -561,7 +561,7 @@ async def demo_artificial_life_patterns():
     print("Generating combined a-life sketch...")
     print("-" * 60)
     
-    combined_orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    combined_orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     # Single combined behavior to avoid state conflicts
     combined_pattern = """
@@ -605,7 +605,7 @@ async def demo_custom_behavior():
     main_trace = collector.start_trace("Custom Behavior Demo", "demo")
     
     tv = Tolvera(width=1920, height=1080, pn=500, sn=3)
-    orchestrator = BehaviorOrchestrator(tv, model_name="gemini-2.0-flash")
+    orchestrator = BehaviorOrchestrator(tv, model_name=os.getenv("DEFAULT_MODEL", "us.anthropic.claude-opus-4-8"))
     
     print("\nEnter custom particle behaviors (or 'done' to finish):")
     print("\nExamples:")

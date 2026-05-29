@@ -204,28 +204,40 @@ class TemplateRenderer:
         Returns:
             Complete sketch code as string
         """
+        # Detect musical intent once — paired with the SuperCollider companion
+        # patch emitted by src/tolvera/llm/sc/emitter.py; both sides share the
+        # has_musical_intent gate so OSC addresses always match.
+        from ..sc.emitter import OSC_SENDER_BLOCK, has_musical_intent
+        musical = has_musical_intent(description)
+
         # Build update calls - CORRECT ORDER IS CRITICAL
         update_calls = []
-        
+
         # 1. Always apply utility experts first (handles temporal updates, state updates)
         if utility_kernel and "update_utilities" in utility_kernel:
             update_calls.append("update_utilities()  # Execute utility functions")
-        
+
         # Only include particle physics if we have force experts
         if has_non_visual_experts:
             # 2. Apply expert behaviors to calculate forces
             update_calls.append("apply_all_experts()")
-            
+
             # 3. Update physics (positions, velocities, boundaries)
             update_calls.append("tv.p()")
-        
+
         # 4. Apply drawing behaviors if present
         if drawing_kernel and "draw" in drawing_kernel:
             update_calls.append("draw()  # Execute visual behaviors")
-        
+
         # 5. Check for respawn (e.g., food particles)
         if respawn_code and "respawn_food" in respawn_code:
             update_calls.append("respawn_food()")
+
+        # 6. OSC metrics kernel — only when musical intent fires
+        if musical:
+            update_calls.append("_compute_osc_metrics()  # OSC senders")
+
+        osc_sender_code = OSC_SENDER_BLOCK if musical else ""
         
         # Format drawing calls
         if pre_draw_calls is None:
@@ -246,6 +258,10 @@ class TemplateRenderer:
         kwargs['pn'] = 1000
     if 'sn' not in kwargs:
         kwargs['sn'] = 1  # Default to 1 species"""
+
+        # When OSC senders are injected, ensure the Tölvera instance has osc enabled
+        if musical:
+            config_code = config_code + "\n    if 'osc' not in kwargs:\n        kwargs['osc'] = True  # Required for OSC senders to SuperCollider companion"
         
         # Determine whether to render particles
         if has_non_visual_experts:
@@ -273,6 +289,7 @@ class TemplateRenderer:
             drawing_code=self._clean_code_section(drawing_code) if drawing_code else "# No drawing functions",
             drawing_kernel=self._clean_code_section(drawing_kernel) if drawing_kernel else "# No drawing kernel",
             respawn_code=self._clean_code_section(respawn_code) if respawn_code else "# No respawn functions",
+            osc_sender_code=osc_sender_code,
             pre_draw_calls=pre_draw_calls,
             post_draw_calls=post_draw_calls,
             update_calls=update_calls,

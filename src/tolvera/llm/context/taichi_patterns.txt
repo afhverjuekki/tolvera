@@ -179,6 +179,54 @@ return result  # Single return at function end
 # ALSO CORRECT - Use conditional expression
 return ti.math.vec2(0.0, 0.0) if species == 0 else normal_force
 
+### CRITICAL: Never index a Python list/tuple/dict with a Taichi expression
+# Inside @ti.kernel and @ti.func, loop variables, field reads, and arithmetic
+# on them are Taichi Expr objects, NOT Python ints. Python lists raise
+# "TypeError: list indices must be integers or slices, not Expr" when indexed
+# with them. ti.static(...) does NOT fix this — it only freezes the value at
+# compile time, it doesn't make Python lists Taichi-indexable.
+
+# WRONG — crashes at kernel compile
+@ti.kernel
+def init_particles():
+    sizes  = ti.static([7.0, 5.0, 3.0])     # ← Python list
+    speeds = ti.static([15.0, 25.0, 35.0])  # ← Python list
+    for i in range(tv.pn):
+        sp = i % 3                          # ← Taichi Expr at runtime
+        tv.p.field[i].size = sizes[sp]      # TypeError: list indices ...
+        tv.p.field[i].speed = speeds[sp]
+
+# CORRECT (option A) — use ti.Vector / ti.Matrix; Taichi vectors support
+# runtime-Expr indexing inside kernels:
+@ti.kernel
+def init_particles():
+    sizes  = ti.Vector([7.0, 5.0, 3.0])
+    speeds = ti.Vector([15.0, 25.0, 35.0])
+    for i in range(tv.pn):
+        sp = i % 3
+        tv.p.field[i].size  = sizes[sp]     # OK
+        tv.p.field[i].speed = speeds[sp]
+
+# CORRECT (option B) — if/elif chain on the species value; verbose but always
+# safe and the LLM is less likely to mis-use it:
+@ti.kernel
+def init_particles():
+    for i in range(tv.pn):
+        sp = i % 3
+        size = 7.0
+        speed = 15.0
+        if sp == 1:
+            size = 5.0
+            speed = 25.0
+        elif sp == 2:
+            size = 3.0
+            speed = 35.0
+        tv.p.field[i].size  = size
+        tv.p.field[i].speed = speed
+
+# Same rule applies for dicts and tuples: a Python literal indexed with a
+# kernel Expr is an error. Always use ti.Vector or branch on the value.
+
 ### Division by Zero
 # WRONG
 direction = diff / diff.norm()

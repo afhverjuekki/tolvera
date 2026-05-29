@@ -1,0 +1,27 @@
+## REFINEMENT REQUEST
+
+{request}
+
+## ACTIVE SPECIES IDS
+
+The Python sketch is broadcasting OSC for these species ids (you MUST keep an OSCdef bound to /metrics/<id>/x, /metrics/<id>/y, and /metrics/<id>/vel for each one unless the request explicitly removes a species):
+
+{species_ids}
+
+## CONVERSATION HISTORY (most recent first)
+
+{conversation_context}
+
+## ERROR / WARNING CONTEXT
+
+{error_section}
+
+## CURRENT SUPERCOLLIDER PATCH
+
+The user is currently editing this patch. Refine it according to the request above. Preserve the OSC contract (port 5000, /metrics/<id>/<x|y|vel> bindings, freq/amp/cutoff arg names) and the ServerQuit cleanup unless the request explicitly tells you otherwise.
+
+----- BEGIN PATCH -----
+
+{scd_code}
+
+----- END PATCH -----

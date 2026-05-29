@@ -287,7 +287,7 @@ def main(**kwargs):
     @ti.kernel
     def apply_all_experts():
         """Apply forces and update particle physics."""
-        dt = 0.016
+        dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
         damping = 0.95
         
         for i in range(tv.pn):

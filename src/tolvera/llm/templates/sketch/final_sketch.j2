@@ -52,7 +52,9 @@ def main(**kwargs):
     
     # === Respawn Functions ===
 {{ respawn_code | indent(4, True) }}
-    
+
+{{ osc_sender_code | indent(4, True) }}
+
     @tv.render
     def _():
         tv.px.diffuse(0.99)

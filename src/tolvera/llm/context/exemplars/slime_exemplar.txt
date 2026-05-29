@@ -195,7 +195,7 @@ tv.s.llm_particle = {
 @ti.kernel
 def integrate_slime_behavior():
     '''Main slime mold integration kernel.'''
-    dt = 0.016  # 60 FPS
+    dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
     
     # First pass: Update agents
     for i in range(tv.pn):

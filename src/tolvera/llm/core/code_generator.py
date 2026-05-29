@@ -22,6 +22,15 @@ from .color_resolver import ColorResolver
 from ..prompts.prompt_loader import get_prompt_loader
 
 
+# Reasoning-heavy models (e.g. Opus 4.8) emit explanatory text before filling a
+# structured-output tool call. With the provider's default output budget they
+# can run out mid tool-call and emit an empty `{}`, which fails validation
+# ("Exceeded maximum retries for output validation"). Synthesis swallows that
+# into a 0-expert result. Give every synthesis call enough room for reasoning
+# plus the full structured payload (an expert kernel can be sizeable).
+SYNTHESIS_MAX_TOKENS = 12000
+
+
 class TaichiCodeResponse(BaseModel):
     """Response structure for Taichi code generation."""
     name: str
@@ -48,10 +57,31 @@ class StateField(BaseModel):
     name: str = Field(description="Name of the state field")
     category: str = Field(description="Category: 'global', 'particle', or 'species'")
     type: str = Field(description="Taichi type (e.g., 'ti.f32', 'ti.i32', 'ti.math.vec2')")
-    min: Optional[float] = Field(default=None, description="Minimum value for numeric types")
-    max: Optional[float] = Field(default=None, description="Maximum value for numeric types")
+    # Numeric bounds for the state's range. We cap `max` at 1000 because past
+    # LLM runs picked values like 5000 on `repulsion_strength` and then chose
+    # 1500-2000 because the upper bound "allowed" it. Pydantic-AI catches
+    # bound violations and re-prompts the model automatically (output_retries
+    # controls the retry budget on the agent).
+    min: Optional[float] = Field(
+        default=None,
+        ge=-1000.0,
+        le=1000.0,
+        description="Minimum value for numeric types",
+    )
+    max: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1000.0,
+        description="Maximum value for numeric types (typical 1.0-100.0; "
+                    "1000.0 is the hard ceiling for any field)",
+    )
     description: str = Field(description="What this state represents")
-    initial: Optional[float] = Field(default=None, description="Initial value")
+    initial: Optional[float] = Field(
+        default=None,
+        ge=-1000.0,
+        le=1000.0,
+        description="Initial value",
+    )
 
 
 class StateAnalysisResponse(BaseModel):
@@ -174,7 +204,9 @@ class CodeGenerator:
         agent = Agent(
             self.model,
             output_type=StateAnalysisResponse,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            model_settings={"max_tokens": SYNTHESIS_MAX_TOKENS},
         )
         
         # Perform analysis with tracing
@@ -588,7 +620,9 @@ class CodeGenerator:
         agent = Agent(
             self.model,
             output_type=TaichiCodeResponse,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            model_settings={"max_tokens": SYNTHESIS_MAX_TOKENS},
         )
         
         # Execute with tracing
@@ -827,7 +861,9 @@ class CodeGenerator:
         agent = Agent(
             self.model,
             output_type=UtilityExpertResponse,
-            system_prompt=system_prompt
+            output_retries=2,
+            system_prompt=system_prompt,
+            model_settings={"max_tokens": SYNTHESIS_MAX_TOKENS},
         )
         
         # Synthesize utility expert

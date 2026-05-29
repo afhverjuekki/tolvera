@@ -244,35 +244,64 @@ def expert_name(pos: ti.math.vec2, vel: ti.math.vec2,
 
 ## Force Magnitude Guidelines
 
+### TWO DIFFERENT NUMBERS — DO NOT CONFUSE
+There are two distinct kinds of "force magnitude" in a Tölvera sketch:
+
+  (A) RETURN-VALUE MAGNITUDES — the numbers a force expert `return`s.
+      These appear as scalar multipliers on a normalized direction vector,
+      and end up scaling the actual force vector applied per frame. Typical
+      ranges below (gravity 300-800 etc.) refer to THESE return-value
+      magnitudes.
+
+  (B) PER-SPECIES STRENGTH MULTIPLIERS — values like
+      `tv.s.llm_species.field[s].cohesion_strength` that get MULTIPLIED into
+      a return-value force. Per-species multipliers stay in the **1.0–5.0**
+      range with the canonical boids ratio
+      `cohesion : alignment : separation ≈ 1 : 1 : 2`.
+
+NEVER set a per-species multiplier to 50, 120, or 300 because you saw those
+numbers below — those are return values, not multipliers. A separation
+multiplier of 120 with a cohesion multiplier of 2 makes separation dominate
+by 60× and particles scatter like TV static.
+
+The numbers below describe RETURN VALUES.
+
 ### Gravity/Fall
-- Range: 300-800 for visible effect
+- Range: 300-800 for visible effect (return-value magnitude)
 - Direction: Negative Y (downward)
 ```python
 gravity_force = ti.math.vec2(0.0, -500.0)
 ```
 
 ### Chase/Flee
-- Range: 200-600 for responsive movement
+- Range: 200-600 for responsive movement (return-value magnitude)
 - Scale by distance for smooth behavior
 ```python
 chase_strength = 400.0 * (1.0 - dist / max_dist)
 ```
 
 ### Wander/Random
-- Range: 50-200 for gentle movement
+- Range: 50-200 for gentle movement (return-value magnitude)
 ```python
 wander_force = random_dir * 100.0
 ```
 
-### Flocking
-- Separation: 300-500 (strong avoidance)
-- Alignment: 100-300 (moderate matching)
-- Cohesion: 100-200 (gentle attraction)
+### Flocking (return-value magnitudes per individual force expert)
+- Separation: 300-500 (strong avoidance per neighbour)
+- Alignment: 100-300 (moderate matching per neighbour)
+- Cohesion: 100-200 (gentle attraction per neighbour)
+
+  Per-species STRENGTH MULTIPLIERS attached to these expert outputs stay in
+  the 1.0–5.0 range with a 1:1:2 cohesion:alignment:separation ratio. E.g.:
+  cohesion_strength=2.5, alignment_strength=2.0, separation_strength=5.0.
 
 ## Integration Formula
-Forces are integrated using semi-implicit Euler:
+Forces are integrated using semi-implicit Euler. NOTE: `dt` here is the
+per-frame display step multiplier, NOT real seconds. Use 0.10–0.20 for
+visibly cruising particles on a 1920×1080 canvas. A "physics-textbook"
+value like 0.016 makes max_speed=8 particles move 0.13 px/frame — invisible.
 ```python
-# Standard integration with dt = 0.016 (60 FPS)
+dt = 0.15  # Per-frame display step multiplier (NOT real time)
 acceleration = total_force / mass
 velocity += acceleration * dt
 position += velocity * dt

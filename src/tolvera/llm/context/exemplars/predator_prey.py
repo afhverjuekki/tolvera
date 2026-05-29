@@ -421,7 +421,7 @@ def main(**kwargs):
     @ti.kernel
     def update_ecosystem():
         """Handle energy, feeding, death, and reproduction."""
-        dt = 0.016
+        dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
         energy_consumption = tv.s.llm_global.field[0].starvation_rate
         
         for i in range(tv.pn):
@@ -555,7 +555,7 @@ def main(**kwargs):
     @ti.kernel
     def apply_all_experts():
         """Apply behavioral forces to organisms."""
-        dt = 0.016
+        dt = 0.15  # Per-frame display step multiplier (NOT real seconds); 0.10-0.20 for visible motion
         
         for i in range(tv.pn):
             if tv.p.field[i].active > 0:

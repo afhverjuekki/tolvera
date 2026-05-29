@@ -6,6 +6,40 @@ Drawing/Visual experts: () # NO PARAMETERS, NO RETURN TYPE - pure drawing functi
 
 Species IDs range from 0 to {species_count}.
 
+## MOTION TUNING — VISUALLY EXPRESSIVE, NOT PHYSICALLY ACCURATE
+
+Tölvera sketches are real-time audiovisual installations on a 1920×1080 canvas, NOT physics simulations. Particles must visibly traverse the screen for both audience and audio (sonification) to register meaningful motion. Apply these magnitudes — values from textbook physics references will produce a static, "drifting" sketch the user perceives as broken.
+
+PER-SPECIES PARAMETERS (set in the configuration block):
+- `max_speed`: 80–250 pixels-per-step is the right range. NOT 1–10. A particle at max_speed=8 with dt=0.016 moves 0.13 pixels per frame — invisible.
+- `drag_coefficient` (if you introduce one): 0.005–0.05. NOT 0.3–0.8. Heavy drag dissipates motion within a few frames and the flock settles into a frozen blob.
+- `cohesion_strength`, `alignment_strength`, `separation_strength`: ALL three must be in the same scalar order of magnitude — typically 1.0–5.0. The canonical boids ratio is roughly `cohesion : alignment : separation ≈ 1 : 1 : 2`. NEVER set separation_strength to 50 or 120 while cohesion is at 2 — the separation force then dominates by 25–50× and particles violently scatter on every neighbour, producing TV-static visuals with no visible flocking. The "force magnitudes 300-800" guidance elsewhere refers to RETURN VALUES of force experts (gravity, chase), NOT to per-species strength MULTIPLIERS.
+- Inter-species repulsion strength: 200–600 for distinct, separated species. NOT 50–120 (species end up overlapping). This IS a return-value-scale force, so the large magnitudes are correct here.
+- Inter-species attraction strength: usually 0 unless the user explicitly asks for "mingling" or "mutual orbiting" behaviour.
+- Inter-species repulsion radius: 30–80 px so the territorial boundary is wide enough to be visible.
+
+DEFAULT INTER-SPECIES BEHAVIOUR (when the user prompt has multiple species):
+The DEFAULT for any multi-species sketch is **mutual inter-species REPULSION** so each species carves out its own visible territory on the canvas. The phrase "flock together" in a multi-species prompt means "each species flocks tightly *amongst its own members*" — it does NOT mean all species merge into one blended cluster. Do not generate inter-species attraction unless the user EXPLICITLY says one of:
+  - "mingle", "mix", "blend", "merge", "intermingle"
+  - "predator/prey" (where predators attract toward prey)
+  - "swarm together as one", "form a single school"
+  - "follow each other", "chase each other", "orbit"
+For every other multi-species prompt — including bare "flock together", "flock as a group", "swarm", "school" — assume mutual repulsion between species so the visuals show three (or N) distinct, separated flocks. Default per-species `inter_species_attraction = 0`. Default per-species `inter_species_repulsion_strength = 250–500`. If you populate an interaction matrix (`_repulse_matrix[s0, s1]`), fill it SYMMETRICALLY with non-trivial repulsion for every pair (e.g. 1.0–2.0 in all off-diagonal entries) and zero out the attraction matrix unless the user's prompt explicitly opts in.
+
+INTEGRATION STEP (in the @ti.kernel that does `vel += force * dt; pos += vel * dt`):
+- `dt = 0.10–0.20`. NOT 0.016. The variable is NOT real time; it's the per-frame display step multiplier. 0.016 is the textbook 60-FPS physical timestep but it produces snail-pace visual motion.
+
+FORCE MAGNITUDES (steering / chase / flee force returns):
+- 300–800 for gravity-like attractors.
+- 200–600 for chase/flee.
+- Already correct in the synthesis examples below — keep using these.
+
+OSC SONIFICATION (when emitting `/metrics/<sid>/vel` from particle velocities):
+- The velocity normalization divisor (`vel.norm() / N`) should be 1.5–3.0 so the smoothed average lands in [0.2, 1.0] for an audibly-modulating amp signal. NOT 8.0 (saturates the bottom of the range, all species sound dead-quiet).
+- The OSC metric kernel should AVERAGE over all active particles per species, NOT lock onto particle index 0 — a locked single particle often ends up in a tight cluster with low local velocity and the audio falsely reports stillness.
+
+Sanity check before emitting parameters: at the user's prompt's species speeds, would a particle visibly cross at least half the 1920px width in 10 seconds? If not, scale up.
+
 ## VISUAL/DRAWING EXPERT SYNTHESIS
 For pure drawing behaviors (e.g., "draw a red rectangle"):
 1. Generate a @ti.func expert that performs the drawing

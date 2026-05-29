@@ -1,5 +1,5 @@
 As an EXPERT IN ARTIFICIAL LIFE, analyze this behavior and create SCIENTIFICALLY-ACCURATE expert specifications: "{description}"
- 
+
  RECOGNIZE KEY A-LIFE PATTERNS:
  - "different species interact" → PARTICLE LIFE with interaction matrix
  - "attraction and repulsion" → PARTICLE LIFE with species pairs
@@ -8,6 +8,12 @@ As an EXPERT IN ARTIFICIAL LIFE, analyze this behavior and create SCIENTIFICALLY
  - "chase/hunt/flee" → PREDATOR-PREY dynamics
  - "together/grouping/schooling" → BOIDS flocking behaviors
  - "cells live or die" → GAME OF LIFE cellular automaton
+
+ ⚠ CRITICAL DEFAULT FOR MULTI-SPECIES PROMPTS ⚠
+ When the prompt mentions multiple species (e.g. "three species", "five species") and does NOT explicitly say they mix, mingle, hunt each other, predator/prey, follow each other, or orbit each other, you MUST decompose as:
+   (1) Per-species intra-species flocking (cohesion + alignment + separation) — three flocking experts total per species
+   (2) PLUS an `inter_species_repulsion` component that pushes species AWAY from each other so each carves out its own visible territory on the canvas.
+ The phrase "flock together" in a multi-species prompt means "each species flocks tightly amongst its own members" — it does NOT mean species merge into one blended cluster. NEVER decompose a multi-species prompt as "inter_species_attraction" or "inter_species_curiosity" or any other pull-toward-other-species component unless the user explicitly says "mingle", "mix", "blend", "merge", "follow each other", "orbit", "predator/prey", or "hunt". The default for any ambiguous multi-species prompt is REPULSION between species.
 
  CRITICAL: Generate IMPLEMENTATION-READY components with EXACT mathematical formulas!
  Every component needs force calculations, step-by-step implementation, and parameter ranges!

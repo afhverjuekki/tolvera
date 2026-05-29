@@ -1,0 +1,21 @@
+~tolveraSynths[\species{{ sp.id }}] = Synth(\{{ sp.synth_name }});
+
+// Note the trailing `nil, {{ port }}` on each OSCdef: that's the recvPort
+// argument. Without it, OSCdef listens on sclang's default port (57120)
+// even though thisProcess.openUDPPort opened {{ port }} — packets sent to
+// {{ port }} would arrive on the socket but never reach the OSCdefs.
+
+OSCdef(\sp{{ sp.id }}_x, { |msg|
+    var freq = msg[1].linexp(0, 1, {{ pitch_min }}, {{ pitch_max }});
+    ~tolveraSynths[\species{{ sp.id }}].set(\freq, freq);
+}, "/metrics/{{ sp.id }}/x", nil, {{ port }});
+
+OSCdef(\sp{{ sp.id }}_y, { |msg|
+    var cutoff = msg[1].linexp(0, 1, {{ filter_min }}, {{ filter_max }});
+    ~tolveraSynths[\species{{ sp.id }}].set(\cutoff, cutoff);
+}, "/metrics/{{ sp.id }}/y", nil, {{ port }});
+
+OSCdef(\sp{{ sp.id }}_vel, { |msg|
+    var amp = msg[1].linlin(0, 1, 0, {{ amp_max }});
+    ~tolveraSynths[\species{{ sp.id }}].set(\amp, amp);
+}, "/metrics/{{ sp.id }}/vel", nil, {{ port }});
